@@ -9,8 +9,14 @@
       (function() {
         var base = document.createElement('base');
         // GitHub Pages uses /SchedulingAssistant/, Netlify uses /
-        if (window.location.hostname.includes('github.io')) {
-          base.href = '/SchedulingAssistant/';
+        if (window.location.hostname.endsWith('.github.io')) {
+          // Extract repository name from pathname for GitHub Pages
+          var pathParts = window.location.pathname.split('/').filter(Boolean);
+          if (pathParts.length > 0) {
+            base.href = '/' + pathParts[0] + '/';
+          } else {
+            base.href = '/SchedulingAssistant/';
+          }
         } else {
           base.href = '/';
         }

@@ -4,17 +4,36 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Teams Shifts Scheduler</title>
+    <!-- Dynamic base tag for GitHub Pages and Netlify -->
+    <script>
+      (function() {
+        var base = document.createElement('base');
+        // GitHub Pages uses /SchedulingAssistant/, Netlify uses /
+        if (window.location.hostname.endsWith('.github.io')) {
+          // Extract repository name from pathname for GitHub Pages
+          var pathParts = window.location.pathname.split('/').filter(Boolean);
+          if (pathParts.length > 0) {
+            base.href = '/' + pathParts[0] + '/';
+          } else {
+            base.href = '/SchedulingAssistant/';
+          }
+        } else {
+          base.href = '/';
+        }
+        document.head.appendChild(base);
+      })();
+    </script>
     <!-- Favicon & App Icons -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5B5BD6">
-    <link rel="manifest" href="/site.webmanifest">
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+    <link rel="mask-icon" href="./safari-pinned-tab.svg" color="#5B5BD6">
+    <link rel="manifest" href="./site.webmanifest">
     <meta name="theme-color" content="#5B5BD6">
     
     <!-- Microsoft tiles -->
     <meta name="msapplication-TileColor" content="#5B5BD6">
-    <meta name="msapplication-config" content="/browserconfig.xml">
+    <meta name="msapplication-config" content="./browserconfig.xml">
     <style>
       /* =========================================================================
          Fluent 2-inspired Design System (utility + component primitives)
@@ -339,10 +358,10 @@
       .border-collapse { border-collapse: collapse; }
       .border-bottom { border-bottom: 1px solid var(--colorNeutralStroke1); }
     </style>
-    <script type="module" crossorigin src="/assets/index-BVniKH3f.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-D9gywvde.css">
+    <script type="module" crossorigin src="./assets/index-DiRY6U16.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D9gywvde.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
   </body>
 </html>
