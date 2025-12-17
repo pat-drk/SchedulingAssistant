@@ -327,7 +327,7 @@ export default function App() {
         const initSqlJs = (await import("sql.js")).default;
         // Configure to load WASM files from public directory
         SQL = await initSqlJs({ 
-          locateFile: (file: string) => `/sql-wasm/${file}`
+          locateFile: (file: string) => `${import.meta.env.BASE_URL}sql-wasm/${file}`
         });
         setReady(true);
       } catch (error) {
