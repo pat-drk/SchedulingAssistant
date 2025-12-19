@@ -5,6 +5,7 @@ import { listSegmentAdjustments, type SegmentAdjustmentRow } from "./services/se
 import { availabilityFor } from "./services/availability";
 import SideRail, { TabKey } from "./components/SideRail";
 import TopBar from "./components/TopBar";
+import CopilotContext from "./components/CopilotContext";
 const DailyRunBoard = React.lazy(() => import("./components/DailyRunBoard"));
 const AdminView = React.lazy(() => import("./components/AdminView"));
 const ExportPreview = React.lazy(() => import("./components/ExportPreview"));
@@ -1131,6 +1132,14 @@ async function exportShifts() {
   const canEdit = !!sqlDb;
   const canSave = !!sqlDb && (!lockedBy || lockedBy === lockEmail);
   const selectedDateObj = useMemo(()=>parseMDY(selectedDate),[selectedDate]);
+  const currentAssignmentsCount = useMemo(() => {
+    if (!sqlDb) return 0;
+    try {
+      return listAssignmentsForDate(selectedDate).length;
+    } catch (e) {
+      return 0;
+    }
+  }, [sqlDb, selectedDate]);
 
   function peopleOptionsForSegment(date: Date, segment: Segment, role: any) {
     const rows = all(`SELECT id, last_name, first_name FROM person WHERE active=1 ORDER BY last_name, first_name`);
@@ -1717,6 +1726,15 @@ function PeopleEditor(){
         </div>
         </main>
       </div>
+      {/* CopilotContext: Always rendered to provide context for Edge Copilot */}
+      <CopilotContext
+        activeTab={activeTab}
+        selectedDate={selectedDate}
+        activeRunSegment={activeRunSegment}
+        peopleCount={people.length}
+        assignmentsCount={currentAssignmentsCount}
+        statusMessage={status}
+      />
   </div>
   </ProfileContext.Provider>
   </FluentProvider>
