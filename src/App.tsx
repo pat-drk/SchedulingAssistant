@@ -1132,6 +1132,14 @@ async function exportShifts() {
   const canEdit = !!sqlDb;
   const canSave = !!sqlDb && (!lockedBy || lockedBy === lockEmail);
   const selectedDateObj = useMemo(()=>parseMDY(selectedDate),[selectedDate]);
+  const currentAssignmentsCount = useMemo(() => {
+    if (!sqlDb) return 0;
+    try {
+      return listAssignmentsForDate(selectedDate).length;
+    } catch (e) {
+      return 0;
+    }
+  }, [sqlDb, selectedDate]);
 
   function peopleOptionsForSegment(date: Date, segment: Segment, role: any) {
     const rows = all(`SELECT id, last_name, first_name FROM person WHERE active=1 ORDER BY last_name, first_name`);
@@ -1724,7 +1732,7 @@ function PeopleEditor(){
         selectedDate={selectedDate}
         activeRunSegment={activeRunSegment}
         peopleCount={people.length}
-        assignmentsCount={sqlDb ? listAssignmentsForDate(selectedDate).length : 0}
+        assignmentsCount={currentAssignmentsCount}
         statusMessage={status}
       />
   </div>
