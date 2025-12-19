@@ -1,0 +1,51 @@
+name: PR Preview (Vite -> GitHub Pages)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (PR base)
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          PR="${{ github.event.pull_request.number }}"
+          npm run build -- --base="/${REPO}/pr/${PR}/"
+
+      - name: Deploy PR Preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./dist
+          preview-branch: gh-pages
+          umbrella-dir: pr
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove PR Preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          action: remove
+          preview-branch: gh-pages
+          umbrella-dir: pr
