@@ -43,7 +43,7 @@ export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, c
   return (
     <header className={s.root}>
       <div className={s.left}>
-        <img src="/favicon-32x32.png" alt={appName} width={32} height={32} />
+        <img src={`${import.meta.env.BASE_URL}favicon-32x32.png`} alt={appName} width={32} height={32} />
         {!sqlDb && <Tooltip content="No database loaded" relationship="label"><Spinner size="tiny" /></Tooltip>}
         <FluentToolbar aria-label="File actions" className={s.actionsBar} size="small">
           <Tooltip content="New DB" relationship="label">
