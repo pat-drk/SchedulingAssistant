@@ -1,6 +1,9 @@
 import * as React from "react";
 import { makeStyles, tokens, Text, Tooltip, Toolbar as FluentToolbar, ToolbarButton, ToolbarDivider, Spinner } from "@fluentui/react-components";
 import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular, QuestionCircle20Regular } from "@fluentui/react-icons";
+import { isEdgeBrowser } from "../utils/edgeBrowser";
+import CopilotHelper from "./CopilotHelper";
+import CopilotPromptMenu from "./CopilotPromptMenu";
 
 interface TopBarProps {
   appName?: string;
@@ -35,6 +38,7 @@ const useStyles = makeStyles({
 
 export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status }: TopBarProps){
   const s = useStyles();
+  const isEdge = isEdgeBrowser();
   
   const handleHelpClick = () => {
     window.open(`${import.meta.env.BASE_URL}documentation.html`, '_blank', 'noopener,noreferrer');
@@ -62,6 +66,8 @@ export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, c
         </FluentToolbar>
       </div>
       <div className={s.right}>
+        {isEdge && <CopilotHelper />}
+        {isEdge && <CopilotPromptMenu />}
         <FluentToolbar aria-label="Help actions" size="small">
           <Tooltip content="Open documentation" relationship="label">
             <ToolbarButton icon={<QuestionCircle20Regular />} onClick={handleHelpClick}>Help</ToolbarButton>

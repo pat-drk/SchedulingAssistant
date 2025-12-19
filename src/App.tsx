@@ -5,6 +5,7 @@ import { listSegmentAdjustments, type SegmentAdjustmentRow } from "./services/se
 import { availabilityFor } from "./services/availability";
 import SideRail, { TabKey } from "./components/SideRail";
 import TopBar from "./components/TopBar";
+import CopilotContext from "./components/CopilotContext";
 const DailyRunBoard = React.lazy(() => import("./components/DailyRunBoard"));
 const AdminView = React.lazy(() => import("./components/AdminView"));
 const ExportPreview = React.lazy(() => import("./components/ExportPreview"));
@@ -1717,6 +1718,15 @@ function PeopleEditor(){
         </div>
         </main>
       </div>
+      {/* CopilotContext: Always rendered to provide context for Edge Copilot */}
+      <CopilotContext
+        activeTab={activeTab}
+        selectedDate={selectedDate}
+        activeRunSegment={activeRunSegment}
+        peopleCount={people.length}
+        assignmentsCount={sqlDb ? listAssignmentsForDate(selectedDate).length : 0}
+        statusMessage={status}
+      />
   </div>
   </ProfileContext.Provider>
   </FluentProvider>
