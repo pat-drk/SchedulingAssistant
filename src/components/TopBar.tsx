@@ -1,6 +1,6 @@
 import * as React from "react";
 import { makeStyles, tokens, Text, Tooltip, Toolbar as FluentToolbar, ToolbarButton, ToolbarDivider, Spinner } from "@fluentui/react-components";
-import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular } from "@fluentui/react-icons";
+import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular, QuestionCircle20Regular } from "@fluentui/react-icons";
 
 interface TopBarProps {
   appName?: string;
@@ -29,11 +29,17 @@ const useStyles = makeStyles({
   },
   left: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM },
   actionsBar: { alignItems: 'center' },
+  right: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM },
   status: { color: tokens.colorNeutralForeground2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 },
 });
 
 export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status }: TopBarProps){
   const s = useStyles();
+  
+  const handleHelpClick = () => {
+    window.open('/documentation.html', '_blank', 'noopener,noreferrer');
+  };
+  
   return (
     <header className={s.root}>
       <div className={s.left}>
@@ -55,7 +61,14 @@ export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, c
           </Tooltip>
         </FluentToolbar>
       </div>
-      <Text size={200} className={s.status}>{status}</Text>
+      <div className={s.right}>
+        <FluentToolbar aria-label="Help actions" size="small">
+          <Tooltip content="Open documentation" relationship="label">
+            <ToolbarButton icon={<QuestionCircle20Regular />} onClick={handleHelpClick}>Help</ToolbarButton>
+          </Tooltip>
+        </FluentToolbar>
+        <Text size={200} className={s.status}>{status}</Text>
+      </div>
     </header>
   );
 }
