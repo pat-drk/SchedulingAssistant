@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teams Shifts Scheduling Assistant | User Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono&display=swap');
+        
+        :root {
+            /* Fluent 2 Design Tokens */
+            --fluent-brand: #0078d4;
+            --fluent-brand-hover: #106ebe;
+            --fluent-bg: #fafafa;
+            --fluent-surface: #ffffff;
+            --fluent-stroke: #e0e0e0;
+            --fluent-text: #242424;
+            --fluent-text-secondary: #616161;
+            --fluent-radius: 8px;
+            --fluent-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 0 2px rgba(0,0,0,0.04);
+            --fluent-shadow-high: 0 8px 16px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.04);
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+            scroll-behavior: smooth;
+            color: var(--fluent-text);
+            background-color: var(--fluent-bg);
+        }
+
+        code, pre {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Nav Link Fluent Styling */
+        .nav-link {
+            position: relative;
+            transition: all 0.1s ease;
+        }
+        
+        .nav-link:hover {
+            background-color: #f0f0f0;
+        }
+
+        .nav-link.active {
+            color: var(--fluent-brand);
+            background-color: #f0f7ff;
+            font-weight: 600;
+        }
+
+        .nav-link.active::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 25%;
+            height: 50%;
+            width: 3px;
+            background-color: var(--fluent-brand);
+            border-radius: 0 4px 4px 0;
+        }
+
+        /* Mockup Containers */
+        .ui-mockup {
+            background: var(--fluent-surface);
+            border: 1px solid var(--fluent-stroke);
+            border-radius: var(--fluent-radius);
+            box-shadow: var(--fluent-shadow-high);
+            overflow: hidden;
+            margin: 2rem 0;
+        }
+
+        .table-container {
+            border: 1px solid var(--fluent-stroke);
+            border-radius: var(--fluent-radius);
+            overflow: hidden;
+            background: var(--fluent-surface);
+            box-shadow: var(--fluent-shadow);
+        }
+
+        /* Fluent Message Bar Styling */
+        .message-bar {
+            border-radius: var(--fluent-radius);
+            border: 1px solid transparent;
+            display: flex;
+            padding: 12px 16px;
+            gap: 12px;
+        }
+        .message-bar-warning {
+            background-color: #fff8f0;
+            border-color: #fce1c5;
+            color: #8a4e02;
+        }
+
+        .workflow-box {
+            background-color: var(--fluent-surface);
+            border: 1px solid var(--fluent-stroke);
+            padding: 1.5rem;
+            border-radius: var(--fluent-radius);
+            box-shadow: var(--fluent-shadow);
+            transition: box-shadow 0.2s ease;
+        }
+        
+        .workflow-box:hover {
+            box-shadow: var(--fluent-shadow-high);
+        }
+
+        section {
+            scroll-margin-top: 2rem;
+            padding-bottom: 5rem;
+        }
+
+        .step-number {
+            background-color: var(--fluent-brand);
+            color: white;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 1024px) {
+            #sidebar {
+                transform: translateX(-100%);
+            }
+            #sidebar.open {
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50">
+
+    <!-- Mobile Header -->
+    <div class="lg:hidden flex items-center p-4 bg-white border-b sticky top-0 z-50 shadow-sm">
+        <button id="menu-toggle" class="p-2 mr-4 text-slate-600 hover:bg-slate-100 rounded-md">
+            <i class="fas fa-bars fa-lg"></i>
+        </button>
+        <div class="flex items-center gap-2">
+            <i class="fas fa-calendar-check text-[#0078d4] text-xl"></i>
+            <span class="font-bold text-slate-900">Shifts Assistant</span>
+        </div>
+    </div>
+
+    <div class="flex">
+        <!-- Sidebar Navigation (Fluent 2 Style) -->
+        <aside id="sidebar" class="fixed inset-y-0 left-0 w-72 bg-[#f3f3f3] border-r border-[#e0e0e0] z-40 transition-transform lg:translate-x-0 overflow-y-auto">
+            <div class="p-6">
+                <div class="hidden lg:flex items-center gap-3 mb-10">
+                    <div class="bg-[#0078d4] text-white p-2 rounded-md shadow-sm">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <span class="font-bold text-lg tracking-tight text-[#242424]">Shifts Assistant</span>
+                </div>
+
+                <nav class="space-y-1">
+                    <div class="text-[11px] font-bold text-[#616161] uppercase tracking-wider px-3 mb-3">User Manual</div>
+                    <a href="#introduction" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">1. Introduction</a>
+                    <a href="#getting-started" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">2. Getting Started</a>
+                    <a href="#app-overview" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">3. Application Overview</a>
+                    <a href="#nav-interface" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">4. Navigation & Interface</a>
+                    <a href="#db-management" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">5. Database Management</a>
+                    
+                    <div class="pt-6 pb-2 text-[11px] font-bold text-[#616161] uppercase tracking-wider px-3">6. Core Features</div>
+                    <a href="#daily-run" class="nav-link block px-3 py-1.5 rounded-md text-sm text-[#424242] ml-2">Daily Run Board</a>
+                    <a href="#people-mgmt" class="nav-link block px-3 py-1.5 rounded-md text-sm text-[#424242] ml-2">People Management</a>
+                    <a href="#training" class="nav-link block px-3 py-1.5 rounded-md text-sm text-[#424242] ml-2">Training Matrix</a>
+                    <a href="#baseline" class="nav-link block px-3 py-1.5 rounded-md text-sm text-[#424242] ml-2">Baseline Needs</a>
+                    <a href="#monthly" class="nav-link block px-3 py-1.5 rounded-md text-sm text-[#424242] ml-2">Monthly Defaults</a>
+                    <a href="#history" class="nav-link block px-3 py-1.5 rounded-md text-sm text-[#424242] ml-2">Crew History</a>
+                    <a href="#export" class="nav-link block px-3 py-1.5 rounded-md text-sm text-[#424242] ml-2">Export Preview</a>
+                    
+                    <div class="pt-6 pb-2 text-[11px] font-bold text-[#616161] uppercase tracking-wider px-3">Advanced</div>
+                    <a href="#admin-config" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">7. Admin Configuration</a>
+                    <a href="#workflow-examples" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">8. Workflow Examples</a>
+                    <a href="#shortcuts-tips" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">9. Shortcuts & Tips</a>
+                    <a href="#troubleshooting" class="nav-link block px-3 py-2 rounded-md text-sm font-medium text-[#424242]">10. Troubleshooting</a>
+                </nav>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 lg:ml-72 bg-white min-h-screen">
+            <div class="max-w-4xl mx-auto px-6 py-12 lg:px-16 lg:py-24">
+                
+                <!-- Section 1: Introduction -->
+                <section id="introduction">
+                    <div class="mb-12">
+                        <span class="inline-block px-2 py-0.5 bg-[#f0f7ff] text-[#0078d4] rounded text-xs font-semibold mb-4">Official Documentation</span>
+                        <h1 class="text-4xl lg:text-5xl font-bold text-[#242424] mb-6 tracking-tight">
+                            Teams Shifts <span class="text-[#0078d4]">Assistant</span>
+                        </h1>
+                        <p class="text-lg text-[#616161] leading-relaxed max-w-2xl">
+                            A localized scheduling engine designed for high-precision staff coordination and seamless Microsoft Teams integration.
+                        </p>
+                    </div>
+                    
+                    <div class="prose prose-slate max-w-none">
+                        <p class="text-[#424242]">The <strong>Teams Shifts Scheduling Assistant</strong> is a specialized browser application for managing staff assignments across multiple time segments. By utilizing local <strong>SQLite technology</strong>, your data remains secure and private on your workstation.</p>
+                        
+                        <div class="grid md:grid-cols-2 gap-6 my-10">
+                            <div class="p-6 bg-[#fdfdfd] rounded-lg border border-[#e0e0e0] shadow-sm">
+                                <h4 class="font-bold text-[#242424] mb-4 flex items-center gap-2">
+                                    <i class="fas fa-check-circle text-[#0078d4]"></i> Core Capabilities
+                                </h4>
+                                <ul class="space-y-3 text-sm text-[#616161]">
+                                    <li>• Multi-segment daily scheduling</li>
+                                    <li>• Role & training qualification matrix</li>
+                                    <li>• Automated Time-off syncing</li>
+                                </ul>
+                            </div>
+                            <div class="p-6 bg-[#fdfdfd] rounded-lg border border-[#e0e0e0] shadow-sm">
+                                <h4 class="font-bold text-[#242424] mb-4 flex items-center gap-2">
+                                    <i class="fas fa-rocket text-[#0078d4]"></i> Efficiency Tools
+                                </h4>
+                                <ul class="space-y-3 text-sm text-[#616161]">
+                                    <li>• Microsoft Teams Shifts Export</li>
+                                    <li>• Monthly default templates</li>
+                                    <li>• Visual coverage tracking</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <h3 class="font-bold text-xl mb-4 text-[#242424]">Key Features</h3>
+                        <div class="table-container">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-[#fafafa] text-[#616161] border-b">
+                                    <tr>
+                                        <th class="p-3 font-semibold">Feature</th>
+                                        <th class="p-3 font-semibold">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-[#424242]">
+                                    <tr class="border-b"><td class="p-3 font-semibold">Local Data Storage</td><td class="p-3">All data saved to a local .db file on your machine.</td></tr>
+                                    <tr class="border-b"><td class="p-3 font-semibold">Single-Editor Model</td><td class="p-3">One person edits at a time to prevent data collision.</td></tr>
+                                    <tr class="border-b"><td class="p-3 font-semibold">Availability Tracking</td><td class="p-3">Track AM, PM, or Full-Day availability per person.</td></tr>
+                                    <tr class="border-b"><td class="p-3 font-semibold">Time-Off Integration</td><td class="p-3">Import vacation/sick leave from Teams CSV exports.</td></tr>
+                                    <tr class="border-b"><td class="p-3 font-semibold">Training Matrix</td><td class="p-3">Ensures staff are qualified for assigned roles.</td></tr>
+                                    <tr><td class="p-3 font-semibold">Excel Export</td><td class="p-3">Generate formatted schedules for bulk Teams import.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section 2: Getting Started -->
+                <section id="getting-started">
+                    <h2 class="text-2xl font-bold mb-8 text-[#242424]">2. Getting Started</h2>
+                    <h3 class="text-xs font-bold text-[#0078d4] mb-6 uppercase tracking-widest">Initial Setup Workflow</h3>
+                    <div class="space-y-8">
+                        <div class="flex gap-6">
+                            <div class="step-number w-8 h-8 rounded flex items-center justify-center font-bold flex-shrink-0">1</div>
+                            <div>
+                                <h4 class="font-bold text-[#242424] mb-1">Initialize Database</h4>
+                                <p class="text-sm text-[#616161]">Click <strong>New DB</strong> to start fresh, or <strong>Open DB</strong> to load an existing file.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-6">
+                            <div class="step-number w-8 h-8 rounded flex items-center justify-center font-bold flex-shrink-0">2</div>
+                            <div>
+                                <h4 class="font-bold text-[#242424] mb-1">Select File Location</h4>
+                                <p class="text-sm text-[#616161] mb-3">Click <strong>Save As</strong> to write the file to your disk.</p>
+                                <div class="message-bar message-bar-warning">
+                                    <i class="fas fa-warning mt-1"></i>
+                                    <p class="text-xs"><strong>IMPORTANT:</strong> Single-Editor Model. Only one person edits at a time.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex gap-6">
+                            <div class="step-number w-8 h-8 rounded flex items-center justify-center font-bold flex-shrink-0">3</div>
+                            <div>
+                                <h4 class="font-bold text-[#242424] mb-1">Populate Roster</h4>
+                                <p class="text-sm text-[#616161]">Add staff in the <strong>People</strong> tab and define availability.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-6">
+                            <div class="step-number w-8 h-8 rounded flex items-center justify-center font-bold flex-shrink-0">4</div>
+                            <div>
+                                <h4 class="font-bold text-[#242424] mb-1">Set Staffing Targets</h4>
+                                <p class="text-sm text-[#616161]">Configure <strong>Baseline Needs</strong> for each role.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section 3: Application Overview -->
+                <section id="app-overview">
+                    <h2 class="text-2xl font-bold mb-8 text-[#242424]">3. Application Overview</h2>
+                    <h3 class="text-xs font-bold text-[#616161] mb-6 uppercase tracking-widest">Fluent UI Layout</h3>
+                    
+                    <div class="ui-mockup">
+                        <svg viewBox="0 0 800 450" class="w-full h-auto bg-[#fafafa]">
+                            <!-- App Frame -->
+                            <rect x="0" y="0" width="180" height="450" fill="#f3f3f3" />
+                            <!-- Sidebar Links -->
+                            <rect x="15" y="40" width="150" height="24" rx="4" fill="#0078d4" opacity="0.1" />
+                            <rect x="25" y="49" width="100" height="6" rx="3" fill="#0078d4" />
+                            
+                            <rect x="25" y="80" width="110" height="4" rx="2" fill="#d1d1d1" />
+                            <rect x="25" y="110" width="90" height="4" rx="2" fill="#d1d1d1" />
+                            <rect x="25" y="140" width="120" height="4" rx="2" fill="#d1d1d1" />
+                            
+                            <!-- Main Header -->
+                            <rect x="180" y="0" width="620" height="48" fill="#ffffff" stroke="#e0e0e0" stroke-width="1" />
+                            <circle cx="210" cy="24" r="8" fill="#0078d4" opacity="0.1" />
+                            <rect x="230" y="21" width="40" height="6" rx="3" fill="#e0e0e0" />
+                            
+                            <circle cx="290" cy="24" r="8" fill="#0078d4" opacity="0.1" />
+                            <rect x="310" y="21" width="40" height="6" rx="3" fill="#e0e0e0" />
+
+                            <!-- Main Content Card -->
+                            <rect x="200" y="70" width="580" height="360" rx="8" fill="#ffffff" stroke="#e0e0e0" />
+                            <rect x="220" y="90" width="150" height="12" rx="2" fill="#f3f3f3" />
+                            <rect x="220" y="115" width="540" height="1" fill="#e0e0e0" />
+                            
+                            <text x="90" y="435" font-family="Segoe UI" font-size="10" font-weight="600" fill="#616161" text-anchor="middle">NAVIGATION RAIL</text>
+                            <text x="490" y="250" font-family="Segoe UI" font-size="14" font-weight="600" fill="#d1d1d1" text-anchor="middle">WORKSPACE</text>
+                        </svg>
+                    </div>
+                </section>
+
+                <!-- Section 4: Navigation & Interface -->
+                <section id="nav-interface">
+                    <h2 class="text-2xl font-bold mb-8 text-[#242424]">4. Navigation & Interface</h2>
+                    
+                    <h3 class="font-bold text-[#242424] mb-4 flex items-center gap-2">Side Rail Navigation</h3>
+                    <div class="table-container mb-12">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-[#fafafa] border-b text-[#616161]">
+                                <tr>
+                                    <th class="p-3 w-16">Icon</th>
+                                    <th class="p-3 font-semibold">Module</th>
+                                    <th class="p-3 font-semibold">Purpose</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
+                                <tr><td class="p-3 text-center">📅</td><td class="p-3 font-semibold">Daily Run</td><td class="p-3">Daily scheduling and segment switching.</td></tr>
+                                <tr><td class="p-3 text-center">👥</td><td class="p-3 font-semibold">People</td><td class="p-3">Staff roster and availability profiles.</td></tr>
+                                <tr><td class="p-3 text-center">📚</td><td class="p-3 font-semibold">Training</td><td class="p-3">Qualification and training matrix.</td></tr>
+                                <tr><td class="p-3 text-center">📋</td><td class="p-3 font-semibold">Baseline</td><td class="p-3">Standard staffing requirements.</td></tr>
+                                <tr><td class="p-3 text-center">📤</td><td class="p-3 font-semibold">Export</td><td class="p-3">Teams XLSX generation.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h3 class="font-bold text-[#242424] mb-4">Top Bar Controls</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="p-4 bg-[#fdfdfd] border border-[#e0e0e0] rounded-lg shadow-sm">
+                            <span class="text-[10px] font-bold text-[#616161] uppercase block mb-1">New DB</span>
+                            <p class="text-xs">Start fresh in memory</p>
+                        </div>
+                        <div class="p-4 bg-[#fdfdfd] border border-[#e0e0e0] rounded-lg shadow-sm">
+                            <span class="text-[10px] font-bold text-[#616161] uppercase block mb-1">Open DB</span>
+                            <p class="text-xs">Load file from disk</p>
+                        </div>
+                        <div class="p-4 bg-[#f0f7ff] border border-[#0078d4] rounded-lg shadow-sm">
+                            <span class="text-[10px] font-bold text-[#0078d4] uppercase block mb-1">Save</span>
+                            <p class="text-xs">Commit changes to file</p>
+                        </div>
+                        <div class="p-4 bg-[#fdfdfd] border border-[#e0e0e0] rounded-lg shadow-sm">
+                            <span class="text-[10px] font-bold text-[#616161] uppercase block mb-1">Save As</span>
+                            <p class="text-xs">Clone to new file</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section 6: Core Features -->
+                <section id="core-features">
+                    <h2 class="text-3xl font-bold mb-12 text-[#242424]">6. Core Features</h2>
+
+                    <!-- 6.1 Daily Run Board -->
+                    <div id="daily-run" class="mb-24">
+                        <h3 class="text-xl font-bold mb-4 text-[#0078d4]">Daily Run Board</h3>
+                        <p class="text-sm text-[#616161] mb-8">The main scheduling interface. Coordinates date, segment, and role-based assignments with real-time conflict checking.</p>
+                        
+                        <div class="ui-mockup mb-8">
+                            <svg viewBox="0 0 800 380" class="w-full h-auto bg-[#fafafa]">
+                                <!-- Segment Controls -->
+                                <rect x="30" y="20" width="100" height="28" rx="4" fill="#ffffff" stroke="#e0e0e0" />
+                                <text x="40" y="38" font-family="Segoe UI" font-size="11" fill="#242424">2025-01-15</text>
+                                
+                                <rect x="150" y="20" width="50" height="28" rx="14" fill="#0078d4" />
+                                <text x="175" y="38" font-family="Segoe UI" font-size="10" font-weight="600" fill="#ffffff" text-anchor="middle">AM</text>
+                                <rect x="210" y="20" width="50" height="28" rx="14" fill="#f0f0f0" />
+                                <text x="235" y="38" font-family="Segoe UI" font-size="10" font-weight="600" fill="#616161" text-anchor="middle">PM</text>
+                                
+                                <!-- Columns -->
+                                <rect x="30" y="70" width="230" height="280" rx="8" fill="#ffffff" stroke="#e0e0e0" />
+                                <rect x="30" y="70" width="230" height="36" rx="8 8 0 0" fill="#fcfcfc" />
+                                <text x="45" y="92" font-family="Segoe UI" font-size="10" font-weight="bold" fill="#616161">DINING ROOM</text>
+                                
+                                <text x="45" y="125" font-family="Segoe UI" font-size="11" font-weight="600" fill="#242424">DR Supervisor</text>
+                                <rect x="45" y="135" width="200" height="32" rx="4" fill="#f0fdf4" stroke="#dcfce7" />
+                                <text x="55" y="155" font-family="Segoe UI" font-size="11" fill="#166534" font-weight="600">John Smith (✅)</text>
+
+                                <rect x="280" y="70" width="230" height="280" rx="8" fill="#ffffff" stroke="#e0e0e0" />
+                                <rect x="280" y="70" width="230" height="36" rx="8 8 0 0" fill="#fcfcfc" />
+                                <text x="295" y="92" font-family="Segoe UI" font-size="10" font-weight="bold" fill="#616161">PREPACK</text>
+                                <rect x="295" y="135" width="200" height="32" rx="4" fill="#ffffff" stroke="#e0e0e0" stroke-dasharray="3" />
+                                <text x="395" y="155" font-family="Segoe UI" font-size="11" fill="#d1d1d1" font-weight="600" text-anchor="middle">+ Add Person</text>
+
+                                <rect x="530" y="70" width="230" height="280" rx="8" fill="#ffffff" stroke="#e0e0e0" />
+                                <rect x="530" y="70" width="230" height="36" rx="8 8 0 0" fill="#fcfcfc" />
+                                <text x="545" y="92" font-family="Segoe UI" font-size="10" font-weight="bold" fill="#616161">KITCHEN</text>
+                                <rect x="545" y="135" width="200" height="32" rx="4" fill="#fffbeb" stroke="#fef3c7" />
+                                <text x="555" y="155" font-family="Segoe UI" font-size="11" fill="#92400e" font-weight="600">Tom Wilson (⚠️)</text>
+                            </svg>
+                        </div>
+
+                        <div class="grid md:grid-cols-2 gap-8">
+                            <div>
+                                <h4 class="font-bold text-sm uppercase text-[#616161] mb-4">Assignment Process</h4>
+                                <ol class="space-y-3 text-sm text-[#424242]">
+                                    <li><strong>1.</strong> Select Date and Segment.</li>
+                                    <li><strong>2.</strong> Locate Role Card.</li>
+                                    <li><strong>3.</strong> Click [+ Add] for availability-filtered list.</li>
+                                    <li><strong>4.</strong> Confirm selection.</li>
+                                </ol>
+                            </div>
+                            <div class="p-6 bg-[#f0f7ff] rounded-lg border border-[#cce5ff]">
+                                <h4 class="font-bold text-[#005a9e] mb-2 text-sm">Auto-Fill Engine</h4>
+                                <p class="text-xs text-[#005a9e] leading-relaxed">System-generated suggestions based on training, availability patterns, and history weights.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 6.3 Training & Qualifications -->
+                    <div id="training" class="mb-24">
+                        <h3 class="text-xl font-bold mb-6 text-[#0078d4]">Training & Qualifications</h3>
+                        
+                        <div class="table-container mb-8">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-[#fafafa] text-[#616161] border-b">
+                                    <tr>
+                                        <th class="p-3">Staff Member</th>
+                                        <th class="p-3 text-center">DR Supervisor</th>
+                                        <th class="p-3 text-center">Line Cook</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-[#f0f0f0]">
+                                    <tr><td class="p-3 font-semibold">Smith, John</td><td class="p-3 text-center text-[#107c10]"><i class="fas fa-check"></i></td><td class="p-3 text-center text-[#d1d1d1]">—</td></tr>
+                                    <tr><td class="p-3 font-semibold">Wilson, Tom</td><td class="p-3 text-center text-[#d1d1d1]">—</td><td class="p-3 text-center text-[#107c10]"><i class="fas fa-check"></i></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="p-4 bg-[#fdfdfd] border border-[#e0e0e0] rounded-lg flex gap-3 items-start">
+                            <i class="fas fa-info-circle text-[#0078d4] mt-1"></i>
+                            <p class="text-xs text-[#616161]">Assigning staff in <strong>Monthly Defaults</strong> automatically qualifies them for that role in this matrix.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section 8: Workflow Examples -->
+                <section id="workflow-examples">
+                    <h2 class="text-2xl font-bold mb-10 text-[#242424]">8. Workflow Examples</h2>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div class="workflow-box">
+                            <h4 class="font-bold text-[#242424] mb-4 text-sm">Daily Routine</h4>
+                            <ol class="text-xs space-y-4 text-[#616161]">
+                                <li><strong>01</strong> Open your <code>.db</code> file.</li>
+                                <li><strong>02</strong> Select Date in <strong>Daily Run</strong>.</li>
+                                <li><strong>03</strong> Fill gaps manually or via <strong>Auto-Fill</strong>.</li>
+                                <li><strong>04</strong> Use <code>Ctrl+S</code> to commit changes.</li>
+                            </ol>
+                        </div>
+                        <div class="workflow-box">
+                            <h4 class="font-bold text-[#242424] mb-4 text-sm">Monthly Cycle</h4>
+                            <ol class="text-xs space-y-4 text-[#616161]">
+                                <li><strong>01</strong> Set Month in <strong>Monthly</strong> tab.</li>
+                                <li><strong>02</strong> <strong>Copy</strong> from previous month.</li>
+                                <li><strong>03</strong> Review Weekday Overrides.</li>
+                                <li><strong>04</strong> <strong>Apply Defaults</strong> to board.</li>
+                            </ol>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section 10: Troubleshooting -->
+                <section id="troubleshooting">
+                    <h2 class="text-2xl font-bold mb-10 text-[#242424]">10. Troubleshooting</h2>
+                    <div class="space-y-4">
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">"No database loaded"</h5>
+                            <p class="text-xs text-[#616161]">Click <strong>New DB</strong> or <strong>Open DB</strong> in the top bar to activate the system.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">Changes not saving</h5>
+                            <p class="text-xs text-[#616161]">Verify write permissions for your <code>.db</code> file and ensure no other user has it locked.</p>
+                        </div>
+                    </div>
+                </section>
+                
+                <footer class="pt-24 border-t border-[#f0f0f0] text-center">
+                    <p class="text-[10px] text-[#94a3b8] font-bold uppercase tracking-widest italic">User Manual Rev 2.0 | Fluent 2 System</p>
+                </footer>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const sidebar = document.getElementById('sidebar');
+        const menuBtn = document.getElementById('menu-toggle');
+        
+        menuBtn?.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+        });
+
+        const sections = document.querySelectorAll('section');
+        const navLinks = document.querySelectorAll('.nav-link');
+
+        window.addEventListener('scroll', () => {
+            let current = "";
+            sections.forEach((section) => {
+                const sectionTop = section.offsetTop;
+                if (pageYOffset >= sectionTop - 200) {
+                    current = section.getAttribute("id");
+                }
+            });
+
+            navLinks.forEach((link) => {
+                link.classList.remove("active");
+                if (link.getAttribute("href") === `#${current}`) {
+                    link.classList.add("active");
+                }
+            });
+        });
+
+        navLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                sidebar.classList.remove('open');
+            });
+        });
+    </script>
+</body>
+</html>
