@@ -86,13 +86,13 @@ const CopilotLogo = ({ size = 20 }: { size?: number }) => (
     {/* Left ray */}
     <path d="M2 12 L8 11 L8 13 Z" fill="url(#copilot-gradient-1)" />
     {/* Top-right diagonal */}
-    <path d="M18 6 L14 10 L12.5 8.5 Z" fill="url(#copilot-gradient-2)" />
+    <path d="M18 6 L13.5 10.5 L14.5 11.5 Z" fill="url(#copilot-gradient-2)" />
     {/* Bottom-right diagonal */}
-    <path d="M18 18 L12.5 15.5 L14 10 Z" fill="url(#copilot-gradient-3)" />
+    <path d="M18 18 L13.5 13.5 L14.5 12.5 Z" fill="url(#copilot-gradient-3)" />
     {/* Bottom-left diagonal */}
-    <path d="M6 18 L10 14 L11.5 15.5 Z" fill="url(#copilot-gradient-4)" />
+    <path d="M6 18 L10.5 13.5 L9.5 12.5 Z" fill="url(#copilot-gradient-4)" />
     {/* Top-left diagonal */}
-    <path d="M6 6 L11.5 8.5 L10 14 Z" fill="url(#copilot-gradient-1)" />
+    <path d="M6 6 L10.5 10.5 L9.5 11.5 Z" fill="url(#copilot-gradient-1)" />
   </svg>
 );
 
