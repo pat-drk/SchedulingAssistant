@@ -41,29 +41,29 @@ const useStyles = makeStyles({
 
 const PROMPTS = [
   {
-    key: "summarize",
-    label: "Summarize this schedule",
-    prompt: "Summarize the current schedule view on this page, including any staffing gaps or conflicts.",
-  },
-  {
-    key: "analyze",
-    label: "Analyze coverage gaps",
-    prompt: "Analyze the staffing coverage on this page and identify any roles that are understaffed or overstaffed.",
-  },
-  {
     key: "explain",
     label: "Help me understand this view",
     prompt: "Explain what I'm looking at on this page and how to use the main features visible.",
   },
   {
-    key: "conflicts",
-    label: "Find scheduling conflicts",
-    prompt: "Look at the assignments on this page and identify any scheduling conflicts or issues.",
+    key: "howto-assign",
+    label: "How do I make an assignment?",
+    prompt: "Walk me through the steps to assign someone to a role on this scheduling page.",
   },
   {
-    key: "optimize",
-    label: "Suggest optimal assignments",
-    prompt: "Based on the current schedule and staffing needs shown, suggest optimal assignment changes.",
+    key: "howto-navigate",
+    label: "How do I navigate the app?",
+    prompt: "Explain how to navigate between different sections and views in this scheduling application.",
+  },
+  {
+    key: "troubleshoot",
+    label: "Something isn't working",
+    prompt: "I'm having trouble with something on this page. Help me troubleshoot what might be wrong and how to fix it.",
+  },
+  {
+    key: "features",
+    label: "What can I do here?",
+    prompt: "List the main features and actions available on this page and briefly explain what each one does.",
   },
 ];
 
