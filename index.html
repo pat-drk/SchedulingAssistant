@@ -8,12 +8,20 @@
     <script>
       (function() {
         var base = document.createElement('base');
-        // GitHub Pages uses /repo-name/, Netlify uses /
+        // GitHub Pages uses /repo-name/ for production or /repo-name/pr/PR_NUMBER/ for PR previews
+        // Netlify uses /
         if (window.location.hostname.endsWith('.github.io')) {
-          // Extract repository name from pathname for GitHub Pages
+          // Extract base path from pathname for GitHub Pages
           var pathParts = window.location.pathname.split('/').filter(Boolean);
           if (pathParts.length > 0) {
-            base.href = '/' + pathParts[0] + '/';
+            // Check if this is a PR preview path (e.g., /SchedulingAssistant/pr/123/)
+            if (pathParts.length >= 3 && pathParts[1] === 'pr') {
+              // PR preview: use full path up to and including PR number
+              base.href = '/' + pathParts[0] + '/' + pathParts[1] + '/' + pathParts[2] + '/';
+            } else {
+              // Production: use just the repo name
+              base.href = '/' + pathParts[0] + '/';
+            }
           } else {
             // Default to root if pathname is empty
             base.href = '/';
