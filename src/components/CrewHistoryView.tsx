@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Input, Dropdown, Option, Button, Checkbox, Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell, makeStyles, tokens, Label } from "@fluentui/react-components";
+import { Input, Dropdown, Option, Button, Checkbox, Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell, makeStyles, tokens, Label, Badge } from "@fluentui/react-components";
 import SmartSelect from "./controls/SmartSelect";
 import PersonName from "./PersonName";
 import type { Segment } from "../services/segments";
@@ -187,6 +187,7 @@ export default function CrewHistoryView({
   const [filterMonth, setFilterMonth] = useState<string>("");
   const [editPast, setEditPast] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showOnlyTrainees, setShowOnlyTrainees] = useState(false);
 
   const sortFieldLabel = useMemo(() => {
     const base: Record<string, string> = {
@@ -362,6 +363,55 @@ export default function CrewHistoryView({
     segmentNames,
   ]);
 
+  // Calculate trainee info
+  const traineeInfo = useMemo(() => {
+    const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
+    const REQUIRED_AREAS = ["Dining Room", "Machine Room", "Veggie Room", "Receiving"];
+    const now = new Date();
+    const info = new Map<number, { isTrainee: boolean; completedAreas: Set<string> }>();
+
+    for (const person of filteredPeople) {
+      if (!person.start_date) {
+        info.set(person.id, { isTrainee: false, completedAreas: new Set() });
+        continue;
+      }
+
+      const startDate = new Date(person.start_date);
+      const endDate = person.end_date ? new Date(person.end_date) : null;
+      const sixMonthsAfterStart = new Date(startDate.getTime() + SIX_MONTHS_MS);
+      const isTrainee = now < sixMonthsAfterStart && (!endDate || now < endDate);
+
+      if (!isTrainee) {
+        info.set(person.id, { isTrainee: false, completedAreas: new Set() });
+        continue;
+      }
+
+      // Get all groups they've been assigned to across all months
+      const completedAreas = new Set<string>();
+      for (const def of defs) {
+        if (def.person_id === person.id && def.role_id) {
+          const role = roles.find(r => r.id === def.role_id);
+          if (role) {
+            const group = groups.find(g => g.id === role.group_id);
+            if (group && REQUIRED_AREAS.includes(group.name)) {
+              completedAreas.add(group.name);
+            }
+          }
+        }
+      }
+
+      info.set(person.id, { isTrainee, completedAreas });
+    }
+
+    return info;
+  }, [filteredPeople, defs, roles, groups]);
+
+  // Filter for trainees if toggle is on
+  const displayPeople = useMemo(() => {
+    if (!showOnlyTrainees) return filteredPeople;
+    return filteredPeople.filter(p => traineeInfo.get(p.id)?.isTrainee);
+  }, [filteredPeople, showOnlyTrainees, traineeInfo]);
+
   useEffect(() => {
     setShowSeg((prev) => {
       const next: Record<string, boolean> = {};
@@ -495,6 +545,9 @@ export default function CrewHistoryView({
           <div className={styles.controlCell}>
             <Button appearance="secondary" onClick={() => setShowAdvanced(v => !v)}>{showAdvanced ? 'Hide options' : 'More options'}</Button>
           </div>
+          <div className={styles.controlCell}>
+            <Checkbox label="Trainees only" checked={showOnlyTrainees} onChange={(_, data) => setShowOnlyTrainees(!!data.checked)} />
+          </div>
           {showAdvanced && (
             <>
               <div className={styles.controlCell}><Checkbox label="Edit past months" checked={editPast} onChange={(_, data) => setEditPast(!!data.checked)} /></div>
@@ -530,17 +583,32 @@ export default function CrewHistoryView({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredPeople.map((p) => {
+            {displayPeople.map((p) => {
               const segList = segs;
+              const trainee = traineeInfo.get(p.id);
+              const REQUIRED_AREAS = ["Dining Room", "Machine Room", "Veggie Room", "Receiving"];
+              const incompleteAreas = trainee?.isTrainee 
+                ? REQUIRED_AREAS.filter(area => !trainee.completedAreas.has(area))
+                : [];
               return (
                 <React.Fragment key={p.id}>
                   {segList.map((seg, idx) => (
-                    <TableRow key={`${p.id}-${seg}`}>
+                    <TableRow key={`${p.id}-${seg}`} style={trainee?.isTrainee ? { backgroundColor: tokens.colorNeutralBackground2 } : undefined}>
                       {idx === 0 && (
                         <TableCell rowSpan={segList.length} className={styles.stickyName}>
                           <PersonName personId={p.id}>
                             {p.last_name}, {p.first_name}
                           </PersonName>
+                          {trainee?.isTrainee && (
+                            <Badge appearance="tint" color="informative" size="small" style={{ marginLeft: tokens.spacingHorizontalXS }}>
+                              Trainee
+                            </Badge>
+                          )}
+                          {trainee?.isTrainee && incompleteAreas.length > 0 && (
+                            <div style={{ fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3, marginTop: tokens.spacingVerticalXXS }}>
+                              Needs: {incompleteAreas.join(', ')}
+                            </div>
+                          )}
                         </TableCell>
                       )}
                       <TableCell className={styles.stickySeg}>{seg}</TableCell>
