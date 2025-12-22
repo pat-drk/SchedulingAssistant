@@ -1479,6 +1479,14 @@ function PeopleEditor(){
                 <div className={`${s.col2} ${s.centerRow}`}>
                   <Checkbox label="Active" checked={form.active!==false} onChange={(_,data)=>setForm({...form,active:!!data.checked})} />
                 </div>
+                <div className={s.col3}>
+                  <div className={s.smallLabel}>Start Date</div>
+                  <Input type="date" value={form.start_date||''} onChange={(_,d)=>setForm({...form,start_date:d.value})} />
+                </div>
+                <div className={s.col3}>
+                  <div className={s.smallLabel}>End Date (optional)</div>
+                  <Input type="date" value={form.end_date||''} onChange={(_,d)=>setForm({...form,end_date:d.value})} />
+                </div>
                 {WEEKDAYS.map((w,idx)=> (
                   <div key={w} className={s.col2}>
                     <div className={s.smallLabel}>{w} Availability</div>
@@ -1514,6 +1522,28 @@ function PeopleEditor(){
                   ))}
                 </div>
               </div>
+
+              {form.start_date && (() => {
+                const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
+                const now = new Date();
+                const startDate = new Date(form.start_date);
+                const endDate = form.end_date ? new Date(form.end_date) : null;
+                const sixMonthsAfterStart = new Date(startDate.getTime() + SIX_MONTHS_MS);
+                const isTrainee = now < sixMonthsAfterStart && (!endDate || now < endDate);
+                
+                if (isTrainee) {
+                  const weeksRemaining = Math.max(0, Math.ceil((sixMonthsAfterStart.getTime() - now.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+                  return (
+                    <div style={{ marginTop: '16px', padding: '12px', backgroundColor: tokens.colorNeutralBackground2, borderRadius: '4px' }}>
+                      <div style={{ fontWeight: tokens.fontWeightSemibold, marginBottom: '4px' }}>Training Status</div>
+                      <div style={{ fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 }}>
+                        In training period • {weeksRemaining} weeks remaining
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </DialogContent>
             <DialogActions>
               <Button onClick={closeModal}>Close</Button>
