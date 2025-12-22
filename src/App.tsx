@@ -517,8 +517,8 @@ export default function App() {
   // People CRUD minimal
   function addPerson(rec: any) {
     run(
-      `INSERT INTO person (last_name, first_name, work_email, brother_sister, commuter, active, avail_mon, avail_tue, avail_wed, avail_thu, avail_fri)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO person (last_name, first_name, work_email, brother_sister, commuter, active, avail_mon, avail_tue, avail_wed, avail_thu, avail_fri, start_date, end_date)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         rec.last_name?.trim() || "",
         rec.first_name?.trim() || "",
@@ -531,6 +531,8 @@ export default function App() {
         rec.avail_wed || "U",
         rec.avail_thu || "U",
         rec.avail_fri || "U",
+        rec.start_date || null,
+        rec.end_date || null,
       ]
     );
     const id = all(`SELECT last_insert_rowid() as id`)[0]?.id;
@@ -540,7 +542,7 @@ export default function App() {
 
   function updatePerson(rec: any) {
     run(
-      `UPDATE person SET last_name=?, first_name=?, work_email=?, brother_sister=?, commuter=?, active=?, avail_mon=?, avail_tue=?, avail_wed=?, avail_thu=?, avail_fri=? WHERE id=?`,
+      `UPDATE person SET last_name=?, first_name=?, work_email=?, brother_sister=?, commuter=?, active=?, avail_mon=?, avail_tue=?, avail_wed=?, avail_thu=?, avail_fri=?, start_date=?, end_date=? WHERE id=?`,
       [
         rec.last_name,
         rec.first_name,
@@ -553,6 +555,8 @@ export default function App() {
         rec.avail_wed,
         rec.avail_thu,
         rec.avail_fri,
+        rec.start_date || null,
+        rec.end_date || null,
         rec.id,
       ]
     );
