@@ -38,6 +38,7 @@ import { exportMonthOneSheetXlsx } from "../excel/export-one-sheet";
 import { type Segment, type SegmentRow } from "../services/segments";
 import { Note20Regular } from "@fluentui/react-icons";
 import type { Availability } from "../services/availabilityOverrides";
+import { SIX_MONTHS_MS, REQUIRED_TRAINING_AREAS, isInTrainingPeriod } from "../utils/trainingConstants";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
 type WeekdayKey = 1 | 2 | 3 | 4 | 5;
@@ -746,8 +747,6 @@ export default function MonthlyDefaults({
 
   // Calculate trainee status for each person
   const traineeInfo = useMemo(() => {
-    const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
-    const REQUIRED_AREAS = ["Dining Room", "Machine Room", "Veggie Room", "Receiving"];
     const now = new Date();
     const info = new Map<number, { isTrainee: boolean; incompleteAreas: string[] }>();
 
@@ -759,8 +758,7 @@ export default function MonthlyDefaults({
 
       const startDate = new Date(person.start_date);
       const endDate = person.end_date ? new Date(person.end_date) : null;
-      const sixMonthsAfterStart = new Date(startDate.getTime() + SIX_MONTHS_MS);
-      const isTrainee = now < sixMonthsAfterStart && (!endDate || now < endDate);
+      const isTrainee = isInTrainingPeriod(startDate, endDate, now);
 
       if (!isTrainee) {
         info.set(person.id, { isTrainee: false, incompleteAreas: [] });
@@ -781,7 +779,7 @@ export default function MonthlyDefaults({
         }
       }
 
-      const incompleteAreas = REQUIRED_AREAS.filter(area => !assignedGroups.has(area));
+      const incompleteAreas = REQUIRED_TRAINING_AREAS.filter(area => !assignedGroups.has(area));
       info.set(person.id, { isTrainee, incompleteAreas });
     }
 

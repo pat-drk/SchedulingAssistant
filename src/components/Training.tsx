@@ -14,6 +14,14 @@ import {
   Title3,
 } from "@fluentui/react-components";
 import { CheckmarkCircle20Regular, Circle20Regular, Warning20Regular } from "@fluentui/react-icons";
+import { 
+  SIX_MONTHS_MS, 
+  TWO_MONTHS_MS, 
+  REQUIRED_TRAINING_AREAS,
+  type RequiredArea,
+  isInTrainingPeriod,
+  weeksRemainingInTraining,
+} from "../utils/trainingConstants";
 
 interface TrainingProps {
   people: any[];
@@ -22,12 +30,6 @@ interface TrainingProps {
   all: (sql: string, params?: any[]) => any[];
   run: (sql: string, params?: any[]) => void;
 }
-
-const REQUIRED_AREAS = ["Dining Room", "Machine Room", "Veggie Room", "Receiving"] as const;
-type RequiredArea = typeof REQUIRED_AREAS[number];
-
-const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000; // Approximate 6 months
-const TWO_MONTHS_MS = 2 * 30 * 24 * 60 * 60 * 1000; // Approximate 2 months
 
 const useTrainingStyles = makeStyles({
   root: {
@@ -176,14 +178,12 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
       const endDate = person.end_date ? new Date(person.end_date) : null;
       
       // Calculate if person is in first 6 months
-      const sixMonthsAfterStart = new Date(startDate.getTime() + SIX_MONTHS_MS);
-      const isInTraining = now < sixMonthsAfterStart && (!endDate || now < endDate);
+      const isInTraining = isInTrainingPeriod(startDate, endDate, now);
       
       if (!isInTraining && !showInactiveTrainees) continue;
 
-      const timeRemaining = sixMonthsAfterStart.getTime() - now.getTime();
-      const daysRemaining = Math.max(0, Math.ceil(timeRemaining / (24 * 60 * 60 * 1000)));
-      const weeksRemaining = Math.max(0, Math.ceil(timeRemaining / (7 * 24 * 60 * 60 * 1000)));
+      const weeksRemaining = weeksRemainingInTraining(startDate, now);
+      const daysRemaining = weeksRemaining * 7;
 
       // Get all monthly defaults for this person to determine area exposure
       const defaults = all(
@@ -211,14 +211,14 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
       const areasProgress = new Map<RequiredArea, { lastMonth: string | null; completed: boolean }>();
 
       // Initialize all areas
-      for (const area of REQUIRED_AREAS) {
+      for (const area of REQUIRED_TRAINING_AREAS) {
         areasProgress.set(area, { lastMonth: null, completed: false });
       }
 
       // Check defaults
       for (const def of defaults) {
         const groupName = def.group_name as string;
-        if (REQUIRED_AREAS.includes(groupName as RequiredArea)) {
+        if (REQUIRED_TRAINING_AREAS.includes(groupName as RequiredArea)) {
           const area = groupName as RequiredArea;
           const current = areasProgress.get(area);
           if (!current?.lastMonth || def.month > current.lastMonth) {
@@ -231,7 +231,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
       // Check assignments
       for (const assign of assignments) {
         const groupName = assign.group_name as string;
-        if (REQUIRED_AREAS.includes(groupName as RequiredArea)) {
+        if (REQUIRED_TRAINING_AREAS.includes(groupName as RequiredArea)) {
           const area = groupName as RequiredArea;
           const current = areasProgress.get(area);
           if (!current?.lastMonth || assign.month > current.lastMonth) {
@@ -254,7 +254,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
         }
       }
 
-      const completionPercentage = (completedAreas.size / REQUIRED_AREAS.length) * 100;
+      const completionPercentage = (completedAreas.size / REQUIRED_TRAINING_AREAS.length) * 100;
       
       // Determine alert level
       let alertLevel: "danger" | "warning" | "info" | null = null;
@@ -262,12 +262,12 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
 
       if (isInTraining) {
         // Critical: 1 month remaining and incomplete areas
-        if (weeksRemaining <= 4 && completedAreas.size < REQUIRED_AREAS.length) {
+        if (weeksRemaining <= 4 && completedAreas.size < REQUIRED_TRAINING_AREAS.length) {
           alertLevel = "danger";
           needsAttention = true;
         }
         // Warning: Approaching 6 months and haven't completed all areas
-        else if (weeksRemaining <= 8 && completedAreas.size < REQUIRED_AREAS.length) {
+        else if (weeksRemaining <= 8 && completedAreas.size < REQUIRED_TRAINING_AREAS.length) {
           alertLevel = "warning";
           needsAttention = true;
         }
@@ -363,7 +363,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
       lines.push(`<td>${trainee.weeksRemaining}</td>`);
       lines.push(`<td>${Math.round(trainee.completionPercentage)}%</td>`);
       
-      for (const area of REQUIRED_AREAS) {
+      for (const area of REQUIRED_TRAINING_AREAS) {
         const completed = trainee.completedAreas.has(area);
         const className = completed ? "complete" : "incomplete";
         const text = completed ? "✓" : "✗";
@@ -387,7 +387,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
 
   // Get suggested next area for a trainee
   const getSuggestedArea = (trainee: TraineeData): RequiredArea | null => {
-    const incomplete = REQUIRED_AREAS.filter((area) => !trainee.completedAreas.has(area));
+    const incomplete = REQUIRED_TRAINING_AREAS.filter((area) => !trainee.completedAreas.has(area));
     if (incomplete.length === 0) return null;
     
     // Prioritize based on weeks remaining
@@ -527,7 +527,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
                     />
                     <div className={s.statsRow}>
                       <Caption1>
-                        {trainee.completedAreas.size} of {REQUIRED_AREAS.length} areas completed
+                        {trainee.completedAreas.size} of {REQUIRED_TRAINING_AREAS.length} areas completed
                       </Caption1>
                       <Caption1>{Math.round(trainee.completionPercentage)}%</Caption1>
                     </div>
@@ -535,7 +535,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
 
                   <div className={s.progressSection}>
                     <Caption1>Required Areas</Caption1>
-                    {REQUIRED_AREAS.map((area) => {
+                    {REQUIRED_TRAINING_AREAS.map((area) => {
                       const completed = trainee.completedAreas.has(area);
                       const progress = trainee.areasProgress.get(area);
                       return (

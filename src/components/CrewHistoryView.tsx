@@ -4,6 +4,7 @@ import SmartSelect from "./controls/SmartSelect";
 import PersonName from "./PersonName";
 import type { Segment } from "../services/segments";
 import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, freshPeopleFilters } from "./filters/PeopleFilters";
+import { REQUIRED_TRAINING_AREAS, isInTrainingPeriod } from "../utils/trainingConstants";
 
 function pad2(n: number) {
   return n < 10 ? `0${n}` : `${n}`;
@@ -365,8 +366,8 @@ export default function CrewHistoryView({
 
   // Calculate trainee info
   const traineeInfo = useMemo(() => {
-    const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
-    const REQUIRED_AREAS = ["Dining Room", "Machine Room", "Veggie Room", "Receiving"];
+    
+    
     const now = new Date();
     const info = new Map<number, { isTrainee: boolean; completedAreas: Set<string> }>();
 
@@ -378,8 +379,8 @@ export default function CrewHistoryView({
 
       const startDate = new Date(person.start_date);
       const endDate = person.end_date ? new Date(person.end_date) : null;
-      const sixMonthsAfterStart = new Date(startDate.getTime() + SIX_MONTHS_MS);
-      const isTrainee = now < sixMonthsAfterStart && (!endDate || now < endDate);
+      
+      const isTrainee = isInTrainingPeriod(startDate, endDate, now);
 
       if (!isTrainee) {
         info.set(person.id, { isTrainee: false, completedAreas: new Set() });
@@ -393,7 +394,7 @@ export default function CrewHistoryView({
           const role = roles.find(r => r.id === def.role_id);
           if (role) {
             const group = groups.find(g => g.id === role.group_id);
-            if (group && REQUIRED_AREAS.includes(group.name)) {
+            if (group && REQUIRED_TRAINING_AREAS.includes(group.name)) {
               completedAreas.add(group.name);
             }
           }
@@ -586,9 +587,9 @@ export default function CrewHistoryView({
             {displayPeople.map((p) => {
               const segList = segs;
               const trainee = traineeInfo.get(p.id);
-              const REQUIRED_AREAS = ["Dining Room", "Machine Room", "Veggie Room", "Receiving"];
+              
               const incompleteAreas = trainee?.isTrainee 
-                ? REQUIRED_AREAS.filter(area => !trainee.completedAreas.has(area))
+                ? REQUIRED_TRAINING_AREAS.filter(area => !trainee.completedAreas.has(area))
                 : [];
               return (
                 <React.Fragment key={p.id}>

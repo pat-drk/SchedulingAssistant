@@ -19,6 +19,7 @@ import MonthlyDefaults from "./components/MonthlyDefaults";
 import CrewHistoryView from "./components/CrewHistoryView";
 import Training from "./components/Training";
 import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, freshPeopleFilters } from "./components/filters/PeopleFilters";
+import { isInTrainingPeriod, weeksRemainingInTraining } from "./utils/trainingConstants";
 
 /*
 MVP: Pure-browser scheduler for Microsoft Teams Shifts
@@ -1524,15 +1525,13 @@ function PeopleEditor(){
               </div>
 
               {form.start_date && (() => {
-                const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1000;
                 const now = new Date();
                 const startDate = new Date(form.start_date);
                 const endDate = form.end_date ? new Date(form.end_date) : null;
-                const sixMonthsAfterStart = new Date(startDate.getTime() + SIX_MONTHS_MS);
-                const isTrainee = now < sixMonthsAfterStart && (!endDate || now < endDate);
+                const isTrainee = isInTrainingPeriod(startDate, endDate, now);
                 
                 if (isTrainee) {
-                  const weeksRemaining = Math.max(0, Math.ceil((sixMonthsAfterStart.getTime() - now.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+                  const weeksRemaining = weeksRemainingInTraining(startDate, now);
                   return (
                     <div style={{ marginTop: '16px', padding: '12px', backgroundColor: tokens.colorNeutralBackground2, borderRadius: '4px' }}>
                       <div style={{ fontWeight: tokens.fontWeightSemibold, marginBottom: '4px' }}>Training Status</div>
