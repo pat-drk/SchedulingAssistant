@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Button, Tooltip, makeStyles, tokens, Menu, MenuTrigger, MenuPopover, MenuList, MenuItem } from "@fluentui/react-components";
+import { Button, Tooltip, makeStyles, tokens, Menu, MenuTrigger, MenuPopover, MenuList, MenuItem, Divider } from "@fluentui/react-components";
 import {
   CalendarLtr20Regular,
   CalendarDay20Regular,
@@ -12,6 +12,8 @@ import {
   MoreVertical20Regular,
   WeatherSunny20Regular,
   WeatherMoon20Regular,
+  Navigation20Regular,
+  NavigationFilled,
 } from "@fluentui/react-icons";
 import "../styles/tooltip.css";
 
@@ -37,7 +39,6 @@ export interface SideRailProps {
 
 const useStyles = makeStyles({
   root: {
-    width: "80px",
     minWidth: 0,
     height: "100vh",
     position: "fixed",
@@ -52,6 +53,14 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
     overflow: "hidden",
     boxSizing: "border-box",
+    transitionProperty: "width",
+    transitionDuration: tokens.durationNormal,
+  },
+  expanded: {
+    width: "80px",
+  },
+  collapsed: {
+    width: "48px",
   },
   section: {
     display: "flex",
@@ -59,7 +68,15 @@ const useStyles = makeStyles({
     alignItems: "stretch",
     gap: tokens.spacingVerticalXS,
   },
-  grow: { flex: 1, minHeight: 0, overflow: "hidden" },
+  sectionHeader: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightSemibold,
+    padding: `${tokens.spacingVerticalXXS} ${tokens.spacingHorizontalXXS}`,
+    textAlign: "center",
+    userSelect: "none",
+  },
+  grow: { flex: 1, minHeight: 0, overflow: "auto" },
   navScroll: { },
   item: {
     display: "flex",
@@ -72,24 +89,34 @@ const useStyles = makeStyles({
     cursor: "pointer",
     color: tokens.colorNeutralForeground2,
     userSelect: "none",
-    
-    
+    minHeight: "44px",
   },
   itemActive: {
     backgroundColor: tokens.colorNeutralBackground4,
     color: tokens.colorNeutralForeground1,
   },
-  label: { fontSize: tokens.fontSizeBase200, lineHeight: "1", textAlign: "center" },
+  label: { 
+    fontSize: tokens.fontSizeBase200, 
+    lineHeight: "1", 
+    textAlign: "center",
+  },
+  labelHidden: {
+    display: "none",
+  },
+  collapseButton: { 
+    width: "100%",
+    minHeight: "36px",
+  },
   moreButton: { width: "100%" },
 });
 
-function RailItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; }){
+function RailItem({ icon, label, active, onClick, collapsed }: { icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; collapsed?: boolean; }){
   const s = useStyles();
   return (
     <Tooltip content={label} relationship="label">
       <div className={`${s.item} ${active ? s.itemActive : ""}`} onClick={onClick} aria-current={active ? "page" : undefined}>
         {icon}
-        <span className={s.label}>{label}</span>
+        <span className={`${s.label} ${collapsed ? s.labelHidden : ""}`}>{label}</span>
       </div>
     </Tooltip>
   );
@@ -105,140 +132,116 @@ export default function SideRail({
   setThemeName,
 }: SideRailProps){
   const s = useStyles();
-  const railRef = React.useRef<HTMLDivElement | null>(null);
-  const navRef = React.useRef<HTMLDivElement | null>(null);
-  const [maxVisible, setMaxVisible] = React.useState<number>(5);
-
-  type NavItem =
-    | { type: "page"; key: TabKey; label: string; icon: React.ReactElement }
-    | { type: "action"; id: "THEME"; label: string; icon: React.ReactElement; onClick: () => void };
-
-  const baseNav: NavItem[] = [
-    { type: "page", key: "RUN", label: "Run", icon: <CalendarDay20Regular /> },
-    { type: "page", key: "PEOPLE", label: "People", icon: <PeopleCommunity20Regular /> },
-    { type: "page", key: "TRAINING", label: "Training", icon: <LearningApp20Regular /> },
-    { type: "page", key: "NEEDS", label: "Needs", icon: <DocumentTable20Regular /> },
-    { type: "page", key: "EXPORT", label: "Export", icon: <Share20Regular /> },
-    { type: "page", key: "MONTHLY", label: "Monthly", icon: <CalendarLtr20Regular /> },
-    { type: "page", key: "HISTORY", label: "History", icon: <History20Regular /> },
-    { type: "page", key: "ADMIN", label: "Admin", icon: <Settings20Regular /> },
-  ];
-
-  const themeItem: NavItem = {
-    type: "action",
-    id: "THEME",
-    label: themeName === "dark" ? "Dark" : "Light",
-    icon: themeName === "dark" ? <WeatherMoon20Regular /> : <WeatherSunny20Regular />,
-    onClick: () => setThemeName(themeName === "dark" ? "light" : "dark"),
-  };
-
-  const allItems: NavItem[] = [...baseNav, themeItem];
-
-  // Determine how many items fit dynamically; reserve space for More only if needed
-  const visible = allItems.slice(0, maxVisible);
-  const overflow = allItems.slice(maxVisible);
+  const [collapsed, setCollapsed] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem("sideRailCollapsed");
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
 
   React.useEffect(() => {
-    const measure = () => {
-      const rail = railRef.current;
-      const nav = navRef.current;
-      if (!rail || !nav) return;
-      // Available height for nav area (rail height - fixed sections ~ top(title)+divider and bottom section height)
-      const railRect = rail.getBoundingClientRect();
-      const bottomSection = rail.querySelector('[data-rail-bottom]') as HTMLElement | null;
-      const topSection = rail.querySelector('[data-rail-top]') as HTMLElement | null;
-      const dividers = rail.querySelectorAll('hr');
-      const bottomH = bottomSection ? bottomSection.offsetHeight : 0;
-      const topH = topSection ? topSection.offsetHeight : 0;
-      let dividerH = 0; dividers.forEach(d => dividerH += (d as HTMLElement).offsetHeight);
-      const padding = 16; // rough extra
-  const available = railRect.height - bottomH - topH - dividerH - padding;
+    try {
+      localStorage.setItem("sideRailCollapsed", String(collapsed));
+    } catch {}
+  }, [collapsed]);
 
-      // Estimate per-item height using the first child (icon+label stack)
-  const firstItem = nav.querySelector(`.${s.item}`) as HTMLElement | null;
-  const itemH = firstItem ? firstItem.offsetHeight + 6 : 56; // add gap
-      const moreH = 36; // approx More button height
-      if (itemH <= 0 || available <= 0) return;
+  // Reorganized navigation with workflow grouping
+  const dailyWork: TabKey[] = ["RUN", "MONTHLY"];
+  const setup: TabKey[] = ["PEOPLE", "TRAINING", "NEEDS"];
+  const output: TabKey[] = ["EXPORT", "HISTORY"];
+  const system: TabKey[] = ["ADMIN"];
 
-      // First, try without reserving space for More
-      const possibleNoMore = Math.floor(available / itemH);
-      if (possibleNoMore >= allItems.length) {
-        setMaxVisible(allItems.length);
-        return;
-      }
+  const sections = [
+    { title: collapsed ? "" : "Daily", tabs: dailyWork },
+    { title: collapsed ? "" : "Setup", tabs: setup },
+    { title: collapsed ? "" : "Output", tabs: output },
+    { title: collapsed ? "" : "System", tabs: system },
+  ];
 
-      // Otherwise, reserve space for More and recompute
-      const possibleWithMore = Math.floor((available - moreH) / itemH);
-      const clamped = Math.max(1, Math.min(allItems.length, possibleWithMore));
-      setMaxVisible(clamped);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (railRef.current) ro.observe(railRef.current);
-    if (navRef.current) ro.observe(navRef.current);
-    window.addEventListener('resize', measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, [allItems.length]);
+  const getIcon = (key: TabKey) => {
+    switch (key) {
+      case "RUN": return <CalendarDay20Regular />;
+      case "MONTHLY": return <CalendarLtr20Regular />;
+      case "PEOPLE": return <PeopleCommunity20Regular />;
+      case "TRAINING": return <LearningApp20Regular />;
+      case "NEEDS": return <DocumentTable20Regular />;
+      case "EXPORT": return <Share20Regular />;
+      case "HISTORY": return <History20Regular />;
+      case "ADMIN": return <Settings20Regular />;
+      default: return null;
+    }
+  };
+
+  const getLabel = (key: TabKey) => {
+    switch (key) {
+      case "RUN": return "Run";
+      case "MONTHLY": return "Monthly";
+      case "PEOPLE": return "People";
+      case "TRAINING": return "Training";
+      case "NEEDS": return "Needs";
+      case "EXPORT": return "Export";
+      case "HISTORY": return "History";
+      case "ADMIN": return "Admin";
+      default: return "";
+    }
+  };
 
   return (
-    <aside className={s.root} aria-label="App navigation" ref={railRef}>
-      <div className={`${s.section} ${s.grow}`} ref={navRef}>
-        {visible.map((it, idx) => {
-          if (it.type === "page") {
-            return (
-              <RailItem
-                key={`page-${it.key}`}
-                icon={it.icon}
-                label={it.label}
-                active={activeTab === it.key}
-                onClick={() => setActiveTab(it.key)}
-              />
-            );
-          }
-          // action (theme toggle)
-          return (
-            <Tooltip key={`action-${it.id}`} content={themeName === 'dark' ? 'Switch to Light' : 'Switch to Dark'} relationship="label">
-              <div
-                className={s.item}
-                role="button"
-                aria-label={themeName === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
-                onClick={it.onClick}
-              >
-                {it.icon}
-                <span className={s.label}>{it.label}</span>
-              </div>
-            </Tooltip>
-          );
-        })}
+    <aside className={`${s.root} ${collapsed ? s.collapsed : s.expanded}`} aria-label="App navigation">
+      {/* Collapse/Expand toggle */}
+      <div className={s.section}>
+        <Tooltip content={collapsed ? "Expand sidebar" : "Collapse sidebar"} relationship="label">
+          <Button
+            appearance="subtle"
+            size="small"
+            className={s.collapseButton}
+            icon={collapsed ? <Navigation20Regular /> : <NavigationFilled />}
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          />
+        </Tooltip>
+      </div>
 
-        {overflow.length > 0 && (
-          <Menu>
-            <MenuTrigger>
-              <Button className={s.moreButton} icon={<MoreVertical20Regular />}>More</Button>
-            </MenuTrigger>
-            <MenuPopover>
-              <MenuList>
-                {overflow.map((it) => {
-                  if (it.type === 'page') {
-                    return (
-                      <MenuItem key={`page-${it.key}`} onClick={() => setActiveTab(it.key)} icon={it.icon}>
-                        {it.label}
-                      </MenuItem>
-                    );
-                  }
-                  return (
-                    <MenuItem key={`action-${it.id}`} onClick={it.onClick} icon={it.icon}>
-                      {themeName === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
-                    </MenuItem>
-                  );
-                })}
-              </MenuList>
-            </MenuPopover>
-          </Menu>
-        )}
+      {/* Navigation sections */}
+      <div className={`${s.section} ${s.grow}`}>
+        {sections.map((section, sectionIdx) => (
+          <React.Fragment key={sectionIdx}>
+            {sectionIdx > 0 && <Divider />}
+            {section.title && !collapsed && (
+              <div className={s.sectionHeader}>{section.title}</div>
+            )}
+            {section.tabs.map(tabKey => (
+              <RailItem
+                key={tabKey}
+                icon={getIcon(tabKey)}
+                label={getLabel(tabKey)}
+                active={activeTab === tabKey}
+                onClick={() => setActiveTab(tabKey)}
+                collapsed={collapsed}
+              />
+            ))}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Theme toggle at bottom */}
+      <div className={s.section}>
+        <Divider />
+        <Tooltip content={themeName === 'dark' ? 'Switch to Light' : 'Switch to Dark'} relationship="label">
+          <div
+            className={s.item}
+            role="button"
+            aria-label={themeName === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
+            onClick={() => setThemeName(themeName === "dark" ? "light" : "dark")}
+          >
+            {themeName === "dark" ? <WeatherMoon20Regular /> : <WeatherSunny20Regular />}
+            <span className={`${s.label} ${collapsed ? s.labelHidden : ""}`}>
+              {themeName === "dark" ? "Dark" : "Light"}
+            </span>
+          </div>
+        </Tooltip>
       </div>
     </aside>
   );
