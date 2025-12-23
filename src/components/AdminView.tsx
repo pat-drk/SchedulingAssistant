@@ -82,7 +82,7 @@ export default function AdminView({ sqlDb, all, run, refresh, segments }: AdminV
       <ExportGroupEditor all={all} run={run} refresh={refresh} />
       {/* Skills Catalog */}
       <div>
-        <div style={{ fontWeight: 600, marginBottom 8 }}>Skills Catalog</div>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Skills Catalog</div>
         <SkillsEditor all={all} run={run} refresh={refresh} />
       </div>
     </div>
