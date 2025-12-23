@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Button, Field, Input, Table, TableHeader, TableHeaderCell, TableRow, TableBody, TableCell, Text, makeStyles, tokens } from "@fluentui/react-components";
+import AlertDialog from "./AlertDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface SegmentEditorProps {
   all: (sql: string, params?: any[]) => any[];
@@ -31,6 +34,7 @@ export default function SegmentEditor({ all, run, refresh }: SegmentEditorProps)
   const [editing, setEditing] = useState<any | null>(null);
   const [formVisible, setFormVisible] = useState(false);
   const [form, setForm] = useState<any>(empty);
+  const dialogs = useDialogs();
 
   function load() {
     setSegments(all(`SELECT id,name,start_time,end_time,ordering FROM segment ORDER BY ordering`));
@@ -52,11 +56,11 @@ export default function SegmentEditor({ all, run, refresh }: SegmentEditorProps)
 
   function save() {
     if (!form.name.trim()) {
-      window.alert("Name is required");
+      dialogs.showAlert("Name is required", "Validation Error");
       return;
     }
     if (!/^\d{2}:\d{2}$/.test(form.start_time) || !/^\d{2}:\d{2}$/.test(form.end_time)) {
-      window.alert("Times must be HH:MM");
+      dialogs.showAlert("Times must be HH:MM", "Validation Error");
       return;
     }
     if (editing) {
@@ -77,8 +81,9 @@ export default function SegmentEditor({ all, run, refresh }: SegmentEditorProps)
     setForm(empty);
   }
 
-  function remove(id: number) {
-    if (!window.confirm("Delete segment?")) return;
+  async function remove(id: number) {
+    const confirmed = await dialogs.showConfirm("Are you sure you want to delete this segment?", "Delete Segment");
+    if (!confirmed) return;
     run(`DELETE FROM segment WHERE id=?`, [id]);
     load();
     refresh();
@@ -141,6 +146,27 @@ export default function SegmentEditor({ all, run, refresh }: SegmentEditorProps)
             <Button onClick={cancel}>Cancel</Button>
           </div>
         </div>
+      )}
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
       )}
     </div>
   );
