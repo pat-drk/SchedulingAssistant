@@ -211,7 +211,7 @@ export const migrate23AddTrainingAreaOverride: Migration = (db) => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     person_id INTEGER NOT NULL,
     area TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 1,
+    completed INTEGER NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(person_id, area),
     FOREIGN KEY (person_id) REFERENCES person(id)

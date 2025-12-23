@@ -13,7 +13,6 @@ import {
   Checkbox,
   Title3,
   Dialog,
-  DialogTrigger,
   DialogSurface,
   DialogTitle,
   DialogBody,
@@ -188,6 +187,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
     area: RequiredArea;
     currentStatus: boolean;
   } | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Calculate trainee data
   useEffect(() => {
@@ -364,7 +364,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
     });
 
     setTrainees(traineeData);
-  }, [people, all, showInactiveTrainees]);
+  }, [people, all, showInactiveTrainees, refreshTrigger]);
 
   // Get trainees needing urgent attention
   const urgentTrainees = useMemo(
@@ -482,8 +482,8 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
     setDialogOpen(false);
     setSelectedOverride(null);
 
-    // Trigger re-render by updating a dummy state or just rely on next render cycle
-    // The useEffect will pick up the changes on next render
+    // Trigger re-render to fetch updated data
+    setRefreshTrigger(prev => prev + 1);
   };
 
   // Handle canceling the override
