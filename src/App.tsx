@@ -264,14 +264,7 @@ export default function App() {
     (window as any).sqlDb = sqlDb;
   }, [sqlDb]);
   const fileHandleRef = useRef<FileSystemFileHandle | null>(null);
-  const [userEmail, setUserEmail] = useState<string>(() => {
-    // Load user email from localStorage on init
-    try {
-      return localStorage.getItem("userEmail") || "";
-    } catch {
-      return "";
-    }
-  });
+  const [userEmail, setUserEmail] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>(() => fmtDateMDY(new Date()));
   const [exportStart, setExportStart] = useState<string>(() => ymd(new Date()));
@@ -402,16 +395,10 @@ export default function App() {
       const db = new SQL.Database(new Uint8Array(buf));
       applyMigrations(db);
 
-      // Get or prompt for user email (needed for sync system and personalization)
-      let email = userEmail;
-      if (!email) {
-        email = prompt("Enter your Work Email (for sync and preferences):") || "";
-        if (email) {
-          try {
-            localStorage.setItem("userEmail", email);
-          } catch {}
-          setUserEmail(email);
-        }
+      // Always prompt for user email (needed for sync system and personalization)
+      const email = prompt("Enter your Work Email (for sync and preferences):") || "";
+      if (email) {
+        setUserEmail(email);
       }
 
       setSqlDb(db);
