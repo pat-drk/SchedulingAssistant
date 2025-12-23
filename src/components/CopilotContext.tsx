@@ -109,6 +109,8 @@ export default function CopilotContext({
         <p>In the People tab you can:</p>
         <ul>
           <li>Add new staff members with their contact info</li>
+          <li>Set Start Date (required for trainee tracking)</li>
+          <li>Set End Date when a person leaves the organization</li>
           <li>Set whether they are a Brother or Sister</li>
           <li>Mark if they are a Commuter</li>
           <li>Set their weekly availability pattern (AM, PM, Both, or Unavailable for each weekday)</li>
@@ -118,10 +120,16 @@ export default function CopilotContext({
         <h2>6. TRAINING MATRIX</h2>
         <p>The Training tab shows:</p>
         <ul>
-          <li>A matrix of all people vs all roles</li>
-          <li>Check marks indicate who is qualified for each role</li>
-          <li>You can bulk edit qualifications</li>
-          <li>Training can be marked as Qualified, In Training, or not qualified</li>
+          <li>Trainee Dashboard: Track new employees in their first 6 months</li>
+          <li>Training Status Cards with progress bars for each trainee</li>
+          <li>Training areas: Dining Room, Machine Room, Veggie Room, Receiving</li>
+          <li>Click on training areas to manually override completion status</li>
+          <li>Overridden areas show a "Manual" badge</li>
+          <li>Training Alerts for at-risk trainees approaching 6-month mark</li>
+          <li>Suggested Assignments recommend next training area</li>
+          <li>Export Training Progress Report as HTML</li>
+          <li>Role qualifications matrix showing who is qualified for each role</li>
+          <li>Bulk edit qualifications for multiple people</li>
         </ul>
 
         <h2>7. BASELINE NEEDS</h2>
@@ -147,6 +155,9 @@ export default function CopilotContext({
           <li>Assign people to default roles for each segment</li>
           <li>These patterns repeat each month</li>
           <li>You can set day-of-week overrides (e.g., different assignment on Mondays)</li>
+          <li>You can set week-by-week overrides for specific weeks of the month</li>
+          <li>Use "Trainees only" filter to focus on new employees</li>
+          <li>Trainee rows show badges and tooltips with incomplete training areas</li>
           <li>Copy patterns from previous months</li>
           <li>Apply monthly defaults to generate actual assignments</li>
         </ul>
@@ -176,30 +187,56 @@ export default function CopilotContext({
           <li>Time off can be imported from CSV</li>
         </ul>
 
-        <h2>13. LOCKING AND MULTI-USER</h2>
+        <h2>13. MULTI-USER SYNC</h2>
         <ul>
-          <li>The database uses a soft lock system</li>
-          <li>When you open a file, you take the edit lock</li>
-          <li>Others opening the same file will see it as read-only</li>
-          <li>Only one person should edit at a time</li>
-          <li>Use Save As to create a personal copy if needed</li>
+          <li>Multiple users can edit the database simultaneously</li>
+          <li>When you open a file, enter your email to identify your changes</li>
+          <li>Changes from other users are automatically merged in the background (every 30 seconds)</li>
+          <li>If conflicts are detected (same field edited by multiple users), a dialog helps you resolve them</li>
+          <li>The sync indicator shows current sync state and who else is editing</li>
+          <li>No more waiting for locks - true collaborative editing</li>
         </ul>
 
-        <h2>14. TROUBLESHOOTING</h2>
+        <h2>14. TRAINEE TRACKING SYSTEM</h2>
+        <ul>
+          <li>New employees in their first 6 months are tracked as trainees</li>
+          <li>Set the Start Date in a person's profile to enable trainee tracking</li>
+          <li>Training areas: Dining Room, Machine Room, Veggie Room, Receiving</li>
+          <li>Training Status Cards show progress for each trainee</li>
+          <li>Training Alerts warn about at-risk trainees approaching their 6-month mark</li>
+          <li>Suggested Assignments recommend which area to assign trainees next</li>
+          <li>Export Training Progress Report as HTML summary</li>
+          <li>Manually override training area completion by clicking on the area item</li>
+          <li>Overridden areas show a "Manual" badge</li>
+        </ul>
+
+        <h2>15. TROUBLESHOOTING</h2>
         <ul>
           <li>If export fails, check if your network blocks the SheetJS CDN</li>
           <li>If the database won't open, ensure it's a valid SQLite file</li>
-          <li>If assignments aren't saving, check that you have the edit lock</li>
+          <li>If sync conflicts appear, choose "Keep Yours", "Keep Theirs", or "Keep Both"</li>
+          <li>If trainee doesn't appear in dashboard, check that Start Date is set</li>
+          <li>Email prompt appears each time you open a file - this is normal for sync identification</li>
           <li>Refresh the page if the app becomes unresponsive</li>
         </ul>
 
-        <h2>15. KEYBOARD SHORTCUTS</h2>
+        <h2>16. AI ACTIONS MENU</h2>
+        <p>Click the AI Actions button (sparkle icon) for helpful prompts:</p>
+        <ul>
+          <li>Help me understand this view: Explains the current page and features</li>
+          <li>How do I make an assignment?: Step-by-step guidance for assigning roles</li>
+          <li>How do I navigate the app?: Navigation help between sections</li>
+          <li>Something isn't working: Troubleshooting assistance</li>
+          <li>What can I do here?: Lists available features on current page</li>
+        </ul>
+
+        <h2>17. KEYBOARD SHORTCUTS</h2>
         <ul>
           <li>Ctrl+Shift+. (or Cmd+Shift+. on Mac): Open Edge Copilot sidebar</li>
           <li>Standard browser shortcuts work normally</li>
         </ul>
 
-        <h2>16. GROUPS AND ROLES</h2>
+        <h2>18. GROUPS AND ROLES</h2>
         <p>Groups organize roles:</p>
         <ul>
           <li>Dining Room: Front of house roles</li>
@@ -217,12 +254,15 @@ export default function CopilotContext({
 
         <h2>KEY FEATURES SUMMARY</h2>
         <ul>
+          <li>Multi-user sync: Multiple users can edit simultaneously with automatic conflict resolution</li>
           <li>Multi-segment scheduling: Manage Early, AM, Lunch, and PM shifts</li>
-          <li>Training tracking: Ensure staff are qualified for assigned roles</li>
+          <li>Trainee tracking: 6-month rotation management across training areas with progress tracking</li>
+          <li>Training tracking: Ensure staff are qualified for assigned roles with manual override capability</li>
           <li>Availability management: Track when staff are available (AM, PM, Both, or Unavailable)</li>
           <li>Time-off integration: Import and respect time-off requests</li>
           <li>Conflict detection: Warns about scheduling conflicts and availability issues</li>
-          <li>Monthly templates: Set default assignments and apply them to generate schedules</li>
+          <li>Monthly templates: Set default assignments with weekday and week-by-week overrides</li>
+          <li>AI Actions menu: Tutorial and troubleshooting prompts to help navigate the app</li>
           <li>Teams export: Generate XLSX files for Microsoft Teams Shifts import</li>
           <li>Local database: All data stored locally in SQLite for privacy and control</li>
         </ul>
