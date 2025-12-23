@@ -264,8 +264,14 @@ export default function App() {
     (window as any).sqlDb = sqlDb;
   }, [sqlDb]);
   const fileHandleRef = useRef<FileSystemFileHandle | null>(null);
-  const [lockEmail, setLockEmail] = useState<string>("");
-  const [lockedBy, setLockedBy] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>(() => {
+    // Load user email from localStorage on init
+    try {
+      return localStorage.getItem("userEmail") || "";
+    } catch {
+      return "";
+    }
+  });
   const [status, setStatus] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>(() => fmtDateMDY(new Date()));
   const [exportStart, setExportStart] = useState<string>(() => ymd(new Date()));
@@ -396,75 +402,21 @@ export default function App() {
       const db = new SQL.Database(new Uint8Array(buf));
       applyMigrations(db);
 
-      if (readOnly) {
-        setLockedBy("(read-only)");
-        setSqlDb(db);
-        fileHandleRef.current = handle;
-        setStatus(`Opened ${file.name} (read-only)`);
-      } else {
-        // Check soft lock
-        let lockJson = {} as any;
-        try {
-          const rows = db.exec(`SELECT value FROM meta WHERE key='lock'`);
-          if (rows && rows[0] && rows[0].values[0] && rows[0].values[0][0]) {
-            lockJson = JSON.parse(String(rows[0].values[0][0]));
-          }
-        } catch {}
-
-        // Get stored user email from localStorage
-        let storedEmail = "";
-        try {
-          storedEmail = localStorage.getItem("userEmail") || "";
-        } catch {}
-
-        if (lockJson && lockJson.active) {
-          // Check if the lock is from the same user (same email in localStorage)
-          if (storedEmail && lockJson.email === storedEmail) {
-            // Same user - allow them to take over the lock
-            const stmt = db.prepare(`INSERT OR REPLACE INTO meta (key,value) VALUES ('lock', ?) `);
-            stmt.bind([JSON.stringify({ active: true, email: storedEmail, ts: new Date().toISOString() })]);
-            stmt.step();
-            stmt.free();
-            setLockEmail(storedEmail);
-            setLockedBy(storedEmail);
-            setSqlDb(db);
-            fileHandleRef.current = handle;
-            setStatus(`Opened ${file.name} (reclaimed lock)`);
-          } else {
-            // Different user - show as locked
-            setLockedBy(lockJson.email || "unknown");
-            setSqlDb(db);
-            fileHandleRef.current = handle;
-            setStatus(`DB is locked by ${lockJson.email}. You can browse but cannot edit. (Per your policy: never force; make a copy if needed.)`);
-          }
-        } else {
-          // No active lock - ask for email or use stored email
-          let email = storedEmail;
-          if (!email) {
-            email = prompt("Enter your Work Email to take the edit lock:") || "";
-          }
-          
-          if (!email) {
-            alert("Lock required to edit. Opening read-only.");
-            setLockedBy("(read-only)");
-          } else {
-            // Store email in localStorage for future use
-            try {
-              localStorage.setItem("userEmail", email);
-            } catch {}
-            
-            const stmt = db.prepare(`INSERT OR REPLACE INTO meta (key,value) VALUES ('lock', ?) `);
-            stmt.bind([JSON.stringify({ active: true, email, ts: new Date().toISOString() })]);
-            stmt.step();
-            stmt.free();
-            setLockEmail(email);
-            setLockedBy(email);
-          }
-          setSqlDb(db);
-          fileHandleRef.current = handle;
-          setStatus(`Opened ${file.name}`);
+      // Get or prompt for user email (needed for sync system and personalization)
+      let email = userEmail;
+      if (!email && !readOnly) {
+        email = prompt("Enter your Work Email (for sync and preferences):") || "";
+        if (email) {
+          try {
+            localStorage.setItem("userEmail", email);
+          } catch {}
+          setUserEmail(email);
         }
       }
+
+      setSqlDb(db);
+      fileHandleRef.current = handle;
+      setStatus(`Opened ${file.name}${readOnly ? " (read-only)" : ""}`);
       refreshCaches(db);
     } catch (e:any) {
       console.error(e);
@@ -484,10 +436,6 @@ export default function App() {
 
   async function saveDb() {
     if (!sqlDb) return;
-    if (lockedBy && lockedBy !== lockEmail) {
-      alert("File is read-only or locked. Use Save As to create a copy.");
-      return;
-    }
     if (!fileHandleRef.current) return saveDbAs();
     
     // If sync is enabled, push changes first
@@ -523,13 +471,13 @@ export default function App() {
     setStatus("Saved.");
     
     // Try to initialize sync if we have a handle and user email
-    if (!sync.isInitialized && lockEmail && !changesFolderHandleRef.current) {
+    if (!sync.isInitialized && userEmail && !changesFolderHandleRef.current) {
       await tryInitializeSync(handle);
     }
   }
 
   async function tryInitializeSync(dbHandle: FileSystemFileHandle) {
-    if (!lockEmail) return;
+    if (!userEmail) return;
     
     try {
       // Try to get the parent directory
@@ -1242,7 +1190,7 @@ async function exportShifts() {
 
   // UI helpers
   const canEdit = !!sqlDb;
-  const canSave = !!sqlDb && (!lockedBy || lockedBy === lockEmail);
+  const canSave = !!sqlDb;
   const selectedDateObj = useMemo(()=>parseMDY(selectedDate),[selectedDate]);
   const currentAssignmentsCount = useMemo(() => {
     if (!sqlDb) return 0;
@@ -1739,7 +1687,7 @@ function PeopleEditor(){
                   setActiveRunSegment={setActiveRunSegment}
                   groups={groups}
                   segments={segments}
-                  lockEmail={lockEmail}
+                  lockEmail={userEmail}
                   sqlDb={sqlDb}
                   all={all}
                   roleListForSegment={roleListForSegment}
