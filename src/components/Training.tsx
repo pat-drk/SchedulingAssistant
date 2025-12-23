@@ -12,8 +12,14 @@ import {
   ProgressBar,
   Checkbox,
   Title3,
+  Dialog,
+  DialogSurface,
+  DialogTitle,
+  DialogBody,
+  DialogActions,
+  DialogContent,
 } from "@fluentui/react-components";
-import { CheckmarkCircle20Regular, Circle20Regular, Warning20Regular } from "@fluentui/react-icons";
+import { CheckmarkCircle20Regular, Circle20Regular, Warning20Regular, Edit20Regular } from "@fluentui/react-icons";
 import { 
   SIX_MONTHS_MS, 
   TWO_MONTHS_MS, 
@@ -109,12 +115,21 @@ const useTrainingStyles = makeStyles({
     alignItems: "center",
     gap: tokens.spacingHorizontalS,
     padding: `${tokens.spacingVerticalXS} 0`,
+    cursor: "pointer",
+    borderRadius: tokens.borderRadiusSmall,
+    transition: "background-color 0.2s ease",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+    },
   },
   checklistIcon: {
     flexShrink: 0,
   },
   checklistText: {
     flex: 1,
+  },
+  overrideBadge: {
+    marginLeft: "auto",
   },
   suggestionsSection: {
     display: "flex",
@@ -154,7 +169,7 @@ type TraineeData = {
   daysRemaining: number;
   isInTraining: boolean;
   completedAreas: Set<RequiredArea>;
-  areasProgress: Map<RequiredArea, { lastMonth: string | null; completed: boolean }>;
+  areasProgress: Map<RequiredArea, { lastMonth: string | null; completed: boolean; isOverride: boolean }>;
   completionPercentage: number;
   needsAttention: boolean;
   alertLevel: "danger" | "warning" | "info" | null;
@@ -165,11 +180,32 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
   const s = useTrainingStyles();
   const [showInactiveTrainees, setShowInactiveTrainees] = useState(false);
   const [trainees, setTrainees] = useState<TraineeData[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedOverride, setSelectedOverride] = useState<{
+    personId: number;
+    personName: string;
+    area: RequiredArea;
+    currentStatus: boolean;
+  } | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Calculate trainee data
   useEffect(() => {
     const now = new Date();
     const traineeData: TraineeData[] = [];
+
+    // Get all manual overrides
+    const overrides = all(
+      `SELECT person_id, area, completed FROM training_area_override`,
+      []
+    );
+    const overrideMap = new Map<number, Map<string, boolean>>();
+    for (const override of overrides) {
+      if (!overrideMap.has(override.person_id)) {
+        overrideMap.set(override.person_id, new Map());
+      }
+      overrideMap.get(override.person_id)!.set(override.area, !!override.completed);
+    }
 
     for (const person of people) {
       if (!person.start_date) continue;
@@ -208,11 +244,11 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
       );
 
       const completedAreas = new Set<RequiredArea>();
-      const areasProgress = new Map<RequiredArea, { lastMonth: string | null; completed: boolean }>();
+      const areasProgress = new Map<RequiredArea, { lastMonth: string | null; completed: boolean; isOverride: boolean }>();
 
       // Initialize all areas
       for (const area of REQUIRED_TRAINING_AREAS) {
-        areasProgress.set(area, { lastMonth: null, completed: false });
+        areasProgress.set(area, { lastMonth: null, completed: false, isOverride: false });
       }
 
       // Check defaults
@@ -222,7 +258,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
           const area = groupName as RequiredArea;
           const current = areasProgress.get(area);
           if (!current?.lastMonth || def.month > current.lastMonth) {
-            areasProgress.set(area, { lastMonth: def.month, completed: true });
+            areasProgress.set(area, { lastMonth: def.month, completed: true, isOverride: false });
           }
           completedAreas.add(area);
         }
@@ -235,9 +271,30 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
           const area = groupName as RequiredArea;
           const current = areasProgress.get(area);
           if (!current?.lastMonth || assign.month > current.lastMonth) {
-            areasProgress.set(area, { lastMonth: assign.month, completed: true });
+            areasProgress.set(area, { lastMonth: assign.month, completed: true, isOverride: false });
           }
           completedAreas.add(area);
+        }
+      }
+
+      // Apply manual overrides (these take precedence)
+      const personOverrides = overrideMap.get(person.id);
+      if (personOverrides) {
+        for (const area of REQUIRED_TRAINING_AREAS) {
+          if (personOverrides.has(area)) {
+            const overrideCompleted = personOverrides.get(area)!;
+            const current = areasProgress.get(area);
+            areasProgress.set(area, { 
+              lastMonth: current?.lastMonth || null, 
+              completed: overrideCompleted,
+              isOverride: true
+            });
+            if (overrideCompleted) {
+              completedAreas.add(area);
+            } else {
+              completedAreas.delete(area);
+            }
+          }
         }
       }
 
@@ -307,7 +364,7 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
     });
 
     setTrainees(traineeData);
-  }, [people, all, showInactiveTrainees]);
+  }, [people, all, showInactiveTrainees, refreshTrigger]);
 
   // Get trainees needing urgent attention
   const urgentTrainees = useMemo(
@@ -393,6 +450,47 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
     // Prioritize based on weeks remaining
     // If less time, suggest areas not yet started
     return incomplete[0];
+  };
+
+  // Handle area click to open confirmation dialog
+  const handleAreaClick = (personId: number, personName: string, area: RequiredArea, currentStatus: boolean) => {
+    setSelectedOverride({
+      personId,
+      personName,
+      area,
+      currentStatus,
+    });
+    setDialogOpen(true);
+  };
+
+  // Handle confirming the override
+  const handleConfirmOverride = () => {
+    if (!selectedOverride) return;
+
+    const { personId, area, currentStatus } = selectedOverride;
+    const newStatus = !currentStatus;
+    const completedValue = newStatus ? 1 : 0;
+
+    // Insert or update the override in the database
+    run(
+      `INSERT INTO training_area_override (person_id, area, completed) 
+       VALUES (?, ?, ?) 
+       ON CONFLICT(person_id, area) DO UPDATE SET completed = ?, created_at = datetime('now')`,
+      [personId, area, completedValue, completedValue]
+    );
+
+    // Close dialog and reset state
+    setDialogOpen(false);
+    setSelectedOverride(null);
+
+    // Trigger re-render to fetch updated data
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  // Handle canceling the override
+  const handleCancelOverride = () => {
+    setDialogOpen(false);
+    setSelectedOverride(null);
   };
 
   return (
@@ -538,8 +636,14 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
                     {REQUIRED_TRAINING_AREAS.map((area) => {
                       const completed = trainee.completedAreas.has(area);
                       const progress = trainee.areasProgress.get(area);
+                      const isOverride = progress?.isOverride || false;
                       return (
-                        <div key={area} className={s.checklistItem}>
+                        <div 
+                          key={area} 
+                          className={s.checklistItem}
+                          onClick={() => handleAreaClick(trainee.person.id, `${trainee.person.last_name}, ${trainee.person.first_name}`, area, completed)}
+                          title="Click to manually override"
+                        >
                           <div className={s.checklistIcon}>
                             {completed ? (
                               <CheckmarkCircle20Regular style={{ color: tokens.colorPaletteGreenForeground1 }} />
@@ -555,6 +659,17 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
                               </Caption1>
                             )}
                           </div>
+                          {isOverride && (
+                            <Badge 
+                              appearance="tint" 
+                              color="informative"
+                              size="small"
+                              className={s.overrideBadge}
+                              icon={<Edit20Regular />}
+                            >
+                              Manual
+                            </Badge>
+                          )}
                         </div>
                       );
                     })}
@@ -575,6 +690,39 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
           </div>
         </>
       )}
+
+      {/* Confirmation Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(_, data) => setDialogOpen(data.open)}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>Confirm Training Area Override</DialogTitle>
+            <DialogContent>
+              {selectedOverride && (
+                <div>
+                  <Body1>
+                    Are you sure you want to mark <strong>{selectedOverride.area}</strong> as{" "}
+                    <strong>{selectedOverride.currentStatus ? "incomplete" : "complete"}</strong> for{" "}
+                    <strong>{selectedOverride.personName}</strong>?
+                  </Body1>
+                  <br />
+                  <Caption1 style={{ color: tokens.colorNeutralForeground3 }}>
+                    This will override the automatic detection based on monthly defaults and assignments.
+                    The manual override will be indicated with a badge.
+                  </Caption1>
+                </div>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={handleCancelOverride}>
+                Cancel
+              </Button>
+              <Button appearance="primary" onClick={handleConfirmOverride}>
+                Confirm
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   );
 }

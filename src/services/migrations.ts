@@ -205,6 +205,19 @@ export const migrate22AddMonthlyDefaultWeek: Migration = (db) => {
   );`);
 };
 
+// 23. Create training_area_override table for manual overrides
+export const migrate23AddTrainingAreaOverride: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS training_area_override (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id INTEGER NOT NULL,
+    area TEXT NOT NULL,
+    completed INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(person_id, area),
+    FOREIGN KEY (person_id) REFERENCES person(id)
+  );`);
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -716,6 +729,7 @@ const migrations: Record<number, Migration> = {
   20: migrate20AddPersonDates,
   21: migrate21AddTrainingRotation,
   22: migrate22AddMonthlyDefaultWeek,
+  23: migrate23AddTrainingAreaOverride,
 };
 
 export function addMigration(version: number, fn: Migration) {
