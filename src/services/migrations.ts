@@ -218,6 +218,16 @@ export const migrate23AddTrainingAreaOverride: Migration = (db) => {
   );`);
 };
 
+// 24. Add sync version tracking to meta table
+export const migrate24AddSyncVersion: Migration = (db) => {
+  try {
+    // Initialize sync_version if it doesn't exist
+    db.run(`INSERT OR IGNORE INTO meta (key, value) VALUES ('sync_version', '0');`);
+  } catch (e) {
+    console.error('migrate24AddSyncVersion failed:', e);
+  }
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -730,6 +740,7 @@ const migrations: Record<number, Migration> = {
   21: migrate21AddTrainingRotation,
   22: migrate22AddMonthlyDefaultWeek,
   23: migrate23AddTrainingAreaOverride,
+  24: migrate24AddSyncVersion,
 };
 
 export function addMigration(version: number, fn: Migration) {

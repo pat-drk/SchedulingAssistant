@@ -20,6 +20,10 @@ import CrewHistoryView from "./components/CrewHistoryView";
 import Training from "./components/Training";
 import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, freshPeopleFilters } from "./components/filters/PeopleFilters";
 import { isInTrainingPeriod, weeksRemainingInTraining } from "./utils/trainingConstants";
+import ConflictResolutionDialog from "./components/ConflictResolutionDialog";
+import { useSync } from "./sync/useSync";
+import { FileSystemUtils } from "./sync/FileSystemUtils";
+import { Conflict, ConflictResolution } from "./sync/types";
 
 /*
 MVP: Pure-browser scheduler for Microsoft Teams Shifts
@@ -307,6 +311,18 @@ export default function App() {
   const [showNeedsEditor, setShowNeedsEditor] = useState(false);
   const [profilePersonId, setProfilePersonId] = useState<number | null>(null);
 
+  // Sync system
+  const changesFolderHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+  const [syncConflicts, setSyncConflicts] = useState<{
+    conflicts: Conflict[];
+    autoMergedCount: number;
+  } | null>(null);
+  const sync = useSync({
+    db: sqlDb,
+    enabled: !!sqlDb,
+    backgroundSyncInterval: 30,
+  });
+
   useEffect(() => {
     if (segments.length && !segments.find(s => s.name === activeRunSegment)) {
       const first = segments[0];
@@ -443,6 +459,29 @@ export default function App() {
       return;
     }
     if (!fileHandleRef.current) return saveDbAs();
+    
+    // If sync is enabled, push changes first
+    if (sync.isInitialized && sync.syncEngine) {
+      const pushResult = await sync.pushChanges();
+      if (!pushResult.success) {
+        setStatus(`Sync error: ${pushResult.error}`);
+      }
+      
+      // Pull and merge changes from others
+      const pullResult = await sync.pullChanges();
+      if (!pullResult.success && pullResult.conflicts) {
+        // Show conflict resolution dialog
+        setSyncConflicts({
+          conflicts: pullResult.conflicts,
+          autoMergedCount: pullResult.autoMergedCount || 0,
+        });
+        return;
+      } else if (pullResult.autoMergedCount && pullResult.autoMergedCount > 0) {
+        setStatus(`Auto-merged ${pullResult.autoMergedCount} changes from other users`);
+        refreshCaches(); // Refresh UI to show merged changes
+      }
+    }
+    
     await writeDbToHandle(fileHandleRef.current);
   }
 
@@ -452,6 +491,27 @@ export default function App() {
     await writable.write(data);
     await writable.close();
     setStatus("Saved.");
+    
+    // Try to initialize sync if we have a handle and user email
+    if (!sync.isInitialized && lockEmail && !changesFolderHandleRef.current) {
+      await tryInitializeSync(handle);
+    }
+  }
+
+  async function tryInitializeSync(dbHandle: FileSystemFileHandle) {
+    if (!lockEmail) return;
+    
+    try {
+      // Try to get the parent directory
+      // Note: This is a limitation - File System Access API doesn't provide direct parent access
+      // We'll need to ask the user or use a different approach
+      // For now, we'll skip automatic initialization and require manual setup
+      
+      // Alternative: Store the directory handle in IndexedDB for future use
+      // This would be a production enhancement
+    } catch (error) {
+      console.error('Failed to initialize sync:', error);
+    }
   }
 
   function syncTrainingFromMonthly(db = sqlDb) {
@@ -1612,6 +1672,7 @@ function PeopleEditor(){
         saveDb={saveDb}
         saveDbAs={saveDbAs}
         status={status}
+        syncStatus={sync.isInitialized ? sync.syncStatus : undefined}
       />
       <div className={sh.contentRow}>
         <SideRail
@@ -1775,10 +1836,29 @@ function PeopleEditor(){
           </DialogSurface>
         </Dialog>
       )}
+      {syncConflicts && (
+        <ConflictResolutionDialog
+          conflicts={syncConflicts.conflicts}
+          autoMergedCount={syncConflicts.autoMergedCount}
+          onResolve={async (resolutions) => {
+            const result = await sync.resolveConflicts(syncConflicts.conflicts, resolutions);
+            if (result.success) {
+              setSyncConflicts(null);
+              refreshCaches();
+              setStatus('Conflicts resolved successfully');
+            } else {
+              setStatus(`Error resolving conflicts: ${result.error}`);
+            }
+          }}
+          onCancel={() => {
+            setSyncConflicts(null);
+            setStatus('Sync cancelled - conflicts not resolved');
+          }}
+        />
+      )}
         </div>
         </main>
       </div>
-      {/* CopilotContext: Always rendered to provide context for Edge Copilot */}
       <CopilotContext
         activeTab={activeTab}
         selectedDate={selectedDate}
