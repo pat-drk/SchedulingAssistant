@@ -8,9 +8,15 @@ import { useState, useEffect } from "react";
  * - Desktop: >= 1024px
  */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState<boolean>(false);
+  const [matches, setMatches] = useState<boolean>(() => {
+    // SSR-safe initialization
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(query).matches;
+  });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const mediaQuery = window.matchMedia(query);
     setMatches(mediaQuery.matches);
 
@@ -18,15 +24,8 @@ export function useMediaQuery(query: string): boolean {
       setMatches(event.matches);
     };
 
-    // Modern browsers
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener("change", handler);
-      return () => mediaQuery.removeEventListener("change", handler);
-    } else {
-      // Fallback for older browsers
-      mediaQuery.addListener(handler);
-      return () => mediaQuery.removeListener(handler);
-    }
+    mediaQuery.addEventListener("change", handler);
+    return () => mediaQuery.removeEventListener("change", handler);
   }, [query]);
 
   return matches;

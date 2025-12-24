@@ -200,13 +200,9 @@ export default function SideRail({
     { key: "ADMIN", label: "Admin", icon: <Settings20Regular /> },
   ];
 
-  // For mobile, show only primary tabs in bottom nav
-  const primaryMobileNavItems: Array<{ key: TabKey; label: string; icon: React.ReactElement }> = [
-    { key: "RUN", label: "Run", icon: <CalendarDay20Regular /> },
-    { key: "PEOPLE", label: "People", icon: <PeopleCommunity20Regular /> },
-    { key: "MONTHLY", label: "Monthly", icon: <CalendarLtr20Regular /> },
-    { key: "EXPORT", label: "Export", icon: <Share20Regular /> },
-  ];
+  // For mobile, show only primary tabs in bottom nav (derived from main nav items)
+  const primaryMobileTabs: TabKey[] = ["RUN", "PEOPLE", "MONTHLY", "EXPORT"];
+  const primaryMobileNavItems = navItems.filter((item) => primaryMobileTabs.includes(item.key));
 
   if (isMobile) {
     return (

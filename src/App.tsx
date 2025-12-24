@@ -298,7 +298,7 @@ const usePeopleEditorStyles = makeStyles({
     width: '700px',
     maxWidth: '95vw',
     // Full-screen on mobile for better usability
-    "@media (max-width: 639px)": {
+    "@media (max-width: 767px)": {
       width: '100vw',
       maxWidth: '100vw',
       height: '100vh',
@@ -323,7 +323,7 @@ const usePeopleEditorStyles = makeStyles({
     gap: tokens.spacingHorizontalM,
     marginBottom: tokens.spacingVerticalM,
     // Stack vertically on mobile
-    "@media (max-width: 639px)": {
+    "@media (max-width: 767px)": {
       gridTemplateColumns: '1fr',
     },
   },
@@ -333,7 +333,7 @@ const usePeopleEditorStyles = makeStyles({
     gap: tokens.spacingHorizontalM,
     marginBottom: tokens.spacingVerticalM,
     // Stack vertically on mobile
-    "@media (max-width: 639px)": {
+    "@media (max-width: 767px)": {
       gridTemplateColumns: '1fr',
     },
   },
@@ -360,7 +360,7 @@ const usePeopleEditorStyles = makeStyles({
     gridTemplateColumns: 'repeat(5, minmax(110px, 1fr))',
     gap: tokens.spacingHorizontalM,
     // Better wrapping on mobile
-    "@media (max-width: 639px)": {
+    "@media (max-width: 767px)": {
       gridTemplateColumns: 'repeat(2, 1fr)',
     },
   },
