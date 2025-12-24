@@ -738,7 +738,7 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
   const assignments = all<DailyAssignmentRow>(
     `SELECT a.person_id, a.role_id,
             (p.last_name || ', ' || p.first_name) AS person,
-            r.name AS role_name, r.id AS role_id,
+            r.name AS role_name,
             g.name AS group_name, g.id AS group_id,
             p.commuter AS commuter
        FROM assignment a
@@ -773,7 +773,7 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
   const lunchAssignments = all<DailyAssignmentRow>(
     `SELECT a.person_id, a.role_id,
             (p.last_name || ', ' || p.first_name) AS person,
-            r.name AS role_name, r.id AS role_id,
+            r.name AS role_name,
             g.name AS group_name, g.id AS group_id,
             p.commuter AS commuter
        FROM assignment a
