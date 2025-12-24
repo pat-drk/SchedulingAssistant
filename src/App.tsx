@@ -13,8 +13,9 @@ const ExportPreview = React.lazy(() => import("./components/ExportPreview"));
 import PersonName from "./components/PersonName";
 import PersonProfileModal from "./components/PersonProfileModal";
 import { ProfileContext } from "./components/ProfileContext";
-import { Button, Checkbox, Dropdown, Input, Option, Table, TableHeader, TableHeaderCell, TableRow, TableBody, TableCell, Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions, makeStyles, tokens } from "@fluentui/react-components";
+import { Button, Checkbox, Dropdown, Input, Option, Table, TableHeader, TableHeaderCell, TableRow, TableBody, TableCell, Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions, makeStyles, tokens, MessageBar, MessageBarBody, Field } from "@fluentui/react-components";
 import { FluentProvider, webDarkTheme, webLightTheme } from "@fluentui/react-components";
+import { DismissRegular } from "@fluentui/react-icons";
 import MonthlyDefaults from "./components/MonthlyDefaults";
 import CrewHistoryView from "./components/CrewHistoryView";
 import Training from "./components/Training";
@@ -25,6 +26,10 @@ import { useSync } from "./sync/useSync";
 import { FileSystemUtils } from "./sync/FileSystemUtils";
 import { Conflict, ConflictResolution } from "./sync/types";
 import { getWeekOfMonth, type WeekStartMode } from "./utils/weekCalculation";
+import AlertDialog from "./components/AlertDialog";
+import ConfirmDialog from "./components/ConfirmDialog";
+import { ToastContainer, useToast } from "./components/Toast";
+import { logger } from "./utils/logger";
 
 /*
 MVP: Pure-browser scheduler for Microsoft Teams Shifts
@@ -388,6 +393,31 @@ export default function App() {
   const [showNeedsEditor, setShowNeedsEditor] = useState(false);
   const [profilePersonId, setProfilePersonId] = useState<number | null>(null);
 
+  // Toast notifications
+  const toast = useToast();
+
+  // Alert and Confirm dialogs
+  const [alertDialog, setAlertDialog] = useState<{ title?: string; message: string } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title?: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  // Email input dialog (replaces prompt)
+  const [emailDialog, setEmailDialog] = useState<{
+    onSubmit: (email: string) => void;
+    onCancel: () => void;
+  } | null>(null);
+  const [emailInput, setEmailInput] = useState("");
+  const [emailInputError, setEmailInputError] = useState("");
+
+  // Browser compatibility warning
+  const [showBrowserWarning, setShowBrowserWarning] = useState(false);
+
+  // Person delete confirmation
+  const [personToDelete, setPersonToDelete] = useState<number | null>(null);
+
   // Sync system
   const changesFolderHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
   const [syncConflicts, setSyncConflicts] = useState<{
@@ -406,6 +436,13 @@ export default function App() {
       if (first) setActiveRunSegment(first.name as Segment);
     }
   }, [segments]);
+
+  // Check browser compatibility on mount
+  useEffect(() => {
+    if (!FileSystemUtils.isFileSystemAccessSupported()) {
+      setShowBrowserWarning(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (sqlDb) loadMonthlyDefaults(selectedMonth);
@@ -427,8 +464,10 @@ export default function App() {
         });
         setReady(true);
       } catch (error) {
-        console.error("Failed to initialize sql.js:", error);
-        setStatus("Failed to initialize database engine. Please refresh the page.");
+        logger.error("Failed to initialize sql.js:", error);
+        const errorMsg = "Failed to initialize database engine. Please refresh the page.";
+        setStatus(errorMsg);
+        toast.showError(errorMsg);
       }
     })();
   }, []);
@@ -473,19 +512,28 @@ export default function App() {
       const db = new SQL.Database(new Uint8Array(buf));
       applyMigrations(db);
 
-      // Always prompt for user email (needed for sync system and personalization)
-      const email = prompt("Enter your Work Email (for sync and preferences):") || "";
-      if (email) {
-        setUserEmail(email);
-      }
-
       setSqlDb(db);
       fileHandleRef.current = handle;
       setStatus(`Opened ${file.name}`);
       refreshCaches(db);
+
+      // Prompt for user email (needed for sync system and personalization)
+      setEmailDialog({
+        onSubmit: (email: string) => {
+          setUserEmail(email);
+          setEmailDialog(null);
+          toast.showSuccess("Database opened successfully");
+        },
+        onCancel: () => {
+          setEmailDialog(null);
+          toast.showInfo("Database opened (email not provided)");
+        }
+      });
     } catch (e:any) {
-      console.error(e);
-      alert(e?.message || "Open failed");
+      logger.error("Failed to open database:", e);
+      const errorMsg = e?.message || "Open failed";
+      setAlertDialog({ title: "Error Opening Database", message: errorMsg });
+      toast.showError(errorMsg);
     }
   }
 
@@ -507,7 +555,10 @@ export default function App() {
     if (sync.isInitialized && sync.syncEngine) {
       const pushResult = await sync.pushChanges();
       if (!pushResult.success) {
-        setStatus(`Sync error: ${pushResult.error}`);
+        const errorMsg = `Sync error: ${pushResult.error}`;
+        setStatus(errorMsg);
+        toast.showError(errorMsg);
+        return;
       }
       
       // Pull and merge changes from others
@@ -520,7 +571,9 @@ export default function App() {
         });
         return;
       } else if (pullResult.autoMergedCount && pullResult.autoMergedCount > 0) {
-        setStatus(`Auto-merged ${pullResult.autoMergedCount} changes from other users`);
+        const msg = `Auto-merged ${pullResult.autoMergedCount} changes from other users`;
+        setStatus(msg);
+        toast.showInfo(msg);
         refreshCaches(); // Refresh UI to show merged changes
       }
     }
@@ -534,14 +587,19 @@ export default function App() {
     await writable.write(data);
     await writable.close();
     setStatus("Saved.");
+    toast.showSuccess("Database saved successfully");
     
     // Try to initialize sync if we have a handle and user email
+    // Note: Sync system is incomplete - this is a placeholder
     if (!sync.isInitialized && userEmail && !changesFolderHandleRef.current) {
       await tryInitializeSync(handle);
     }
   }
 
   async function tryInitializeSync(dbHandle: FileSystemFileHandle) {
+    // INCOMPLETE: Multi-user sync system is not yet production-ready
+    // See SYNC_SYSTEM.md for details on the architecture
+    // This is a placeholder for future sync initialization
     if (!userEmail) return;
     
     try {
@@ -553,7 +611,7 @@ export default function App() {
       // Alternative: Store the directory handle in IndexedDB for future use
       // This would be a production enhancement
     } catch (error) {
-      console.error('Failed to initialize sync:', error);
+      logger.error('Failed to initialize sync:', error);
     }
   }
 
@@ -704,12 +762,18 @@ export default function App() {
   function addAssignment(dateMDY: string, personId: number, roleId: number, segment: Segment) {
     // Weekend guard
     const d = parseMDY(dateMDY);
-    if (weekdayName(d) === "Weekend") { alert("Weekends are ignored. Pick a weekday."); return; }
+    if (weekdayName(d) === "Weekend") { 
+      setAlertDialog({ title: "Invalid Date", message: "Weekends are ignored. Pick a weekday." });
+      return; 
+    }
 
     // Time-off block enforcement
     if (segment !== "Early") {
     const blocked = isSegmentBlockedByTimeOff(personId, d, segment);
-      if (blocked) { alert("Time-off overlaps this segment. Blocked."); return; }
+      if (blocked) { 
+        setAlertDialog({ title: "Assignment Blocked", message: "Time-off overlaps this segment. Blocked." });
+        return; 
+      }
     }
 
     // Duplicate assignment guard: prevent two assignments for the same person in the same segment on the same day.
@@ -727,11 +791,20 @@ export default function App() {
       const person = people.find((p:any) => p.id === personId);
       const personName = person ? `${person.first_name} ${person.last_name}` : "This person";
       const details = existing.map((e:any)=> `${e.group_name} - ${e.role_name}`).join("; ");
-      const proceed = confirm(`${personName} is already assigned in ${segment}: ${details}.\n\nClick OK to continue and remove the other assignment(s), or Cancel to abort.`);
-      if (!proceed) return;
-      for (const e of existing) {
-        run(`DELETE FROM assignment WHERE id=?`, [e.id]);
-      }
+      setConfirmDialog({
+        title: "Assignment Conflict",
+        message: `${personName} is already assigned in ${segment}: ${details}.\n\nClick OK to continue and remove the other assignment(s), or Cancel to abort.`,
+        onConfirm: () => {
+          for (const e of existing) {
+            run(`DELETE FROM assignment WHERE id=?`, [e.id]);
+          }
+          run(`INSERT INTO assignment (date, person_id, role_id, segment) VALUES (?,?,?,?)`, [ymd(d), personId, roleId, segment]);
+          // Do not auto-qualify from assignment; training is user-controlled in profile
+          refreshCaches();
+          setConfirmDialog(null);
+        }
+      });
+      return;
     }
 
     run(`INSERT INTO assignment (date, person_id, role_id, segment) VALUES (?,?,?,?)`, [ymd(d), personId, roleId, segment]);
@@ -1158,11 +1231,17 @@ export default function App() {
 
 // Export to Shifts XLSX
 async function exportShifts() {
-    if (!sqlDb) { alert("Open a DB first"); return; }
+    if (!sqlDb) { 
+      setAlertDialog({ title: "No Database", message: "Open a DB first" });
+      return; 
+    }
     const XLSX = await loadXLSX();
     const start = parseYMD(exportStart);
     const end = parseYMD(exportEnd);
-    if (end < start) { alert("End before start"); return; }
+    if (end < start) { 
+      setAlertDialog({ title: "Invalid Date Range", message: "End date must be after start date" });
+      return; 
+    }
 
     const rows: any[] = [];
     let d = new Date(start.getTime());
@@ -1471,6 +1550,39 @@ function PeopleEditor(){
     setQualifications(new Set());
   }
   function save(){
+    // Validate required fields
+    if (!form.first_name?.trim()) {
+      setAlertDialog({ title: "Validation Error", message: "First name is required" });
+      return;
+    }
+    if (!form.last_name?.trim()) {
+      setAlertDialog({ title: "Validation Error", message: "Last name is required" });
+      return;
+    }
+    
+    // Validate email format
+    const email = form.work_email?.trim().toLowerCase() || "";
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setAlertDialog({ title: "Validation Error", message: "Invalid email format" });
+        return;
+      }
+      
+      // Check for duplicate emails
+      const duplicate = people.find(p => 
+        p.work_email?.toLowerCase() === email && 
+        (!editing || p.id !== editing.id)
+      );
+      if (duplicate) {
+        setAlertDialog({ 
+          title: "Validation Error", 
+          message: `Email already in use by ${duplicate.first_name} ${duplicate.last_name}` 
+        });
+        return;
+      }
+    }
+    
     if(editing){
       updatePerson({...editing, ...form});
       saveTraining(editing.id, qualifications);
@@ -1478,6 +1590,7 @@ function PeopleEditor(){
       const id = addPerson(form);
       saveTraining(id, qualifications);
     }
+    toast.showSuccess(editing ? "Person updated successfully" : "Person added successfully");
     closeModal();
   }
 
@@ -1554,7 +1667,7 @@ function PeopleEditor(){
                   <TableCell>
                     <div style={{ display: "flex", gap: 8 }}>
                       <Button size="small" onClick={()=>openModal(p)}>Edit</Button>
-                      <Button size="small" appearance="secondary" onClick={()=>{ if(confirm('Delete?')) deletePerson(p.id); }}>Delete</Button>
+                      <Button size="small" appearance="secondary" onClick={()=>{ setPersonToDelete(p.id); }}>Delete</Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1781,6 +1894,22 @@ function PeopleEditor(){
         status={status}
         syncStatus={sync.isInitialized ? sync.syncStatus : undefined}
       />
+      {showBrowserWarning && (
+        <MessageBar intent="warning" style={{ margin: tokens.spacingVerticalM }}>
+          <MessageBarBody>
+            <strong>Browser Compatibility Warning:</strong> This application requires the File System Access API, 
+            which is not supported in your current browser (likely Firefox). Some features may not work correctly. 
+            For the best experience, please use Chrome, Edge, or Safari 15.2+.
+            <Button 
+              size="small" 
+              appearance="transparent" 
+              icon={<DismissRegular />}
+              onClick={() => setShowBrowserWarning(false)}
+              style={{ marginLeft: tokens.spacingHorizontalS }}
+            />
+          </MessageBarBody>
+        </MessageBar>
+      )}
       <div className={sh.contentRow}>
         <SideRail
           ready={ready}
@@ -1962,6 +2091,100 @@ function PeopleEditor(){
             setSyncConflicts(null);
             setStatus('Sync cancelled - conflicts not resolved');
           }}
+        />
+      )}
+      
+      {/* Toast notifications */}
+      <ToastContainer messages={toast.messages} onDismiss={toast.dismissToast} />
+      
+      {/* Alert dialog */}
+      {alertDialog && (
+        <AlertDialog
+          open={true}
+          title={alertDialog.title}
+          message={alertDialog.message}
+          onClose={() => setAlertDialog(null)}
+        />
+      )}
+      
+      {/* Confirm dialog */}
+      {confirmDialog && (
+        <ConfirmDialog
+          open={true}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
+      
+      {/* Email input dialog */}
+      {emailDialog && (
+        <Dialog open onOpenChange={(_, data) => !data.open && emailDialog.onCancel()}>
+          <DialogSurface>
+            <DialogBody>
+              <DialogTitle>Enter Your Work Email</DialogTitle>
+              <DialogContent>
+                <Field
+                  label="Work Email"
+                  validationMessage={emailInputError}
+                  validationState={emailInputError ? "error" : undefined}
+                  required
+                >
+                  <Input
+                    value={emailInput}
+                    onChange={(_, data) => {
+                      setEmailInput(data.value);
+                      setEmailInputError("");
+                    }}
+                    placeholder="user@example.com"
+                    type="email"
+                  />
+                </Field>
+                <div style={{ marginTop: tokens.spacingVerticalS, fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 }}>
+                  Your email is used for sync and personalization features.
+                </div>
+              </DialogContent>
+              <DialogActions>
+                <Button appearance="secondary" onClick={() => {
+                  setEmailInput("");
+                  setEmailInputError("");
+                  emailDialog.onCancel();
+                }}>Skip</Button>
+                <Button appearance="primary" onClick={() => {
+                  const email = emailInput.trim();
+                  if (!email) {
+                    setEmailInputError("Email is required");
+                    return;
+                  }
+                  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                  if (!emailRegex.test(email)) {
+                    setEmailInputError("Invalid email format");
+                    return;
+                  }
+                  setEmailInput("");
+                  setEmailInputError("");
+                  emailDialog.onSubmit(email);
+                }}>Submit</Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+      )}
+      
+      {/* Person delete confirmation */}
+      {personToDelete !== null && (
+        <ConfirmDialog
+          open={true}
+          title="Delete Person"
+          message="Are you sure you want to delete this person? This will also remove all their training records and cannot be undone."
+          confirmText="Delete"
+          onConfirm={() => {
+            deletePerson(personToDelete);
+            setPersonToDelete(null);
+            toast.showSuccess("Person deleted successfully");
+          }}
+          onCancel={() => setPersonToDelete(null)}
         />
       )}
         </div>

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Tooltip, makeStyles, tokens } from "@fluentui/react-components";
+import { Button, Tooltip, makeStyles, tokens, Menu, MenuTrigger, MenuPopover, MenuList, MenuItem, Divider } from "@fluentui/react-components";
 import {
   CalendarLtr20Regular,
   CalendarDay20Regular,
@@ -11,6 +11,8 @@ import {
   Share20Regular,
   WeatherSunny20Regular,
   WeatherMoon20Regular,
+  Navigation20Regular,
+  NavigationFilled,
 } from "@fluentui/react-icons";
 import "../styles/tooltip.css";
 
@@ -50,6 +52,14 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1,
     overflow: "auto",
     boxSizing: "border-box",
+    transitionProperty: "width",
+    transitionDuration: tokens.durationNormal,
+  },
+  expanded: {
+    width: "80px",
+  },
+  collapsed: {
+    width: "48px",
   },
   navList: {
     display: "flex",
@@ -99,13 +109,13 @@ const useStyles = makeStyles({
   },
 });
 
-function RailItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; }){
+function RailItem({ icon, label, active, onClick, collapsed }: { icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; collapsed?: boolean; }){
   const s = useStyles();
   return (
     <Tooltip content={label} relationship="label">
       <div className={`${s.item} ${active ? s.itemActive : ""}`} onClick={onClick} aria-current={active ? "page" : undefined}>
         {icon}
-        <span className={s.label}>{label}</span>
+        <span className={`${s.label} ${collapsed ? s.labelHidden : ""}`}>{label}</span>
       </div>
     </Tooltip>
   );

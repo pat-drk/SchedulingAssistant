@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Button, Input, Field, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, tokens, Toolbar, ToolbarButton, ToolbarDivider } from "@fluentui/react-components";
+import AlertDialog from "./AlertDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface GroupEditorProps {
   all: (sql: string, params?: any[]) => any[];
@@ -43,6 +46,7 @@ export default function GroupEditor({ all, run, refresh }: GroupEditorProps) {
   const [editing, setEditing] = useState<any | null>(null);
   const [formVisible, setFormVisible] = useState(false);
   const [form, setForm] = useState(empty);
+  const dialogs = useDialogs();
 
   function load() {
     setGroups(all(`SELECT id,name,theme,custom_color FROM grp ORDER BY name`));
@@ -64,7 +68,7 @@ export default function GroupEditor({ all, run, refresh }: GroupEditorProps) {
 
   function save() {
     if (!form.name.trim()) {
-      window.alert("Name is required");
+      dialogs.showAlert("Name is required", "Validation Error");
       return;
     }
     if (editing) {
@@ -85,8 +89,9 @@ export default function GroupEditor({ all, run, refresh }: GroupEditorProps) {
     setForm(empty);
   }
 
-  function remove(id: number) {
-    if (!window.confirm("Delete group?")) return;
+  async function remove(id: number) {
+    const confirmed = await dialogs.showConfirm("Are you sure you want to delete this group? This will also delete all associated roles.", "Delete Group");
+    if (!confirmed) return;
     run(`DELETE FROM role WHERE group_id=?`, [id]);
     run(`DELETE FROM grp WHERE id=?`, [id]);
     load();
@@ -150,6 +155,27 @@ export default function GroupEditor({ all, run, refresh }: GroupEditorProps) {
             </Toolbar>
           </div>
         </div>
+      )}
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
       )}
     </div>
   );

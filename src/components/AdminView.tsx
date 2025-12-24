@@ -8,7 +8,16 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Text,
+  Divider,
+  Card,
+  tokens,
 } from "@fluentui/react-components";
+import {
+  Settings20Regular,
+  CalendarLtr20Regular,
+  DatabaseLightning20Regular,
+} from "@fluentui/react-icons";
 import SegmentEditor from "./SegmentEditor";
 import SegmentAdjustmentEditor from "./SegmentAdjustmentEditor";
 import GroupEditor from "./GroupEditor";
@@ -23,10 +32,34 @@ import WeekCalculationSettings from "./WeekCalculationSettings";
 
 const useAdminViewStyles = makeStyles({
   root: {
-    padding: "16px",
+    padding: tokens.spacingHorizontalXL,
     display: "flex",
     flexDirection: "column",
-    rowGap: "24px",
+    rowGap: tokens.spacingVerticalXXL,
+  },
+  section: {
+    display: "flex",
+    flexDirection: "column",
+    rowGap: tokens.spacingVerticalL,
+  },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalS,
+    marginBottom: tokens.spacingVerticalM,
+  },
+  sectionTitle: {
+    fontSize: tokens.fontSizeBase400,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+  },
+  card: {
+    padding: tokens.spacingHorizontalL,
+  },
+  buttonRow: {
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalS,
   },
 });
 
@@ -43,9 +76,67 @@ export default function AdminView({ sqlDb, all, run, refresh, segments }: AdminV
   const [showOverrides, setShowOverrides] = React.useState(false);
   const [showAutoFillSettings, setShowAutoFillSettings] = React.useState(false);
   const [showWeekCalcSettings, setShowWeekCalcSettings] = React.useState(false);
+  
   return (
     <div className={s.root}>
-      <Button onClick={() => setShowOverrides(true)}>Availability Overrides</Button>
+      {/* Settings Section */}
+      <div className={s.section}>
+        <div className={s.sectionHeader}>
+          <Settings20Regular />
+          <Text className={s.sectionTitle}>Settings</Text>
+        </div>
+        <Card className={s.card}>
+          <div className={s.buttonRow}>
+            <Button appearance="outline" onClick={() => setShowAutoFillSettings(true)}>
+              Auto-Fill Settings
+            </Button>
+            <Button appearance="outline" onClick={() => setShowWeekCalcSettings(true)}>
+              Week Calculation Settings
+            </Button>
+          </div>
+        </Card>
+      </div>
+
+      <Divider />
+
+      {/* Availability Section */}
+      <div className={s.section}>
+        <div className={s.sectionHeader}>
+          <CalendarLtr20Regular />
+          <Text className={s.sectionTitle}>Availability</Text>
+        </div>
+        <Card className={s.card}>
+          <div className={s.buttonRow}>
+            <Button appearance="outline" onClick={() => setShowOverrides(true)}>
+              Availability Overrides
+            </Button>
+          </div>
+        </Card>
+        <TimeOffManager all={all} run={run} refresh={refresh} />
+      </div>
+
+      <Divider />
+
+      {/* Data Configuration Section */}
+      <div className={s.section}>
+        <div className={s.sectionHeader}>
+          <DatabaseLightning20Regular />
+          <Text className={s.sectionTitle}>Data Configuration</Text>
+        </div>
+        <SegmentEditor all={all} run={run} refresh={refresh} />
+        <SegmentAdjustmentEditor all={all} run={run} refresh={refresh} segments={segments} />
+        <GroupEditor all={all} run={run} refresh={refresh} />
+        <RoleEditor all={all} run={run} refresh={refresh} segments={segments} />
+        <ExportGroupEditor all={all} run={run} refresh={refresh} />
+        <div>
+          <Text weight="semibold" style={{ marginBottom: tokens.spacingVerticalS, display: "block" }}>
+            Skills Catalog
+          </Text>
+          <SkillsEditor all={all} run={run} refresh={refresh} />
+        </div>
+      </div>
+
+      {/* Dialogs */}
       {showOverrides && (
         <Dialog open onOpenChange={(_, d) => { if (!d.open) setShowOverrides(false); }}>
           <DialogSurface aria-describedby={undefined}>
@@ -61,11 +152,11 @@ export default function AdminView({ sqlDb, all, run, refresh, segments }: AdminV
           </DialogSurface>
         </Dialog>
       )}
-      <Button onClick={() => setShowAutoFillSettings(true)}>Auto-Fill Settings</Button>
+      
       {showAutoFillSettings && (
         <AutoFillSettings open={showAutoFillSettings} onClose={() => setShowAutoFillSettings(false)} />
       )}
-      <Button onClick={() => setShowWeekCalcSettings(true)}>Week Calculation Settings</Button>
+      
       {showWeekCalcSettings && (
         <WeekCalculationSettings 
           open={showWeekCalcSettings} 
@@ -74,17 +165,6 @@ export default function AdminView({ sqlDb, all, run, refresh, segments }: AdminV
           run={run}
         />
       )}
-      <TimeOffManager all={all} run={run} refresh={refresh} />
-      <SegmentEditor all={all} run={run} refresh={refresh} />
-      <SegmentAdjustmentEditor all={all} run={run} refresh={refresh} segments={segments} />
-      <GroupEditor all={all} run={run} refresh={refresh} />
-      <RoleEditor all={all} run={run} refresh={refresh} segments={segments} />
-      <ExportGroupEditor all={all} run={run} refresh={refresh} />
-      {/* Skills Catalog */}
-      <div>
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Skills Catalog</div>
-        <SkillsEditor all={all} run={run} refresh={refresh} />
-      </div>
     </div>
   );
 }

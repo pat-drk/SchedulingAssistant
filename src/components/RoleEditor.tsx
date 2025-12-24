@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import type { SegmentRow } from "../services/segments";
 import { Button, Field, Input, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Dropdown, Option, Checkbox, Text, makeStyles, tokens } from "@fluentui/react-components";
+import AlertDialog from "./AlertDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface RoleEditorProps {
   all: (sql: string, params?: any[]) => any[];
@@ -30,6 +33,7 @@ export default function RoleEditor({ all, run, refresh, segments }: RoleEditorPr
   const [groups, setGroups] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(null);
   const [formVisible, setFormVisible] = useState(false);
+  const dialogs = useDialogs();
 
   function load() {
     setRoles(
@@ -62,11 +66,11 @@ export default function RoleEditor({ all, run, refresh, segments }: RoleEditorPr
     if (!editing) return;
     const segArr = Array.from(editing.segs);
     if (!editing.code.trim() || !editing.name.trim()) {
-      window.alert("Code and name are required");
+      dialogs.showAlert("Code and name are required", "Validation Error");
       return;
     }
     if (!segArr.length) {
-      window.alert("Select at least one segment");
+      dialogs.showAlert("Select at least one segment", "Validation Error");
       return;
     }
     if (editing.id) {
@@ -85,8 +89,9 @@ export default function RoleEditor({ all, run, refresh, segments }: RoleEditorPr
     setEditing(null);
   }
 
-  function remove(id: number) {
-    if (!window.confirm("Delete role?")) return;
+  async function remove(id: number) {
+    const confirmed = await dialogs.showConfirm("Are you sure you want to delete this role?", "Delete Role");
+    if (!confirmed) return;
     run(`DELETE FROM role WHERE id=?`, [id]);
     load();
     refresh();
@@ -168,6 +173,27 @@ export default function RoleEditor({ all, run, refresh, segments }: RoleEditorPr
             <Button onClick={cancel}>Cancel</Button>
           </div>
         </div>
+      )}
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
       )}
     </div>
   );

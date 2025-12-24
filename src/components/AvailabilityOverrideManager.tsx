@@ -19,6 +19,8 @@ import {
   deleteOverride,
   type Availability,
 } from "../services/availabilityOverrides";
+import AlertDialog from "./AlertDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface AvailabilityOverrideManagerProps {
   sqlDb: any;
@@ -74,6 +76,7 @@ export default function AvailabilityOverrideManager({
   refresh,
 }: AvailabilityOverrideManagerProps) {
   const s = useStyles();
+  const dialogs = useDialogs();
   const people = React.useMemo(
     () =>
       all(
@@ -171,7 +174,7 @@ export default function AvailabilityOverrideManager({
       }
     }
     if (!anyChange) {
-      alert("Availability unchanged");
+      dialogs.showAlert("No changes to save. Availability is unchanged from default.", "No Changes");
       return;
     }
     for (let i = 0; i < 5; i++) {
@@ -298,6 +301,15 @@ export default function AvailabilityOverrideManager({
           </TableBody>
         </Table>
       </div>
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
     </div>
   );
 }

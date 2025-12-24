@@ -40,6 +40,9 @@ import { Note20Regular } from "@fluentui/react-icons";
 import type { Availability } from "../services/availabilityOverrides";
 import { SIX_MONTHS_MS, REQUIRED_TRAINING_AREAS, isInTrainingPeriod } from "../utils/trainingConstants";
 import { getWeekDateRange, formatDateRange, type WeekStartMode } from "../utils/weekCalculation";
+import AlertDialog from "./AlertDialog";
+import { useDialogs } from "../hooks/useDialogs";
+import { logger } from "../utils/logger";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
 type WeekdayKey = 1 | 2 | 3 | 4 | 5;
@@ -428,6 +431,38 @@ export default function MonthlyDefaults({
   const styles = useStyles();
   const segmentNames = useMemo(() => segments.map(s => s.name as Segment), [segments]);
   const [filters, setFilters] = useState<PeopleFiltersState>(() => freshPeopleFilters());
+  const dialogs = useDialogs();
+  
+  // Format month for display
+  const formatMonth = (monthStr: string) => {
+    const [year, month] = monthStr.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+  };
+  
+  // Handle copy with confirmation
+  const handleCopyClick = async () => {
+    const sourceMonth = formatMonth(copyFromMonth);
+    const targetMonth = formatMonth(selectedMonth);
+    
+    const confirmed = await dialogs.showConfirm(
+      `This will overwrite all defaults in ${targetMonth} with data from ${sourceMonth}. Continue?`,
+      "Confirm Copy"
+    );
+    
+    if (confirmed) {
+      copyMonthlyDefaults(copyFromMonth, selectedMonth);
+    }
+  };
+  
+  // Handle export with error handling
+  const handleExportXlsx = async () => {
+    try {
+      await exportMonthOneSheetXlsx(selectedMonth);
+    } catch (err: any) {
+      dialogs.showAlert(err?.message || "Export failed", "Export Error");
+    }
+  };
   const [sortKey, setSortKey] = useState<string>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const sortKeyLabel = useMemo(() => {
@@ -1163,7 +1198,7 @@ export default function MonthlyDefaults({
         }
       }
     } catch (e) {
-      console.error('Failed to load week_start_mode:', e);
+      logger.error('Failed to load week_start_mode:', e);
     }
     
     // Parse selected month to get year and month
@@ -1252,8 +1287,8 @@ export default function MonthlyDefaults({
               <Textarea value={text} onChange={(_, d) => setText(d.value)} />
             </DialogContent>
             <DialogActions>
+              <Button appearance="secondary" onClick={onClose}>Cancel</Button>
               <Button appearance="primary" onClick={() => { setMonthlyNote(personId, text); onClose(); }}>Save</Button>
-              <Button onClick={onClose}>Cancel</Button>
             </DialogActions>
           </DialogBody>
         </DialogSurface>
@@ -1318,9 +1353,9 @@ export default function MonthlyDefaults({
             </Button>
           )}
           <Button onClick={() => void applyMonthlyDefaults(selectedMonth)}>Apply to Month</Button>
-          <Button onClick={() => copyMonthlyDefaults(copyFromMonth, selectedMonth)}>Copy</Button>
+          <Button onClick={handleCopyClick}>Copy from {formatMonth(copyFromMonth)} to {formatMonth(selectedMonth)}</Button>
           <Button onClick={() => exportMonthlyDefaults(selectedMonth)}>Export HTML</Button>
-          <Button onClick={() => exportMonthOneSheetXlsx(selectedMonth).catch((err) => alert(err.message))}>Export .xlsx</Button>
+          <Button onClick={handleExportXlsx}>Export .xlsx</Button>
         </div>
       </div>
   <div className={styles.scroll}>
@@ -1418,6 +1453,35 @@ export default function MonthlyDefaults({
       )}
       {notePerson !== null && (
         <NotesModal personId={notePerson} onClose={() => setNotePerson(null)} />
+      )}
+      
+      {/* Dialog components */}
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {dialogs.confirmState && (
+        <Dialog open onOpenChange={(_, data) => !data.open && dialogs.handleConfirm(false)}>
+          <DialogSurface>
+            <DialogBody>
+              <DialogTitle>{dialogs.confirmState.options.title || "Confirm"}</DialogTitle>
+              <DialogContent>{dialogs.confirmState.options.message}</DialogContent>
+              <DialogActions>
+                <Button appearance="secondary" onClick={() => dialogs.handleConfirm(false)}>
+                  {dialogs.confirmState.options.cancelText || "Cancel"}
+                </Button>
+                <Button appearance="primary" onClick={() => dialogs.handleConfirm(true)}>
+                  {dialogs.confirmState.options.confirmText || "OK"}
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
       )}
     </div>
   );

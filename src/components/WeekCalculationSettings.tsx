@@ -12,6 +12,7 @@ import {
   Text,
 } from "@fluentui/react-components";
 import type { WeekStartMode } from "../utils/weekCalculation";
+import { logger } from "../utils/logger";
 
 interface WeekCalculationSettingsProps {
   open: boolean;
@@ -35,7 +36,7 @@ export default function WeekCalculationSettings({ open, onClose, all, run }: Wee
           }
         }
       } catch (e) {
-        console.error('Failed to load week_start_mode:', e);
+        logger.error('Failed to load week_start_mode:', e);
       }
     }
   }, [open, all]);
@@ -48,7 +49,7 @@ export default function WeekCalculationSettings({ open, onClose, all, run }: Wee
         [mode]
       );
     } catch (e) {
-      console.error('Failed to save week_start_mode:', e);
+      logger.error('Failed to save week_start_mode:', e);
     }
     onClose();
   }
@@ -95,8 +96,8 @@ export default function WeekCalculationSettings({ open, onClose, all, run }: Wee
             </div>
           </DialogContent>
           <DialogActions>
+            <Button appearance="secondary" onClick={onClose}>Cancel</Button>
             <Button appearance="primary" onClick={handleSave}>Save</Button>
-            <Button onClick={onClose}>Cancel</Button>
           </DialogActions>
         </DialogBody>
       </DialogSurface>

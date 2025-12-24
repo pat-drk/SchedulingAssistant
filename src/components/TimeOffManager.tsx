@@ -1,5 +1,7 @@
 import * as React from "react";
 import { Button, Input, Dropdown, Option, Table, TableHeader, TableHeaderCell, TableRow, TableBody, TableCell, makeStyles, tokens, Textarea, Tooltip, Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions, DialogTrigger } from "@fluentui/react-components";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface TimeOffManagerProps {
   all: (sql: string, params?: any[]) => any[];
@@ -10,9 +12,16 @@ interface TimeOffManagerProps {
 // Prefer a stable, public SheetJS URL to avoid CDN auth issues
 const XLSX_URL = "https://cdn.sheetjs.com/xlsx-0.20.2/package/xlsx.mjs";
 async function loadXLSX(){
-  // @ts-ignore
-  const mod = await import(/* @vite-ignore */ XLSX_URL);
-  return mod as any;
+  try {
+    // @ts-ignore
+    const mod = await import(/* @vite-ignore */ XLSX_URL);
+    return mod as any;
+  } catch (error) {
+    throw new Error(
+      "Failed to load XLSX library from CDN. Please check your internet connection and try again. " +
+      "If the problem persists, this may indicate a CDN service issue."
+    );
+  }
 }
 
 function parseMDY(str: string): Date {
@@ -119,6 +128,7 @@ const useStyles = makeStyles({
 
 export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProps){
   const s = useStyles();
+  const dialogs = useDialogs();
   const [status, setStatus] = React.useState<string>("");
   const [importSummary, setImportSummary] = React.useState<null | { added: number; updated: number; ignored: number; skipped: number; noEmail: number; badDate: number; matchedByName: number }>(null);
 
@@ -290,8 +300,9 @@ export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProp
       setStatus(`Import complete: added ${added}, updated ${updated}, ignored ${ignored}, skipped ${skipped}.`);
       setImportSummary({ added, updated, ignored, skipped, noEmail, badDate, matchedByName });
     }catch(e:any){
-      console.error(e);
-      setStatus(`Time-off import failed: ${e?.message||e}`);
+      const errorMsg = e?.message || String(e);
+      console.error('Time-off import error:', e);
+      setStatus(`Time-off import failed: ${errorMsg}`);
     }
   }
 
@@ -321,8 +332,9 @@ export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProp
     setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
   }
 
-  function remove(id: number){
-    if (!confirm('Delete this time-off entry?')) return;
+  async function remove(id: number){
+    const confirmed = await dialogs.showConfirm('Are you sure you want to delete this time-off entry?', 'Delete Time Off');
+    if (!confirmed) return;
     run(`DELETE FROM timeoff WHERE id=?`, [id]);
     setStatus('Deleted.');
   refresh();
@@ -434,6 +446,18 @@ export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProp
           </TableBody>
         </Table>
       </div>
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
+      )}
     </section>
   );
 }
