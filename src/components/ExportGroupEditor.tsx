@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Button, Field, Input, Dropdown, Option, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, tokens } from "@fluentui/react-components";
+import AlertDialog from "./AlertDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface ExportGroupEditorProps {
   all: (sql: string, params?: any[]) => any[];
@@ -30,6 +33,7 @@ export default function ExportGroupEditor({ all, run, refresh }: ExportGroupEdit
   const [editing, setEditing] = useState<any | null>(null);
   const [formVisible, setFormVisible] = useState(false);
   const [form, setForm] = useState<any>(empty);
+  const dialogs = useDialogs();
   const selectedGroupLabel =
     form.group_id === ""
       ? ""
@@ -60,11 +64,11 @@ export default function ExportGroupEditor({ all, run, refresh }: ExportGroupEdit
 
   function save() {
     if (!form.group_id) {
-      window.alert("Group is required");
+      dialogs.showAlert("Group is required", "Validation Error");
       return;
     }
     if (!form.code.trim()) {
-      window.alert("Code is required");
+      dialogs.showAlert("Code is required", "Validation Error");
       return;
     }
     if (editing) {
@@ -85,8 +89,9 @@ export default function ExportGroupEditor({ all, run, refresh }: ExportGroupEdit
     setForm(empty);
   }
 
-  function remove(id: number) {
-    if (!window.confirm("Delete export metadata?")) return;
+  async function remove(id: number) {
+    const confirmed = await dialogs.showConfirm("Are you sure you want to delete this export metadata?", "Delete Export Metadata");
+    if (!confirmed) return;
     run(`DELETE FROM export_group WHERE group_id=?`, [id]);
     load();
     refresh();
@@ -161,6 +166,27 @@ export default function ExportGroupEditor({ all, run, refresh }: ExportGroupEdit
             <Button onClick={cancel}>Cancel</Button>
           </div>
         </div>
+      )}
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
       )}
     </div>
   );
