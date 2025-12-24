@@ -32,6 +32,7 @@ import {
   Subtitle2,
   Tooltip,
 } from "@fluentui/react-components";
+import { Navigation20Regular } from "@fluentui/react-icons";
 
 const Grid = WidthProvider(GridLayout);
 // Work around TS typing issues: cast WidthProvider result to any for JSX use
@@ -746,13 +747,16 @@ export default function DailyRunBoard({
           header={
             <div style={{ display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS }}>
               {isDraggable && (
-                <div style={{ 
-                  cursor: "grab",
-                  color: tokens.colorNeutralForeground3,
-                  display: "flex",
-                  alignItems: "center",
-                }}>
-                  ⋮⋮
+                <div 
+                  style={{ 
+                    cursor: "grab",
+                    color: tokens.colorNeutralForeground3,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  aria-label="Drag to reposition group"
+                >
+                  <Navigation20Regular />
                 </div>
               )}
               <Title3>{group.name}</Title3>
