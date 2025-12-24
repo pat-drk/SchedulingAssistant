@@ -107,6 +107,12 @@ export default function AvailabilityOverrideManager({
   )[]>([null, null, null, null, null]);
   const [rev, setRev] = React.useState(0);
 
+  const selectedPersonLabel = React.useMemo(() => {
+    if (personId == null) return '';
+    const person = people.find((p: any) => p.id === personId);
+    return person ? `${person.first_name} ${person.last_name}` : '';
+  }, [personId, people]);
+
   const rows = React.useMemo(
     () =>
       all(
@@ -206,7 +212,9 @@ export default function AvailabilityOverrideManager({
       <div className={s.topRow}>
         <Dropdown
           className={s.personCol}
-          value={personId != null ? String(personId) : ""}
+          placeholder="Select person..."
+          selectedOptions={personId != null ? [String(personId)] : []}
+          value={selectedPersonLabel}
           onOptionSelect={(_, d) => setPersonId(Number(d.optionValue))}
         >
           {people.map((p: any) => {
@@ -240,7 +248,8 @@ export default function AvailabilityOverrideManager({
             {weekAvail.map((v, i) => (
               <TableCell key={i}>
                 <Dropdown
-                  value={v}
+                  selectedOptions={[v]}
+                  value={v === 'U' ? 'Unavailable' : v === 'AM' ? 'AM' : v === 'PM' ? 'PM' : 'Both'}
                   onOptionSelect={(_, d) =>
                     setWeekAvail((vals) => {
                       const n = [...vals];

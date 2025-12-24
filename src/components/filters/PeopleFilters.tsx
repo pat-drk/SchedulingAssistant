@@ -46,9 +46,63 @@ export function freshPeopleFilters(overrides: Partial<PeopleFiltersState> = {}):
     gender: "",
     enrollment: new Set<Enrollment>(),
     availDays: new Set<1 | 2 | 3 | 4 | 5>(),
-  availMode: "any",
+    availMode: "any",
     ...overrides,
   };
+}
+
+// Serialize filters for localStorage
+function serializeFilters(state: PeopleFiltersState): string {
+  return JSON.stringify({
+    text: state.text,
+    activeOnly: state.activeOnly,
+    gender: state.gender,
+    enrollment: [...state.enrollment],
+    availDays: [...state.availDays],
+    availMode: state.availMode,
+  });
+}
+
+// Deserialize filters from localStorage
+function deserializeFilters(json: string): PeopleFiltersState | null {
+  try {
+    const data = JSON.parse(json);
+    return {
+      text: data.text ?? "",
+      activeOnly: data.activeOnly ?? false,
+      gender: data.gender ?? "",
+      enrollment: new Set(data.enrollment ?? []),
+      availDays: new Set(data.availDays ?? []),
+      availMode: data.availMode ?? "any",
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Hook to persist filters to localStorage
+export function usePersistentFilters(storageKey: string): [PeopleFiltersState, (next: Partial<PeopleFiltersState>) => void] {
+  const [filters, setFiltersInternal] = React.useState<PeopleFiltersState>(() => {
+    if (typeof window === "undefined") return freshPeopleFilters();
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const parsed = deserializeFilters(stored);
+      if (parsed) return parsed;
+    }
+    return freshPeopleFilters();
+  });
+
+  const setFilters = React.useCallback((next: Partial<PeopleFiltersState>) => {
+    setFiltersInternal((prev) => {
+      const updated = { ...prev, ...next };
+      if (typeof window !== "undefined") {
+        localStorage.setItem(storageKey, serializeFilters(updated));
+      }
+      return updated;
+    });
+  }, [storageKey]);
+
+  return [filters, setFilters];
 }
 
 export function filterPeopleList<T extends Record<string, any>>(people: T[], state: PeopleFiltersState): T[] {

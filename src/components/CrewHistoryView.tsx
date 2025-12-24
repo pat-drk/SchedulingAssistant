@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Input, Dropdown, Option, Button, Checkbox, Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell, makeStyles, tokens, Label, Badge } from "@fluentui/react-components";
+import { Input, Dropdown, Option, Button, Checkbox, Table, TableHeader, TableBody, TableRow, TableHeaderCell, TableCell, makeStyles, tokens, Badge } from "@fluentui/react-components";
 import SmartSelect from "./controls/SmartSelect";
 import PersonName from "./PersonName";
 import type { Segment } from "../services/segments";
-import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, freshPeopleFilters } from "./filters/PeopleFilters";
+import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, usePersistentFilters } from "./filters/PeopleFilters";
 import { REQUIRED_TRAINING_AREAS, isInTrainingPeriod } from "../utils/trainingConstants";
 
 function pad2(n: number) {
@@ -43,10 +43,64 @@ const useCrewHistoryViewStyles = makeStyles({
     rowGap: tokens.spacingVerticalM,
   },
   toolbar: {
-    display: 'grid',
-    gap: tokens.spacingVerticalS,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacingVerticalM,
     paddingBlockEnd: tokens.spacingVerticalS,
     minWidth: 0,
+  },
+  primaryControls: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: tokens.spacingHorizontalL,
+    alignItems: 'end',
+    padding: tokens.spacingHorizontalM,
+    backgroundColor: tokens.colorNeutralBackground2,
+    borderRadius: tokens.borderRadiusMedium,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  monthRangeSection: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalM,
+    flexWrap: 'wrap',
+  },
+  monthInput: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacingVerticalXS,
+  },
+  secondaryControls: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: tokens.spacingHorizontalM,
+    alignItems: 'end',
+  },
+  topRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: tokens.spacingHorizontalM,
+    alignItems: 'end',
+  },
+  controlGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacingVerticalXS,
+    minWidth: '140px',
+  },
+  inlineGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalS,
+  },
+  optionsPanel: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: tokens.spacingHorizontalM,
+    alignItems: 'center',
+    padding: tokens.spacingHorizontalM,
+    backgroundColor: tokens.colorNeutralBackground2,
+    borderRadius: tokens.borderRadiusMedium,
   },
   controlsGrid: {
     display: 'grid',
@@ -90,8 +144,14 @@ const useCrewHistoryViewStyles = makeStyles({
     flexWrap: 'wrap',
   },
   label: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightMedium,
+  },
+  labelLarge: {
     fontSize: tokens.fontSizeBase300,
-    color: tokens.colorNeutralForeground2,
+    color: tokens.colorNeutralForeground1,
+    fontWeight: tokens.fontWeightSemibold,
   },
   scroll: {
     width: '100%',
@@ -171,7 +231,7 @@ export default function CrewHistoryView({
     return style;
   }
   const [defs, setDefs] = useState<any[]>([]);
-  const [filters, setFilters] = useState<PeopleFiltersState>(() => freshPeopleFilters());
+  const [filters, setFilters] = usePersistentFilters('crewHistoryFilters');
   const segmentNames = useMemo(
     () => segments.map((s) => s.name as Segment),
     [segments],
@@ -187,7 +247,6 @@ export default function CrewHistoryView({
   const [endMonth, setEndMonth] = useState<string>("");
   const [filterMonth, setFilterMonth] = useState<string>("");
   const [editPast, setEditPast] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showOnlyTrainees, setShowOnlyTrainees] = useState(false);
 
   const sortFieldLabel = useMemo(() => {
@@ -476,10 +535,27 @@ export default function CrewHistoryView({
   return (
     <div className={styles.root}>
       <div className={styles.toolbar}>
-        <div className={styles.controlsGrid}>
+        {/* Primary controls: Month Range (most important feature) */}
+        <div className={styles.primaryControls}>
+          <span className={styles.labelLarge}>Date Range</span>
+          <div className={styles.monthRangeSection}>
+            <div className={styles.monthInput}>
+              <span className={styles.label}>From</span>
+              <Input type="month" value={startMonth} onChange={(_, d) => setStartMonth(d.value)} />
+            </div>
+            <div className={styles.monthInput}>
+              <span className={styles.label}>To</span>
+              <Input type="month" value={endMonth} onChange={(_, d) => setEndMonth(d.value)} />
+            </div>
+          </div>
+          <Checkbox label="Edit past months" checked={editPast} onChange={(_, data) => setEditPast(!!data.checked)} />
+        </div>
+        
+        {/* Secondary controls: Filters and sorting */}
+        <div className={styles.secondaryControls}>
           <PeopleFiltersBar state={filters} onChange={(next) => setFilters((s) => ({ ...s, ...next }))} />
-          <div className={styles.stack}>
-            <Label>Sort</Label>
+          <div className={styles.controlGroup}>
+            <span className={styles.label}>Sort</span>
             <Dropdown
               className={styles.full}
               selectedOptions={[sortField]}
@@ -506,8 +582,15 @@ export default function CrewHistoryView({
               })}
             </Dropdown>
           </div>
-          <div className={styles.stack}>
-            <Label>Filter month</Label>
+          <Button 
+            appearance="subtle" 
+            size="small"
+            onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
+          >
+            {sortDir === "asc" ? "↑ Asc" : "↓ Desc"}
+          </Button>
+          <div className={styles.controlGroup}>
+            <span className={styles.label}>Filter by month</span>
             <Dropdown
               className={styles.full}
               placeholder="All Months"
@@ -523,8 +606,8 @@ export default function CrewHistoryView({
               ))}
             </Dropdown>
           </div>
-          <div className={styles.stack}>
-            <Label>Role groups</Label>
+          <div className={styles.controlGroup}>
+            <span className={styles.label}>Role groups</span>
             <Dropdown
               className={styles.full}
               multiselect
@@ -540,27 +623,10 @@ export default function CrewHistoryView({
               ))}
             </Dropdown>
           </div>
-          <div className={styles.controlCell}>
-            <Button onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}> {sortDir === "asc" ? "Asc" : "Desc"} </Button>
-          </div>
-          <div className={styles.controlCell}>
-            <Button appearance="secondary" onClick={() => setShowAdvanced(v => !v)}>{showAdvanced ? 'Hide options' : 'More options'}</Button>
-          </div>
-          <div className={styles.controlCell}>
-            <Checkbox label="Trainees only" checked={showOnlyTrainees} onChange={(_, data) => setShowOnlyTrainees(!!data.checked)} />
-          </div>
-          {showAdvanced && (
-            <>
-              <div className={styles.controlCell}><Checkbox label="Edit past months" checked={editPast} onChange={(_, data) => setEditPast(!!data.checked)} /></div>
-              <div className={`${styles.controlCell} ${styles.monthRange}`}>
-                <span className={styles.label}>From</span>
-                <Input type="month" value={startMonth} onChange={(_, d) => setStartMonth(d.value)} />
-                <span className={styles.label}>To</span>
-                <Input type="month" value={endMonth} onChange={(_, d) => setEndMonth(d.value)} />
-              </div>
-            </>
-          )}
+          <Checkbox label="Trainees only" checked={showOnlyTrainees} onChange={(_, data) => setShowOnlyTrainees(!!data.checked)} />
         </div>
+        
+        {/* Segments row */}
         <div className={styles.segmentsWrap}>
           <span className={styles.label}>Segments:</span>
           {segmentNames.map((seg) => (

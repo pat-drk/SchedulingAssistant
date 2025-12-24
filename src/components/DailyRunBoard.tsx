@@ -27,7 +27,6 @@ import {
   Card,
   CardHeader,
   Body1,
-  Caption1,
   Title3,
   Subtitle2,
   Tooltip,
@@ -136,11 +135,9 @@ const useStyles = makeStyles({
     height: "100%",
     display: "flex",
     flexDirection: "column",
-    boxShadow: tokens.shadow4,
-    transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}`,
-    ":hover": {
-      boxShadow: tokens.shadow8,
-    },
+    boxShadow: tokens.shadow2,
+    overflow: "hidden",
+    borderRadius: tokens.borderRadiusLarge,
   },
   groupHeader: {
     display: "flex",
@@ -148,55 +145,65 @@ const useStyles = makeStyles({
     justifyContent: "space-between",
     paddingBottom: tokens.spacingVerticalS,
   },
-  groupMeta: {
-    fontSize: tokens.fontSizeBase200,
-    color: tokens.colorNeutralForeground3,
-  },
   rolesGrid: {
     flex: 1,
     display: "grid",
-    gap: tokens.spacingHorizontalM,
-    paddingTop: tokens.spacingVerticalM,
+    gap: tokens.spacingHorizontalXS,
+    paddingTop: tokens.spacingVerticalS,
     overflow: "auto",
+    minHeight: 0,
   },
   roleCard: {
     borderLeftWidth: "4px",
     borderLeftStyle: "solid",
-    padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalM}`,
-    boxShadow: tokens.shadow2,
-    transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}, transform ${tokens.durationFast} ${tokens.curveEasyEase}`,
-    ":hover": {
-      boxShadow: tokens.shadow4,
-      transform: "translateY(-1px)",
-    },
+    padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderRadius: tokens.borderRadiusMedium,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    overflow: "hidden",
   },
   roleHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: tokens.spacingVerticalM,
+    marginBottom: tokens.spacingVerticalXS,
+    flexShrink: 0,
+  },
+  roleName: {
+    fontSize: tokens.fontSizeBase300,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  roleCount: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightMedium,
   },
   assignmentsList: {
     listStyleType: "none",
     padding: 0,
     margin: 0,
     overflow: "auto",
-    display: "grid",
-    rowGap: tokens.spacingVerticalS,
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalXS,
+    flex: 1,
+    minHeight: 0,
   },
   assignmentItem: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: tokens.colorNeutralBackground2,
-    borderRadius: tokens.borderRadiusMedium,
-    padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
-    columnGap: tokens.spacingHorizontalM,
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}, border-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
+    backgroundColor: tokens.colorNeutralBackground3,
+    borderRadius: tokens.borderRadiusSmall,
+    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
+    columnGap: tokens.spacingHorizontalS,
+    flexShrink: 0,
+    fontSize: tokens.fontSizeBase200,
+    transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
     ":hover": {
-      backgroundColor: tokens.colorNeutralBackground2Hover,
-      borderColor: tokens.colorNeutralStroke1Hover,
+      backgroundColor: tokens.colorNeutralBackground3Hover,
     },
   },
   assignmentName: {
@@ -731,9 +738,10 @@ export default function DailyRunBoard({
       const req = getRequiredFor(selectedDateObj, group.id, r.id, seg);
       return assignedCount >= req;
     });
+    // Use more subtle accent colors
     const groupAccent = groupNeedsMet
-      ? tokens.colorPaletteGreenBorderActive
-      : tokens.colorPaletteRedBorderActive;
+      ? tokens.colorPaletteGreenBackground2
+      : tokens.colorPaletteRedBackground2;
     const { bg: groupBg, fg: groupFg } = themeColors(group.theme);
     return (
       <Card
@@ -765,11 +773,6 @@ export default function DailyRunBoard({
               )}
               <Title3>{group.name}</Title3>
             </div>
-          }
-          description={
-            <Caption1 className={s.groupMeta}>
-              {group.theme || "No Theme"}
-            </Caption1>
           }
         />
         <div
@@ -941,12 +944,13 @@ export default function DailyRunBoard({
     const assignedEffective = assigns.length - heavyCount;
     const status: "under" | "exact" | "over" =
       assignedEffective < req ? "under" : assignedEffective === req ? "exact" : "over";
+    // Use more subtle accent colors for role cards
     const accentColor =
       status === "under"
-        ? tokens.colorPaletteRedBorderActive
+        ? tokens.colorPaletteRedBackground2
         : status === "exact"
-        ? tokens.colorPaletteGreenBorderActive
-        : tokens.colorPaletteYellowBorderActive;
+        ? tokens.colorPaletteGreenBackground2
+        : tokens.colorPaletteYellowBackground2;
   // Move action availability is handled per-person (blocked for heavy time-off), not by overstaffed status
 
     const handleMove = useCallback(
@@ -1020,19 +1024,8 @@ export default function DailyRunBoard({
         }}
       >
         <div className={s.roleHeader}>
-          <Subtitle2>{role.name}</Subtitle2>
-          <Badge
-            appearance="tint"
-            color={
-              status === "under"
-                ? "danger"
-                : status === "exact"
-                ? "success"
-                : "warning"
-            }
-          >
-            {assignedEffective}/{req}
-          </Badge>
+          <span className={s.roleName}>{role.name}</span>
+          <span className={s.roleCount}>{assignedEffective}/{req}</span>
         </div>
 
         <div

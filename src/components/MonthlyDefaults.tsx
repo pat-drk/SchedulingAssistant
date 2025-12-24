@@ -30,13 +30,18 @@ import {
   Tab,
   TabList,
   Checkbox,
+  Menu,
+  MenuTrigger,
+  MenuPopover,
+  MenuList,
+  MenuItem,
 } from "@fluentui/react-components";
-import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, freshPeopleFilters } from "./filters/PeopleFilters";
+import { MoreHorizontal20Regular, Note20Regular } from "@fluentui/react-icons";
+import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, usePersistentFilters } from "./filters/PeopleFilters";
 import SmartSelect from "./controls/SmartSelect";
 import PersonName from "./PersonName";
 import { exportMonthOneSheetXlsx } from "../excel/export-one-sheet";
 import { type Segment, type SegmentRow } from "../services/segments";
-import { Note20Regular } from "@fluentui/react-icons";
 import type { Availability } from "../services/availabilityOverrides";
 import { SIX_MONTHS_MS, REQUIRED_TRAINING_AREAS, isInTrainingPeriod } from "../utils/trainingConstants";
 import { getWeekDateRange, formatDateRange, type WeekStartMode } from "../utils/weekCalculation";
@@ -164,12 +169,50 @@ const useStyles = makeStyles({
     rowGap: tokens.spacingVerticalM,
   },
   toolbar: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto",
-    alignItems: "end",
-    gap: tokens.spacingHorizontalM,
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalS,
     paddingBlockEnd: tokens.spacingVerticalS,
     minWidth: 0,
+  },
+  topRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: tokens.spacingHorizontalM,
+    alignItems: "end",
+  },
+  controlGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalXS,
+    minWidth: "140px",
+  },
+  actionRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: tokens.spacingHorizontalM,
+    alignItems: "center",
+    paddingTop: tokens.spacingVerticalS,
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  primaryActions: {
+    display: "flex",
+    gap: tokens.spacingHorizontalS,
+    alignItems: "center",
+  },
+  secondaryActions: {
+    display: "flex",
+    gap: tokens.spacingHorizontalM,
+    alignItems: "center",
+    marginLeft: "auto",
+  },
+  copySection: {
+    display: "flex",
+    alignItems: "end",
+    gap: tokens.spacingHorizontalS,
+    padding: tokens.spacingHorizontalS,
+    backgroundColor: tokens.colorNeutralBackground2,
+    borderRadius: tokens.borderRadiusMedium,
   },
   leftControls: {
     display: "grid",
@@ -185,8 +228,9 @@ const useStyles = makeStyles({
     justifyContent: "flex-end",
   },
   label: {
-    fontSize: tokens.fontSizeBase300,
-    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
+    fontWeight: tokens.fontWeightMedium,
   },
   field: {
     width: "100%",
@@ -430,7 +474,7 @@ export default function MonthlyDefaults({
 }: MonthlyDefaultsProps) {
   const styles = useStyles();
   const segmentNames = useMemo(() => segments.map(s => s.name as Segment), [segments]);
-  const [filters, setFilters] = useState<PeopleFiltersState>(() => freshPeopleFilters());
+  const [filters, setFilters] = usePersistentFilters('monthlyDefaultsFilters');
   const dialogs = useDialogs();
   
   // Format month for display
@@ -1299,66 +1343,100 @@ export default function MonthlyDefaults({
   return (
     <div className={styles.root}>
       <div className={styles.toolbar}>
-        <div className={styles.leftControls}>
-          <div>
-          <span className={styles.label}>Month</span>
-          <Input className={styles.field} type="month" value={selectedMonth} onChange={(_, d) => setSelectedMonth(d.value)} />
+        {/* Top row: Controls */}
+        <div className={styles.topRow}>
+          <div className={styles.controlGroup}>
+            <span className={styles.label}>Month</span>
+            <Input className={styles.field} type="month" value={selectedMonth} onChange={(_, d) => setSelectedMonth(d.value)} />
           </div>
-          <div>
-          <span className={styles.label}>Copy From</span>
-          <Input className={styles.field} type="month" value={copyFromMonth} onChange={(_, d) => setCopyFromMonth(d.value)} />
-          </div>
-          <div>
-          <span className={styles.label}>Sort by</span>
+          <div className={styles.controlGroup}>
+            <span className={styles.label}>Sort by</span>
             <Dropdown
               className={styles.field}
               selectedOptions={[sortKey]}
               value={sortKeyLabel}
               onOptionSelect={(_, data) => setSortKey(data.optionValue as any)}
             >
-          <Option value="name" text="Name">Name</Option>
-          <Option value="email" text="Email">Email</Option>
-          <Option value="brother_sister" text="B/S">B/S</Option>
-          <Option value="commuter" text="Commute">Commute</Option>
-          <Option value="active" text="Active">Active</Option>
-          <Option value="avail_mon" text="Mon">Mon</Option>
-          <Option value="avail_tue" text="Tue">Tue</Option>
-          <Option value="avail_wed" text="Wed">Wed</Option>
-          <Option value="avail_thu" text="Thu">Thu</Option>
-          <Option value="avail_fri" text="Fri">Fri</Option>
-          {segmentNames.map(seg => (
-            <Option key={seg} value={seg} text={`${seg} Role`}>{`${seg} Role`}</Option>
-          ))}
+              <Option value="name" text="Name">Name</Option>
+              <Option value="email" text="Email">Email</Option>
+              <Option value="brother_sister" text="B/S">B/S</Option>
+              <Option value="commuter" text="Commute">Commute</Option>
+              <Option value="active" text="Active">Active</Option>
+              <Option value="avail_mon" text="Mon">Mon</Option>
+              <Option value="avail_tue" text="Tue">Tue</Option>
+              <Option value="avail_wed" text="Wed">Wed</Option>
+              <Option value="avail_thu" text="Thu">Thu</Option>
+              <Option value="avail_fri" text="Fri">Fri</Option>
+              {segmentNames.map(seg => (
+                <Option key={seg} value={seg} text={`${seg} Role`}>{`${seg} Role`}</Option>
+              ))}
             </Dropdown>
           </div>
-          <div>
-            <span className={styles.label}>People filters</span>
-            <PeopleFiltersBar state={filters} onChange={(next) => setFilters((s) => ({ ...s, ...next }))} />
-          </div>
-        </div>
-        <div className={styles.rightActions}>
+          <Button 
+            appearance="subtle" 
+            size="small"
+            onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+          >
+            {sortDir === 'asc' ? '↑ Asc' : '↓ Desc'}
+          </Button>
           <Checkbox
             label="Trainees only"
             checked={showOnlyTrainees}
             onChange={(_, data) => setShowOnlyTrainees(!!data.checked)}
           />
-          <Button onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}>{sortDir === 'asc' ? 'Asc' : 'Desc'}</Button>
-          <Button onClick={() => setMonthlyEditing(!monthlyEditing)}>{monthlyEditing ? 'Done' : 'Edit'}</Button>
-          {monthlyEditing && (
-            <Button
-              appearance={showDashboard ? 'primary' : 'secondary'}
-              onClick={() => setShowDashboard((prev) => !prev)}
+          <PeopleFiltersBar state={filters} onChange={(next) => setFilters((s) => ({ ...s, ...next }))} />
+        </div>
+        
+        {/* Action row */}
+        <div className={styles.actionRow}>
+          <div className={styles.primaryActions}>
+            <Button 
+              appearance={monthlyEditing ? 'primary' : 'secondary'}
+              onClick={() => setMonthlyEditing(!monthlyEditing)}
             >
-              {showDashboard ? 'Hide Dashboard' : 'Show Dashboard'}
+              {monthlyEditing ? 'Done Editing' : 'Edit Defaults'}
             </Button>
-          )}
-          <Button onClick={() => void applyMonthlyDefaults(selectedMonth)}>Apply to Month</Button>
-          <Button onClick={handleCopyClick}>Copy from {formatMonth(copyFromMonth)} to {formatMonth(selectedMonth)}</Button>
-          <Button onClick={() => exportMonthlyDefaults(selectedMonth)}>Export HTML</Button>
-          <Button onClick={handleExportXlsx}>Export .xlsx</Button>
+            {monthlyEditing && (
+              <Button
+                appearance={showDashboard ? 'primary' : 'secondary'}
+                onClick={() => setShowDashboard((prev) => !prev)}
+              >
+                {showDashboard ? 'Hide Dashboard' : 'Dashboard'}
+              </Button>
+            )}
+            <Button appearance="secondary" onClick={() => void applyMonthlyDefaults(selectedMonth)}>
+              Apply to Month
+            </Button>
+          </div>
+          
+          <div className={styles.secondaryActions}>
+            <div className={styles.copySection}>
+              <div className={styles.controlGroup} style={{ minWidth: '110px' }}>
+                <span className={styles.label}>Copy from</span>
+                <Input type="month" value={copyFromMonth} onChange={(_, d) => setCopyFromMonth(d.value)} />
+              </div>
+              <Button appearance="primary" size="small" onClick={handleCopyClick}>
+                Copy
+              </Button>
+            </div>
+            
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button appearance="secondary" icon={<MoreHorizontal20Regular />}>
+                  Export
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  <MenuItem onClick={() => exportMonthlyDefaults(selectedMonth)}>Export HTML</MenuItem>
+                  <MenuItem onClick={handleExportXlsx}>Export Excel (.xlsx)</MenuItem>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
+          </div>
         </div>
       </div>
-  <div className={styles.scroll}>
+      <div className={styles.scroll}>
         <Table size="small" aria-label="Monthly defaults">
           <TableHeader>
             <TableRow>

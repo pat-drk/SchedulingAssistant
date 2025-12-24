@@ -13,13 +13,13 @@ const ExportPreview = React.lazy(() => import("./components/ExportPreview"));
 import PersonName from "./components/PersonName";
 import PersonProfileModal from "./components/PersonProfileModal";
 import { ProfileContext } from "./components/ProfileContext";
-import { Button, Checkbox, Dropdown, Input, Option, Table, TableHeader, TableHeaderCell, TableRow, TableBody, TableCell, Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions, makeStyles, tokens, MessageBar, MessageBarBody, Field } from "@fluentui/react-components";
+import { Button, Checkbox, Dropdown, Input, Option, Table, TableHeader, TableHeaderCell, TableRow, TableBody, TableCell, Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions, makeStyles, tokens, MessageBar, MessageBarBody } from "@fluentui/react-components";
 import { FluentProvider, webDarkTheme, webLightTheme } from "@fluentui/react-components";
-import { DismissRegular } from "@fluentui/react-icons";
+import { DismissRegular, ChevronDown20Regular } from "@fluentui/react-icons";
 import MonthlyDefaults from "./components/MonthlyDefaults";
 import CrewHistoryView from "./components/CrewHistoryView";
 import Training from "./components/Training";
-import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, freshPeopleFilters } from "./components/filters/PeopleFilters";
+import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, usePersistentFilters } from "./components/filters/PeopleFilters";
 import { isInTrainingPeriod, weeksRemainingInTraining } from "./utils/trainingConstants";
 import ConflictResolutionDialog from "./components/ConflictResolutionDialog";
 import { useSync } from "./sync/useSync";
@@ -28,6 +28,7 @@ import { Conflict, ConflictResolution } from "./sync/types";
 import { getWeekOfMonth, type WeekStartMode } from "./utils/weekCalculation";
 import AlertDialog from "./components/AlertDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
+import EmailInputDialog from "./components/EmailInputDialog";
 import { ToastContainer, useToast } from "./components/Toast";
 import { logger } from "./utils/logger";
 
@@ -169,20 +170,48 @@ const useBaselineViewStyles = makeStyles({
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr',
-    gap: tokens.spacingHorizontalL,
-    ['@media (min-width: 1024px)']: { gridTemplateColumns: 'repeat(2, 1fr)' },
-    ['@media (min-width: 1440px)']: { gridTemplateColumns: 'repeat(3, 1fr)' },
+    gap: tokens.spacingHorizontalM,
   },
   card: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusLarge,
-    padding: tokens.spacingHorizontalL,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow2,
-    transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+    overflow: 'hidden',
+  },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: tokens.spacingHorizontalM,
+    cursor: 'pointer',
+    backgroundColor: tokens.colorNeutralBackground2,
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
     ":hover": {
-      boxShadow: tokens.shadow4,
+      backgroundColor: tokens.colorNeutralBackground2Hover,
     },
+  },
+  cardHeaderLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalM,
+  },
+  cardHeaderStats: {
+    display: 'flex',
+    gap: tokens.spacingHorizontalM,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  statBadge: {
+    fontSize: tokens.fontSizeBase200,
+    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground3,
+    color: tokens.colorNeutralForeground2,
+  },
+  cardContent: {
+    padding: tokens.spacingHorizontalL,
   },
   roleCard: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -208,6 +237,12 @@ const useBaselineViewStyles = makeStyles({
     marginBottom: tokens.spacingVerticalXS,
     fontWeight: tokens.fontWeightSemibold,
   },
+  chevron: {
+    transition: `transform ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+  },
+  chevronExpanded: {
+    transform: 'rotate(180deg)',
+  },
 });
 
 const usePeopleEditorStyles = makeStyles({
@@ -224,6 +259,56 @@ const usePeopleEditorStyles = makeStyles({
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: tokens.spacingVerticalS },
   title: { fontWeight: tokens.fontWeightSemibold, fontSize: tokens.fontSizeBase400 },
   actions: { display: 'flex', gap: tokens.spacingHorizontalS },
+  dialogSurface: {
+    width: '700px',
+    maxWidth: '95vw',
+  },
+  section: {
+    marginBottom: tokens.spacingVerticalL,
+  },
+  sectionTitle: {
+    fontSize: tokens.fontSizeBase300,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1,
+    marginBottom: tokens.spacingVerticalS,
+    paddingBottom: tokens.spacingVerticalXS,
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
+  formRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: tokens.spacingHorizontalM,
+    marginBottom: tokens.spacingVerticalM,
+  },
+  formRowThree: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+    gap: tokens.spacingHorizontalM,
+    marginBottom: tokens.spacingVerticalM,
+  },
+  formField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacingVerticalXS,
+  },
+  formFieldFull: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacingVerticalXS,
+    gridColumn: '1 / -1',
+  },
+  checkboxRow: {
+    display: 'flex',
+    gap: tokens.spacingHorizontalL,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: tokens.spacingVerticalM,
+  },
+  availabilityGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(5, minmax(110px, 1fr))',
+    gap: tokens.spacingHorizontalM,
+  },
   formGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(12, 1fr)',
@@ -235,20 +320,33 @@ const usePeopleEditorStyles = makeStyles({
   col4: { gridColumn: 'span 4' },
   col6: { gridColumn: 'span 6' },
   centerRow: { display: 'flex', alignItems: 'center' },
-  smallLabel: { color: tokens.colorNeutralForeground3, marginBottom: tokens.spacingVerticalXS, fontSize: tokens.fontSizeBase200 },
+  smallLabel: { 
+    color: tokens.colorNeutralForeground3, 
+    marginBottom: tokens.spacingVerticalXS, 
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightMedium,
+  },
   qualGrid: {
     display: 'grid',
     gap: tokens.spacingHorizontalXS,
-    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-    maxHeight: '40vh',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+    maxHeight: '200px',
     overflow: 'auto',
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
-    padding: tokens.spacingHorizontalS,
+    padding: tokens.spacingHorizontalM,
+    backgroundColor: tokens.colorNeutralBackground2,
   },
   row: { display: 'flex', gap: tokens.spacingHorizontalS },
   cellWrap: { whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' },
   availText: { color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 },
+  trainingStatus: {
+    marginTop: tokens.spacingVerticalM,
+    padding: tokens.spacingHorizontalM,
+    backgroundColor: tokens.colorNeutralBackground2,
+    borderRadius: tokens.borderRadiusMedium,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+  },
 });
 
 const useNeedsEditorStyles = makeStyles({
@@ -409,8 +507,6 @@ export default function App() {
     onSubmit: (email: string) => void;
     onCancel: () => void;
   } | null>(null);
-  const [emailInput, setEmailInput] = useState("");
-  const [emailInputError, setEmailInputError] = useState("");
 
   // Browser compatibility warning
   const [showBrowserWarning, setShowBrowserWarning] = useState(false);
@@ -1445,6 +1541,7 @@ async function exportShifts() {
   }
   function BaselineView(){
     const s = useBaselineViewStyles();
+    const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
     
     // Calculate summary metrics
     const totalRoles = roles.length;
@@ -1453,6 +1550,46 @@ async function exportShifts() {
     const totalBaselines = useMemo(() => {
       return all(`SELECT COUNT(*) as count FROM needs_baseline WHERE required > 0`)[0]?.count || 0;
     }, [all]);
+    
+    // Calculate per-group stats
+    const groupStats = useMemo(() => {
+      const stats = new Map<number, { rolesCount: number; totalRequired: number }>();
+      for (const g of groups) {
+        const groupRoles = roles.filter((r: any) => r.group_id === g.id);
+        let totalRequired = 0;
+        for (const r of groupRoles) {
+          for (const seg of segments) {
+            const baseline = all(
+              `SELECT required FROM needs_baseline WHERE group_id=? AND role_id=? AND segment=?`,
+              [g.id, r.id, seg.name]
+            )[0];
+            totalRequired += baseline?.required || 0;
+          }
+        }
+        stats.set(g.id, { rolesCount: groupRoles.length, totalRequired });
+      }
+      return stats;
+    }, [groups, roles, segments, all]);
+    
+    const toggleGroup = (groupId: number) => {
+      setExpandedGroups(prev => {
+        const next = new Set(prev);
+        if (next.has(groupId)) {
+          next.delete(groupId);
+        } else {
+          next.add(groupId);
+        }
+        return next;
+      });
+    };
+    
+    const expandAll = () => {
+      setExpandedGroups(new Set(groups.map((g: any) => g.id)));
+    };
+    
+    const collapseAll = () => {
+      setExpandedGroups(new Set());
+    };
     
     return (
       <div className={s.root}>
@@ -1480,27 +1617,54 @@ async function exportShifts() {
               <div className={s.metricLabel}>Configured Needs</div>
             </div>
           </div>
+          
+          <div style={{ display: 'flex', gap: tokens.spacingHorizontalS, marginBottom: tokens.spacingVerticalM }}>
+            <Button appearance="secondary" size="small" onClick={expandAll}>Expand All</Button>
+            <Button appearance="secondary" size="small" onClick={collapseAll}>Collapse All</Button>
+          </div>
         </div>
         
         <div className={s.grid}>
-          {groups.map((g:any)=> (
-            <div key={g.id} className={s.card}>
-              <div className={s.subTitle}>{g.name}</div>
-              {roles.filter((r)=>r.group_id===g.id).map((r:any)=> (
-                <div key={r.id} className={s.roleCard}>
-                  <div className={s.subTitle}>{r.name}</div>
-                  <div className={s.roleGrid}>
-                      {segments.map((seg) => (
-                        <div key={seg.name}>
-                          <div className={s.label}>{seg.name}</div>
-                          <RequiredCell date={null} group={g} role={r} segment={seg.name as Segment} />
-                        </div>
-                      ))}
+          {groups.map((g:any)=> {
+            const stats = groupStats.get(g.id);
+            const isExpanded = expandedGroups.has(g.id);
+            return (
+              <div key={g.id} className={s.card}>
+                <div 
+                  className={s.cardHeader}
+                  onClick={() => toggleGroup(g.id)}
+                >
+                  <div className={s.cardHeaderLeft}>
+                    <ChevronDown20Regular 
+                      className={`${s.chevron} ${isExpanded ? s.chevronExpanded : ''}`}
+                    />
+                    <span className={s.subTitle} style={{ marginBottom: 0 }}>{g.name}</span>
+                  </div>
+                  <div className={s.cardHeaderStats}>
+                    <span className={s.statBadge}>{stats?.rolesCount || 0} roles</span>
+                    <span className={s.statBadge}>{stats?.totalRequired || 0} required</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          ))}
+                {isExpanded && (
+                  <div className={s.cardContent}>
+                    {roles.filter((r)=>r.group_id===g.id).map((r:any)=> (
+                      <div key={r.id} className={s.roleCard}>
+                        <div className={s.subTitle}>{r.name}</div>
+                        <div className={s.roleGrid}>
+                          {segments.map((seg) => (
+                            <div key={seg.name}>
+                              <div className={s.label}>{seg.name}</div>
+                              <RequiredCell date={null} group={g} role={r} segment={seg.name as Segment} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -1517,7 +1681,7 @@ function PeopleEditor(){
   const [bulkAction,setBulkAction] = useState<'add'|'remove'>('add');
   const [bulkPeople,setBulkPeople] = useState<Set<number>>(new Set());
   const [bulkRoles,setBulkRoles] = useState<Set<number>>(new Set());
-  const [filters, setFilters] = useState<PeopleFiltersState>(() => freshPeopleFilters());
+  const [filters, setFilters] = usePersistentFilters('peopleEditorFilters');
 
   // Query all people, including inactive entries, so they can be edited
   const people = all(`SELECT * FROM person ORDER BY last_name, first_name`);
@@ -1686,7 +1850,9 @@ function PeopleEditor(){
                   <div className={s.smallLabel}>People</div>
                   <Dropdown
                     multiselect
+                    placeholder="Select people..."
                     selectedOptions={[...bulkPeople].map(String)}
+                    value={bulkPeople.size > 0 ? `${bulkPeople.size} selected` : ''}
                     onOptionSelect={(_, data) =>
                       setBulkPeople(new Set((data.selectedOptions as string[]).map(Number)))
                     }
@@ -1705,6 +1871,7 @@ function PeopleEditor(){
                   <div className={s.smallLabel}>Action</div>
                   <Dropdown
                     selectedOptions={[bulkAction]}
+                    value={bulkAction === 'add' ? 'Add' : 'Remove'}
                     onOptionSelect={(_, data) =>
                       setBulkAction((data.optionValue ?? data.optionText) as 'add' | 'remove')
                     }
@@ -1741,58 +1908,107 @@ function PeopleEditor(){
       </Dialog>
 
       <Dialog open={showModal} onOpenChange={(_, d) => setShowModal(d.open)}>
-        <DialogSurface>
+        <DialogSurface className={s.dialogSurface}>
           <DialogBody>
             <DialogTitle>{editing ? 'Edit Person' : 'Add Person'}</DialogTitle>
             <DialogContent>
-              <div className={s.formGrid}>
-                <Input className={s.col3} placeholder="Last Name" value={form.last_name||''} onChange={(_,d)=>setForm({...form,last_name:d.value})} />
-                <Input className={s.col3} placeholder="First Name" value={form.first_name||''} onChange={(_,d)=>setForm({...form,first_name:d.value})} />
-                <Input className={s.col4} placeholder="Work Email" value={form.work_email||''} onChange={(_,d)=>setForm({...form,work_email:d.value})} />
-                <div className={s.col2}>
-                  <Dropdown
-                    selectedOptions={[form.brother_sister || 'Brother']}
-                    onOptionSelect={(_, data)=> setForm({...form, brother_sister: String(data.optionValue ?? data.optionText)})}
-                  >
-                    <Option value="Brother" text="Brother">Brother</Option>
-                    <Option value="Sister" text="Sister">Sister</Option>
-                  </Dropdown>
+              {/* Basic Information Section */}
+              <div className={s.section}>
+                <div className={s.sectionTitle}>Basic Information</div>
+                <div className={s.formRow}>
+                  <div className={s.formField}>
+                    <div className={s.smallLabel}>First Name *</div>
+                    <Input 
+                      value={form.first_name||''} 
+                      onChange={(_,d)=>setForm({...form,first_name:d.value})} 
+                      placeholder="First Name"
+                    />
+                  </div>
+                  <div className={s.formField}>
+                    <div className={s.smallLabel}>Last Name *</div>
+                    <Input 
+                      value={form.last_name||''} 
+                      onChange={(_,d)=>setForm({...form,last_name:d.value})} 
+                      placeholder="Last Name"
+                    />
+                  </div>
                 </div>
-                <div className={`${s.col2} ${s.centerRow}`}>
-                  <Checkbox label="Commuter" checked={!!form.commuter} onChange={(_,data)=>setForm({...form,commuter:!!data.checked})} />
-                </div>
-                <div className={`${s.col2} ${s.centerRow}`}>
-                  <Checkbox label="Active" checked={form.active!==false} onChange={(_,data)=>setForm({...form,active:!!data.checked})} />
-                </div>
-                <div className={s.col3}>
-                  <div className={s.smallLabel}>Start Date</div>
-                  <Input type="date" value={form.start_date||''} onChange={(_,d)=>setForm({...form,start_date:d.value})} />
-                </div>
-                <div className={s.col3}>
-                  <div className={s.smallLabel}>End Date (optional)</div>
-                  <Input type="date" value={form.end_date||''} onChange={(_,d)=>setForm({...form,end_date:d.value})} />
-                </div>
-                {WEEKDAYS.map((w,idx)=> (
-                  <div key={w} className={s.col2}>
-                    <div className={s.smallLabel}>{w} Availability</div>
+                <div className={s.formRow}>
+                  <div className={s.formField}>
+                    <div className={s.smallLabel}>Work Email</div>
+                    <Input 
+                      type="email"
+                      value={form.work_email||''} 
+                      onChange={(_,d)=>setForm({...form,work_email:d.value})} 
+                      placeholder="user@example.com"
+                    />
+                  </div>
+                  <div className={s.formField}>
+                    <div className={s.smallLabel}>Gender</div>
                     <Dropdown
-                      selectedOptions={[form[["avail_mon","avail_tue","avail_wed","avail_thu","avail_fri"][idx]]||'U']}
-                      onOptionSelect={(_, data)=>{
-                        const key = ["avail_mon","avail_tue","avail_wed","avail_thu","avail_fri"][idx] as keyof typeof form;
-                        setForm({...form,[key]: String(data.optionValue ?? data.optionText)});
-                      }}
+                      selectedOptions={[form.brother_sister || 'Brother']}
+                      value={form.brother_sister || 'Brother'}
+                      onOptionSelect={(_, data)=> setForm({...form, brother_sister: String(data.optionValue ?? data.optionText)})}
                     >
-                      <Option value="U" text="Unavailable">Unavailable</Option>
-                      <Option value="AM" text="AM">AM</Option>
-                      <Option value="PM" text="PM">PM</Option>
-                      <Option value="B" text="Both">Both</Option>
+                      <Option value="Brother" text="Brother">Brother</Option>
+                      <Option value="Sister" text="Sister">Sister</Option>
                     </Dropdown>
                   </div>
-                ))}
+                </div>
+                <div className={s.checkboxRow}>
+                  <Checkbox label="Commuter" checked={!!form.commuter} onChange={(_,data)=>setForm({...form,commuter:!!data.checked})} />
+                  <Checkbox label="Active" checked={form.active!==false} onChange={(_,data)=>setForm({...form,active:!!data.checked})} />
+                </div>
               </div>
 
-              <div>
-                <div className={s.smallLabel}>Qualified Roles</div>
+              {/* Dates Section */}
+              <div className={s.section}>
+                <div className={s.sectionTitle}>Dates</div>
+                <div className={s.formRow}>
+                  <div className={s.formField}>
+                    <div className={s.smallLabel}>Start Date</div>
+                    <Input type="date" value={form.start_date||''} onChange={(_,d)=>setForm({...form,start_date:d.value})} />
+                  </div>
+                  <div className={s.formField}>
+                    <div className={s.smallLabel}>End Date (optional)</div>
+                    <Input type="date" value={form.end_date||''} onChange={(_,d)=>setForm({...form,end_date:d.value})} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Availability Section */}
+              <div className={s.section}>
+                <div className={s.sectionTitle}>Weekly Availability</div>
+                <div className={s.availabilityGrid}>
+                  {WEEKDAYS.map((w,idx)=> {
+                    const availKey = ["avail_mon","avail_tue","avail_wed","avail_thu","avail_fri"][idx];
+                    const currentValue = form[availKey] || 'U';
+                    const availLabels: Record<string, string> = { U: 'Unavailable', AM: 'AM', PM: 'PM', B: 'Both' };
+                    return (
+                      <div key={w} className={s.formField}>
+                        <div className={s.smallLabel}>{w.slice(0, 3)}</div>
+                        <Dropdown
+                          selectedOptions={[currentValue]}
+                          value={availLabels[currentValue] || 'Unavailable'}
+                          onOptionSelect={(_, data)=>{
+                            const key = availKey as keyof typeof form;
+                            setForm({...form,[key]: String(data.optionValue ?? data.optionText)});
+                          }}
+                        >
+                          <Option value="U" text="Unavailable">Unavailable</Option>
+                          <Option value="AM" text="AM">AM</Option>
+                          <Option value="PM" text="PM">PM</Option>
+                          <Option value="B" text="Both">Both</Option>
+                        </Dropdown>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Qualifications Section */}
+              <div className={s.section}>
+                <div className={s.sectionTitle}>Qualified Roles</div>
                 <div className={s.qualGrid}>
                   {roles.map((r:any)=>(
                     <Checkbox key={r.id}
@@ -1808,6 +2024,7 @@ function PeopleEditor(){
                 </div>
               </div>
 
+              {/* Training Status */}
               {form.start_date && (() => {
                 const now = new Date();
                 const startDate = new Date(form.start_date);
@@ -1817,8 +2034,8 @@ function PeopleEditor(){
                 if (isTrainee) {
                   const weeksRemaining = weeksRemainingInTraining(startDate, now);
                   return (
-                    <div style={{ marginTop: '16px', padding: '12px', backgroundColor: tokens.colorNeutralBackground2, borderRadius: '4px' }}>
-                      <div style={{ fontWeight: tokens.fontWeightSemibold, marginBottom: '4px' }}>Training Status</div>
+                    <div className={s.trainingStatus}>
+                      <div style={{ fontWeight: tokens.fontWeightSemibold, marginBottom: tokens.spacingVerticalXS }}>Training Status</div>
                       <div style={{ fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 }}>
                         In training period • {weeksRemaining} weeks remaining
                       </div>
@@ -1829,7 +2046,7 @@ function PeopleEditor(){
               })()}
             </DialogContent>
             <DialogActions>
-              <Button onClick={closeModal}>Close</Button>
+              <Button onClick={closeModal}>Cancel</Button>
               <Button appearance="primary" onClick={save}>{editing ? 'Save Changes' : 'Add Person'}</Button>
             </DialogActions>
           </DialogBody>
@@ -2119,58 +2336,17 @@ function PeopleEditor(){
       )}
       
       {/* Email input dialog */}
-      {emailDialog && (
-        <Dialog open onOpenChange={(_, data) => !data.open && emailDialog.onCancel()}>
-          <DialogSurface>
-            <DialogBody>
-              <DialogTitle>Enter Your Work Email</DialogTitle>
-              <DialogContent>
-                <Field
-                  label="Work Email"
-                  validationMessage={emailInputError}
-                  validationState={emailInputError ? "error" : undefined}
-                  required
-                >
-                  <Input
-                    value={emailInput}
-                    onChange={(_, data) => {
-                      setEmailInput(data.value);
-                      setEmailInputError("");
-                    }}
-                    placeholder="user@example.com"
-                    type="email"
-                  />
-                </Field>
-                <div style={{ marginTop: tokens.spacingVerticalS, fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 }}>
-                  Your email is used for sync and personalization features.
-                </div>
-              </DialogContent>
-              <DialogActions>
-                <Button appearance="secondary" onClick={() => {
-                  setEmailInput("");
-                  setEmailInputError("");
-                  emailDialog.onCancel();
-                }}>Skip</Button>
-                <Button appearance="primary" onClick={() => {
-                  const email = emailInput.trim();
-                  if (!email) {
-                    setEmailInputError("Email is required");
-                    return;
-                  }
-                  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                  if (!emailRegex.test(email)) {
-                    setEmailInputError("Invalid email format");
-                    return;
-                  }
-                  setEmailInput("");
-                  setEmailInputError("");
-                  emailDialog.onSubmit(email);
-                }}>Submit</Button>
-              </DialogActions>
-            </DialogBody>
-          </DialogSurface>
-        </Dialog>
-      )}
+      <EmailInputDialog
+        open={!!emailDialog}
+        onSubmit={(email) => {
+          emailDialog?.onSubmit(email);
+          setEmailDialog(null);
+        }}
+        onCancel={() => {
+          emailDialog?.onCancel();
+          setEmailDialog(null);
+        }}
+      />
       
       {/* Person delete confirmation */}
       {personToDelete !== null && (
