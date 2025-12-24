@@ -206,7 +206,9 @@ export default function AvailabilityOverrideManager({
       <div className={s.topRow}>
         <Dropdown
           className={s.personCol}
-          value={personId != null ? String(personId) : ""}
+          placeholder="Select person..."
+          selectedOptions={personId != null ? [String(personId)] : []}
+          value={personId != null ? people.find((p: any) => p.id === personId) ? `${people.find((p: any) => p.id === personId)?.first_name} ${people.find((p: any) => p.id === personId)?.last_name}` : '' : ''}
           onOptionSelect={(_, d) => setPersonId(Number(d.optionValue))}
         >
           {people.map((p: any) => {
@@ -240,7 +242,8 @@ export default function AvailabilityOverrideManager({
             {weekAvail.map((v, i) => (
               <TableCell key={i}>
                 <Dropdown
-                  value={v}
+                  selectedOptions={[v]}
+                  value={v === 'U' ? 'Unavailable' : v === 'AM' ? 'AM' : v === 'PM' ? 'PM' : 'Both'}
                   onOptionSelect={(_, d) =>
                     setWeekAvail((vals) => {
                       const n = [...vals];

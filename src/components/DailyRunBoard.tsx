@@ -138,6 +138,7 @@ const useStyles = makeStyles({
     flexDirection: "column",
     boxShadow: tokens.shadow4,
     transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+    overflow: "hidden",
     ":hover": {
       boxShadow: tokens.shadow8,
     },
@@ -155,34 +156,43 @@ const useStyles = makeStyles({
   rolesGrid: {
     flex: 1,
     display: "grid",
-    gap: tokens.spacingHorizontalM,
+    gap: tokens.spacingHorizontalS,
     paddingTop: tokens.spacingVerticalM,
     overflow: "auto",
+    minHeight: 0,
   },
   roleCard: {
-    borderLeftWidth: "4px",
+    borderLeftWidth: "3px",
     borderLeftStyle: "solid",
-    padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalM}`,
+    padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
     boxShadow: tokens.shadow2,
-    transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}, transform ${tokens.durationFast} ${tokens.curveEasyEase}`,
+    borderRadius: tokens.borderRadiusMedium,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    overflow: "hidden",
+    transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}`,
     ":hover": {
       boxShadow: tokens.shadow4,
-      transform: "translateY(-1px)",
     },
   },
   roleHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: tokens.spacingVerticalM,
+    marginBottom: tokens.spacingVerticalS,
+    flexShrink: 0,
   },
   assignmentsList: {
     listStyleType: "none",
     padding: 0,
     margin: 0,
     overflow: "auto",
-    display: "grid",
-    rowGap: tokens.spacingVerticalS,
+    display: "flex",
+    flexDirection: "column",
+    gap: tokens.spacingVerticalXS,
+    flex: 1,
+    minHeight: 0,
   },
   assignmentItem: {
     display: "flex",
@@ -190,13 +200,13 @@ const useStyles = makeStyles({
     justifyContent: "space-between",
     backgroundColor: tokens.colorNeutralBackground2,
     borderRadius: tokens.borderRadiusMedium,
-    padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
-    columnGap: tokens.spacingHorizontalM,
+    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
+    columnGap: tokens.spacingHorizontalS,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}, border-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
+    flexShrink: 0,
+    transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
     ":hover": {
       backgroundColor: tokens.colorNeutralBackground2Hover,
-      borderColor: tokens.colorNeutralStroke1Hover,
     },
   },
   assignmentName: {
@@ -731,9 +741,10 @@ export default function DailyRunBoard({
       const req = getRequiredFor(selectedDateObj, group.id, r.id, seg);
       return assignedCount >= req;
     });
+    // Use more subtle accent colors
     const groupAccent = groupNeedsMet
-      ? tokens.colorPaletteGreenBorderActive
-      : tokens.colorPaletteRedBorderActive;
+      ? tokens.colorPaletteGreenBackground2
+      : tokens.colorPaletteRedBackground2;
     const { bg: groupBg, fg: groupFg } = themeColors(group.theme);
     return (
       <Card
@@ -941,12 +952,13 @@ export default function DailyRunBoard({
     const assignedEffective = assigns.length - heavyCount;
     const status: "under" | "exact" | "over" =
       assignedEffective < req ? "under" : assignedEffective === req ? "exact" : "over";
+    // Use more subtle accent colors for role cards
     const accentColor =
       status === "under"
-        ? tokens.colorPaletteRedBorderActive
+        ? tokens.colorPaletteRedBackground2
         : status === "exact"
-        ? tokens.colorPaletteGreenBorderActive
-        : tokens.colorPaletteYellowBorderActive;
+        ? tokens.colorPaletteGreenBackground2
+        : tokens.colorPaletteYellowBackground2;
   // Move action availability is handled per-person (blocked for heavy time-off), not by overstaffed status
 
     const handleMove = useCallback(
