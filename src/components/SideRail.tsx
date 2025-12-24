@@ -13,6 +13,7 @@ import {
   WeatherMoon20Regular,
   Navigation20Regular,
   NavigationFilled,
+  MoreHorizontal20Regular,
 } from "@fluentui/react-icons";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import { MOBILE_NAV_HEIGHT, BREAKPOINTS } from "../styles/breakpoints";
@@ -202,8 +203,9 @@ export default function SideRail({
   ];
 
   // For mobile, show only primary tabs in bottom nav (derived from main nav items)
-  const primaryMobileTabs: TabKey[] = ["RUN", "PEOPLE", "MONTHLY", "EXPORT"];
+  const primaryMobileTabs: TabKey[] = ["RUN", "PEOPLE", "MONTHLY"];
   const primaryMobileNavItems = navItems.filter((item) => primaryMobileTabs.includes(item.key));
+  const secondaryMobileNavItems = navItems.filter((item) => !primaryMobileTabs.includes(item.key));
 
   if (isMobile) {
     return (
@@ -220,15 +222,39 @@ export default function SideRail({
             <span className={s.bottomNavLabel}>{item.label}</span>
           </div>
         ))}
-        <div
-          className={s.bottomNavItem}
-          role="button"
-          aria-label={themeName === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
-          onClick={() => setThemeName(themeName === "dark" ? "light" : "dark")}
-        >
-          {themeName === "dark" ? <WeatherMoon20Regular /> : <WeatherSunny20Regular />}
-          <span className={s.bottomNavLabel}>Theme</span>
-        </div>
+        {/* More menu for additional tabs */}
+        <Menu>
+          <MenuTrigger disableButtonEnhancement>
+            <div
+              className={s.bottomNavItem}
+              role="button"
+              aria-label="More navigation options"
+            >
+              <MoreHorizontal20Regular />
+              <span className={s.bottomNavLabel}>More</span>
+            </div>
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              {secondaryMobileNavItems.map((item) => (
+                <MenuItem
+                  key={item.key}
+                  icon={item.icon}
+                  onClick={() => setActiveTab(item.key)}
+                >
+                  {item.label}
+                </MenuItem>
+              ))}
+              <Divider />
+              <MenuItem
+                icon={themeName === "dark" ? <WeatherMoon20Regular /> : <WeatherSunny20Regular />}
+                onClick={() => setThemeName(themeName === "dark" ? "light" : "dark")}
+              >
+                {themeName === "dark" ? "Dark Mode" : "Light Mode"}
+              </MenuItem>
+            </MenuList>
+          </MenuPopover>
+        </Menu>
       </nav>
     );
   }

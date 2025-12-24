@@ -298,6 +298,9 @@ const usePeopleEditorStyles = makeStyles({
   dialogSurface: {
     width: '700px',
     maxWidth: '95vw',
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
     // Full-screen on mobile for better usability
     [`@media ${BREAKPOINTS.mobile.maxQuery}`]: {
       width: '100vw',
@@ -306,6 +309,12 @@ const usePeopleEditorStyles = makeStyles({
       maxHeight: '100vh',
       borderRadius: 0,
     },
+  },
+  dialogContent: {
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    flex: '1 1 auto',
+    minHeight: 0,
   },
   section: {
     marginBottom: tokens.spacingVerticalL,
@@ -1973,7 +1982,7 @@ function PeopleEditor(){
         <DialogSurface className={s.dialogSurface}>
           <DialogBody>
             <DialogTitle>{editing ? 'Edit Person' : 'Add Person'}</DialogTitle>
-            <DialogContent>
+            <DialogContent className={s.dialogContent}>
               {/* Basic Information Section */}
               <div className={s.section}>
                 <div className={s.sectionTitle}>Basic Information</div>
