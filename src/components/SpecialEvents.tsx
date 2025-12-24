@@ -31,7 +31,6 @@ import {
   ArrowUp20Regular,
   ArrowDown20Regular,
   MoreHorizontal20Regular,
-  Checkmark20Regular,
 } from "@fluentui/react-icons";
 import PersonName from "./PersonName";
 import ConfirmDialog from "./ConfirmDialog";
@@ -221,19 +220,6 @@ const useStyles = makeStyles({
     padding: tokens.spacingVerticalXXXL,
     color: tokens.colorNeutralForeground3,
   },
-  exportDialog: {
-    minWidth: '500px',
-  },
-  exportText: {
-    fontFamily: 'monospace',
-    fontSize: tokens.fontSizeBase200,
-    whiteSpace: 'pre-wrap',
-    backgroundColor: tokens.colorNeutralBackground2,
-    padding: tokens.spacingHorizontalM,
-    borderRadius: tokens.borderRadiusMedium,
-    maxHeight: '400px',
-    overflowY: 'auto',
-  },
 });
 
 export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }: SpecialEventsProps) {
@@ -241,7 +227,6 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [showMenuDialog, setShowMenuDialog] = useState(false);
-  const [showExportDialog, setShowExportDialog] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Partial<SpecialEvent> | null>(null);
   const [editingMenuItem, setEditingMenuItem] = useState<Partial<MenuItem> | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'event' | 'menuItem'; id: number } | null>(null);
@@ -432,75 +417,128 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
     return roleType === 'kitchen' ? 'danger' : 'success'; // Red for kitchen, Cyan for waiter
   };
 
-  // Export to Teams format
-  const handleExport = () => {
-    setShowExportDialog(true);
-  };
-
-  const generateTeamsExport = () => {
-    if (!selectedEvent) return '';
-
-    const formatDate = (dateStr: string) => {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    };
-
-    const formatTime = (time: string) => {
-      const [hours, minutes] = time.split(':');
-      const h = parseInt(hours);
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-      return `${h12}:${minutes} ${ampm}`;
-    };
-
-    let output = `**${selectedEvent.name}**\n`;
-    output += `${formatDate(selectedEvent.event_date)}\n`;
-    output += `${formatTime(selectedEvent.start_time)} - ${formatTime(selectedEvent.end_time)}\n\n`;
-
-    if (selectedEvent.description) {
-      output += `${selectedEvent.description}\n\n`;
-    }
-
-    output += `---\n\n`;
-
-    for (const item of menuItems) {
-      if (item.is_header) {
-        output += `**${item.name}**\n\n`;
-      } else {
-        output += `**${item.name}**\n`;
+  // Export to Teams XLSX format
+  const handleExport = async () => {
+    if (!selectedEvent) return;
+    
+    try {
+      // Load XLSX library
+      const XLSX_URL = "https://cdn.sheetjs.com/xlsx-latest/package/xlsx.mjs";
+      // @ts-ignore
+      const XLSX = await import(/* @vite-ignore */ XLSX_URL);
+      
+      // Helper functions
+      const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+      const fmtDateMDY = (d: Date) => {
+        const m = d.getMonth() + 1;
+        const day = d.getDate();
+        const y = d.getFullYear();
+        return `${m}/${day}/${y}`;
+      };
+      const fmtTime24 = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+      
+      // Parse event date and times
+      const eventDate = new Date(selectedEvent.event_date + 'T00:00:00');
+      const [startHour, startMin] = selectedEvent.start_time.split(':').map(Number);
+      const [endHour, endMin] = selectedEvent.end_time.split(':').map(Number);
+      
+      const startDateTime = new Date(eventDate);
+      startDateTime.setHours(startHour, startMin, 0, 0);
+      
+      const endDateTime = new Date(eventDate);
+      endDateTime.setHours(endHour, endMin, 0, 0);
+      
+      // Build rows for XLSX
+      const rows: any[] = [];
+      
+      for (const item of menuItems) {
+        // Skip headers
+        if (item.is_header) continue;
         
+        // Get assignments for this menu item
         const kitchenAssignments = getAssignments(item.id, 'kitchen');
-        if (kitchenAssignments.length > 0) {
-          output += `Kitchen Staff: `;
-          output += kitchenAssignments.map((a: Assignment) => {
-            const person = people.find(p => p.id === a.person_id);
-            return person ? `${person.first_name} ${person.last_name}` : '';
-          }).filter(Boolean).join(', ');
-          output += `\n`;
-        }
-
         const waiterAssignments = getAssignments(item.id, 'waiter');
-        if (waiterAssignments.length > 0) {
-          output += `Waiters: `;
-          output += waiterAssignments.map((a: Assignment) => {
-            const person = people.find(p => p.id === a.person_id);
-            return person ? `${person.first_name} ${person.last_name}` : '';
-          }).filter(Boolean).join(', ');
-          output += `\n`;
+        
+        // Add kitchen staff rows
+        for (const assignment of kitchenAssignments) {
+          const person = people.find(p => p.id === assignment.person_id);
+          if (!person) continue;
+          
+          rows.push({
+            member: `${person.last_name}, ${person.first_name}`,
+            workEmail: person.work_email || '',
+            group: 'Kitchen',
+            startDate: fmtDateMDY(startDateTime),
+            startTime: fmtTime24(startDateTime),
+            endDate: fmtDateMDY(endDateTime),
+            endTime: fmtTime24(endDateTime),
+            themeColor: '1. DarkPink',
+            customLabel: item.name,
+            unpaidBreak: 0,
+            notes: selectedEvent.name,
+            shared: '2. Not Shared',
+          });
         }
         
-        output += `\n`;
+        // Add waiter rows
+        for (const assignment of waiterAssignments) {
+          const person = people.find(p => p.id === assignment.person_id);
+          if (!person) continue;
+          
+          rows.push({
+            member: `${person.last_name}, ${person.first_name}`,
+            workEmail: person.work_email || '',
+            group: 'Dining Room',
+            startDate: fmtDateMDY(startDateTime),
+            startTime: fmtTime24(startDateTime),
+            endDate: fmtDateMDY(endDateTime),
+            endTime: fmtTime24(endDateTime),
+            themeColor: '1. DarkYellow',
+            customLabel: item.name,
+            unpaidBreak: 0,
+            notes: selectedEvent.name,
+            shared: '2. Not Shared',
+          });
+        }
       }
+      
+      // Build XLSX
+      const header = [
+        "Member","Work Email","Group","Start Date","Start Time","End Date","End Time","Theme Color","Custom Label","Unpaid Break (minutes)","Notes","Shared"
+      ];
+      const aoa = [header, ...rows.map(r => [
+        r.member,
+        r.workEmail,
+        r.group,
+        r.startDate,
+        r.startTime,
+        r.endDate,
+        r.endTime,
+        r.themeColor,
+        r.customLabel,
+        r.unpaidBreak,
+        r.notes,
+        r.shared,
+      ])];
+      
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Shifts");
+      
+      const blob = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+      const fileHandle = await (window as any).showSaveFilePicker({
+        suggestedName: `special-event-${selectedEvent.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.xlsx`,
+        types: [{ description: "Excel", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } }],
+      });
+      const writable = await (fileHandle as any).createWritable();
+      await writable.write(blob);
+      await writable.close();
+      
+      setAlertDialog({ title: 'Success', message: `Exported ${rows.length} shifts to XLSX file.` });
+    } catch (error: any) {
+      console.error('Export failed:', error);
+      setAlertDialog({ title: 'Export Failed', message: error.message || 'Failed to export XLSX file.' });
     }
-
-    return output;
-  };
-
-  const handleCopyToClipboard = () => {
-    const text = generateTeamsExport();
-    navigator.clipboard.writeText(text).then(() => {
-      setAlertDialog({ title: 'Success', message: 'Copied to clipboard!' });
-    });
   };
 
   // Render event list
@@ -674,7 +712,7 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
               Add Menu Item
             </Button>
             <Button appearance="primary" onClick={handleExport}>
-              Export to Teams
+              Export to XLSX
             </Button>
           </div>
         </div>
@@ -926,24 +964,6 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
               <Button onClick={() => setShowMenuDialog(false)}>Cancel</Button>
               <Button appearance="primary" onClick={handleSaveMenuItem}>
                 {editingMenuItem?.id ? 'Save' : 'Add'}
-              </Button>
-            </DialogActions>
-          </DialogBody>
-        </DialogSurface>
-      </Dialog>
-
-      {/* Export Dialog */}
-      <Dialog open={showExportDialog} onOpenChange={(_, data) => setShowExportDialog(data.open)}>
-        <DialogSurface className={s.exportDialog}>
-          <DialogBody>
-            <DialogTitle>Export to Microsoft Teams</DialogTitle>
-            <DialogContent>
-              <div className={s.exportText}>{generateTeamsExport()}</div>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setShowExportDialog(false)}>Close</Button>
-              <Button appearance="primary" icon={<Checkmark20Regular />} onClick={handleCopyToClipboard}>
-                Copy to Clipboard
               </Button>
             </DialogActions>
           </DialogBody>

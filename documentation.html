@@ -1046,19 +1046,34 @@
                             </ul>
                         </div>
 
-                        <h4 class="font-bold text-[#242424] mb-4">Exporting to Microsoft Teams</h4>
-                        <p class="text-xs text-[#616161] mb-6">Click <strong>"Export to Teams"</strong> to generate a formatted text output suitable for posting in Microsoft Teams.</p>
+                        <h4 class="font-bold text-[#242424] mb-4">Exporting to Microsoft Teams (XLSX)</h4>
+                        <p class="text-xs text-[#616161] mb-6">Click <strong>"Export to XLSX"</strong> to generate a Microsoft Teams Shifts-compatible Excel file that can be bulk imported into Teams.</p>
                         
                         <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd] mb-8">
-                            <h5 class="font-bold text-sm text-[#242424] mb-3">Export Format</h5>
-                            <p class="text-xs text-[#616161] mb-3">The export includes:</p>
+                            <h5 class="font-bold text-sm text-[#242424] mb-3">XLSX Export Format</h5>
+                            <p class="text-xs text-[#616161] mb-3">The exported spreadsheet contains one row per person per menu item assignment with the following columns:</p>
                             <ul class="text-xs text-[#616161] space-y-2">
-                                <li>• Event name, date, and time</li>
-                                <li>• Optional description</li>
-                                <li>• All menu items with section headers</li>
-                                <li>• Assigned kitchen staff and waiters for each item</li>
-                                <li>• One-click copy to clipboard</li>
+                                <li>• <strong>Member:</strong> Full name (Last, First)</li>
+                                <li>• <strong>Work Email:</strong> Person's email address</li>
+                                <li>• <strong>Group:</strong> "Kitchen" or "Dining Room"</li>
+                                <li>• <strong>Start Date/Time:</strong> Event start time</li>
+                                <li>• <strong>End Date/Time:</strong> Event end time</li>
+                                <li>• <strong>Theme Color:</strong> "1. DarkPink" (Kitchen) or "1. DarkYellow" (Dining Room)</li>
+                                <li>• <strong>Custom Label:</strong> Menu item name</li>
+                                <li>• <strong>Notes:</strong> Event name for reference</li>
+                                <li>• <strong>Shared:</strong> "2. Not Shared"</li>
                             </ul>
+                        </div>
+
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd] mb-8">
+                            <h5 class="font-bold text-sm text-[#242424] mb-3">Importing into Teams</h5>
+                            <ol class="text-xs text-[#616161] space-y-2">
+                                <li>1. In Microsoft Teams, navigate to your schedule</li>
+                                <li>2. Click "More options" → "Import schedule"</li>
+                                <li>3. Select the exported XLSX file</li>
+                                <li>4. Review the preview and confirm the import</li>
+                                <li>5. All event assignments will appear as shifts in Teams</li>
+                            </ol>
                         </div>
 
                         <div class="p-4 bg-[#fff8f0] border border-[#fce1c5] rounded-lg flex gap-3 items-start">
