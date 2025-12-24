@@ -32,6 +32,7 @@ import {
   Subtitle2,
   Tooltip,
 } from "@fluentui/react-components";
+import { Navigation20Regular } from "@fluentui/react-icons";
 import AlertDialog from "./AlertDialog";
 import ConfirmDialog from "./ConfirmDialog";
 import { useDialogs } from "../hooks/useDialogs";
@@ -93,16 +94,39 @@ const useStyles = makeStyles({
   header: {
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-start",
-    gap: tokens.spacingHorizontalL,
+    alignItems: "stretch",
+    gap: tokens.spacingVerticalM,
     marginBottom: tokens.spacingHorizontalL,
     ["@media (min-width: 1024px)"]: {
       flexDirection: "row",
       alignItems: "center",
+      gap: tokens.spacingHorizontalM,
     },
   },
-  headerLeft: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS },
-  headerRight: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalS, marginLeft: "auto" },
+  headerLeft: { 
+    display: "flex", 
+    alignItems: "center", 
+    gap: tokens.spacingHorizontalS,
+    flexShrink: 0,
+  },
+  headerCenter: {
+    display: "flex",
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    ["@media (max-width: 1023px)"]: {
+      justifyContent: "flex-start",
+    },
+  },
+  headerRight: { 
+    display: "flex", 
+    flexWrap: "wrap", 
+    gap: tokens.spacingHorizontalS,
+    alignItems: "center",
+    ["@media (min-width: 1024px)"]: {
+      marginLeft: "auto",
+    },
+  },
   label: {
     fontSize: tokens.fontSizeBase300,
     color: tokens.colorNeutralForeground2,
@@ -112,11 +136,17 @@ const useStyles = makeStyles({
     height: "100%",
     display: "flex",
     flexDirection: "column",
+    boxShadow: tokens.shadow4,
+    transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+    ":hover": {
+      boxShadow: tokens.shadow8,
+    },
   },
   groupHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingBottom: tokens.spacingVerticalS,
   },
   groupMeta: {
     fontSize: tokens.fontSizeBase200,
@@ -131,13 +161,20 @@ const useStyles = makeStyles({
   },
   roleCard: {
     borderLeftWidth: "4px",
-    padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
+    borderLeftStyle: "solid",
+    padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalM}`,
+    boxShadow: tokens.shadow2,
+    transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}, transform ${tokens.durationFast} ${tokens.curveEasyEase}`,
+    ":hover": {
+      boxShadow: tokens.shadow4,
+      transform: "translateY(-1px)",
+    },
   },
   roleHeader: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: tokens.spacingVerticalS,
+    marginBottom: tokens.spacingVerticalM,
   },
   assignmentsList: {
     listStyleType: "none",
@@ -152,9 +189,15 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: tokens.colorNeutralBackground2,
-    borderRadius: tokens.borderRadiusSmall,
-    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalM}`,
+    borderRadius: tokens.borderRadiusMedium,
+    padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
     columnGap: tokens.spacingHorizontalM,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}, border-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground2Hover,
+      borderColor: tokens.colorNeutralStroke1Hover,
+    },
   },
   assignmentName: {
     flex: 1,
@@ -696,14 +739,33 @@ export default function DailyRunBoard({
       <Card
         className={s.groupCard}
         style={{
-          borderColor: groupAccent,
+          borderTopWidth: "3px",
+          borderTopStyle: "solid",
+          borderTopColor: groupAccent,
           backgroundColor: groupBg,
           color: groupFg,
         }}
       >
         <CardHeader
           className={isDraggable ? "drag-handle" : ""}
-          header={<Title3>{group.name}</Title3>}
+          header={
+            <div style={{ display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS }}>
+              {isDraggable && (
+                <div 
+                  style={{ 
+                    cursor: "grab",
+                    color: tokens.colorNeutralForeground3,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  aria-label="Drag to reposition group"
+                >
+                  <Navigation20Regular />
+                </div>
+              )}
+              <Title3>{group.name}</Title3>
+            </div>
+          }
           description={
             <Caption1 className={s.groupMeta}>
               {group.theme || "No Theme"}
@@ -713,7 +775,7 @@ export default function DailyRunBoard({
         <div
           className={s.rolesGrid}
           style={{
-            gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
             ["--scrollbar-thumb" as any]: tokens.colorNeutralStroke1,
           }}
         >
@@ -977,7 +1039,7 @@ export default function DailyRunBoard({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 8,
+            gap: tokens.spacingHorizontalS,
             marginBottom: tokens.spacingVerticalS,
           }}
         >
@@ -1001,7 +1063,11 @@ export default function DailyRunBoard({
               addAssignment(selectedDate, pid, role.id, seg);
               setAddSel([]);
             }}
-            style={{ width: "100%" }}
+            style={{ 
+              width: "100%",
+              minHeight: "32px",
+            }}
+            appearance="outline"
           >
             {openAdd &&
               sortedOpts.map((o) => {
@@ -1118,7 +1184,7 @@ export default function DailyRunBoard({
             }}
           />
         </div>
-        <div>
+        <div className={s.headerCenter}>
           <TabList
             selectedValue={activeRunSegment}
             onTabSelect={(_, data) => setActiveRunSegment(data.value as Segment)}

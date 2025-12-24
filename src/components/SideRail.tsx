@@ -9,7 +9,6 @@ import {
   History20Regular,
   Settings20Regular,
   Share20Regular,
-  MoreVertical20Regular,
   WeatherSunny20Regular,
   WeatherMoon20Regular,
   Navigation20Regular,
@@ -39,19 +38,19 @@ export interface SideRailProps {
 
 const useStyles = makeStyles({
   root: {
-    minWidth: 0,
+    width: "72px",
     height: "100vh",
     position: "fixed",
     top: 0,
     left: 0,
-    padding: tokens.spacingVerticalS,
+    padding: `${tokens.spacingVerticalS} 0`,
     display: "flex",
     flexDirection: "column",
-    alignItems: "stretch",
-    gap: tokens.spacingVerticalS,
+    alignItems: "center",
+    gap: tokens.spacingVerticalXS,
     borderRight: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
-    overflow: "hidden",
+    overflow: "auto",
     boxSizing: "border-box",
     transitionProperty: "width",
     transitionDuration: tokens.durationNormal,
@@ -62,52 +61,52 @@ const useStyles = makeStyles({
   collapsed: {
     width: "48px",
   },
-  section: {
+  navList: {
     display: "flex",
     flexDirection: "column",
-    alignItems: "stretch",
-    gap: tokens.spacingVerticalXS,
+    alignItems: "center",
+    gap: tokens.spacingVerticalXXS,
+    flex: 1,
+    width: "100%",
   },
-  sectionHeader: {
-    fontSize: tokens.fontSizeBase100,
-    color: tokens.colorNeutralForeground3,
-    fontWeight: tokens.fontWeightSemibold,
-    padding: `${tokens.spacingVerticalXXS} ${tokens.spacingHorizontalXXS}`,
-    textAlign: "center",
-    userSelect: "none",
-  },
-  grow: { flex: 1, minHeight: 0, overflow: "auto" },
-  navScroll: { },
   item: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    padding: tokens.spacingHorizontalXS,
+    padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalXS}`,
     borderRadius: tokens.borderRadiusMedium,
-    gap: tokens.spacingHorizontalXXS,
+    gap: tokens.spacingVerticalXXS,
     cursor: "pointer",
     color: tokens.colorNeutralForeground2,
     userSelect: "none",
-    minHeight: "44px",
+    width: "64px",
+    transition: `background-color ${tokens.durationNormal} ${tokens.curveEasyEase}, color ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+      color: tokens.colorNeutralForeground1,
+    },
+    ":active": {
+      backgroundColor: tokens.colorNeutralBackground1Pressed,
+    },
   },
   itemActive: {
-    backgroundColor: tokens.colorNeutralBackground4,
-    color: tokens.colorNeutralForeground1,
+    backgroundColor: tokens.colorNeutralBackground1Selected,
+    color: tokens.colorBrandForeground1,
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground1Selected,
+      color: tokens.colorBrandForeground1,
+    },
   },
   label: { 
-    fontSize: tokens.fontSizeBase200, 
-    lineHeight: "1", 
+    fontSize: tokens.fontSizeBase100, 
+    lineHeight: tokens.lineHeightBase100,
     textAlign: "center",
+    fontWeight: tokens.fontWeightRegular,
   },
-  labelHidden: {
-    display: "none",
+  themeToggle: {
+    marginTop: "auto",
   },
-  collapseButton: { 
-    width: "100%",
-    minHeight: "36px",
-  },
-  moreButton: { width: "100%" },
 });
 
 function RailItem({ icon, label, active, onClick, collapsed }: { icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; collapsed?: boolean; }){
@@ -132,104 +131,36 @@ export default function SideRail({
   setThemeName,
 }: SideRailProps){
   const s = useStyles();
-  const [collapsed, setCollapsed] = React.useState(() => {
-    try {
-      const saved = localStorage.getItem("sideRailCollapsed");
-      return saved === "true";
-    } catch {
-      return false;
-    }
-  });
 
-  React.useEffect(() => {
-    try {
-      localStorage.setItem("sideRailCollapsed", String(collapsed));
-    } catch {}
-  }, [collapsed]);
-
-  // Reorganized navigation with workflow grouping
-  const dailyWork: TabKey[] = ["RUN", "MONTHLY"];
-  const setup: TabKey[] = ["PEOPLE", "TRAINING", "NEEDS"];
-  const output: TabKey[] = ["EXPORT", "HISTORY"];
-  const system: TabKey[] = ["ADMIN"];
-
-  const sections = [
-    { title: collapsed ? "" : "Daily", tabs: dailyWork },
-    { title: collapsed ? "" : "Setup", tabs: setup },
-    { title: collapsed ? "" : "Output", tabs: output },
-    { title: collapsed ? "" : "System", tabs: system },
+  const navItems: Array<{ key: TabKey; label: string; icon: React.ReactElement }> = [
+    { key: "RUN", label: "Run", icon: <CalendarDay20Regular /> },
+    { key: "MONTHLY", label: "Monthly", icon: <CalendarLtr20Regular /> },
+    { key: "PEOPLE", label: "People", icon: <PeopleCommunity20Regular /> },
+    { key: "TRAINING", label: "Training", icon: <LearningApp20Regular /> },
+    { key: "NEEDS", label: "Needs", icon: <DocumentTable20Regular /> },
+    { key: "EXPORT", label: "Export", icon: <Share20Regular /> },
+    { key: "HISTORY", label: "History", icon: <History20Regular /> },
+    { key: "ADMIN", label: "Admin", icon: <Settings20Regular /> },
   ];
 
-  const getIcon = (key: TabKey) => {
-    switch (key) {
-      case "RUN": return <CalendarDay20Regular />;
-      case "MONTHLY": return <CalendarLtr20Regular />;
-      case "PEOPLE": return <PeopleCommunity20Regular />;
-      case "TRAINING": return <LearningApp20Regular />;
-      case "NEEDS": return <DocumentTable20Regular />;
-      case "EXPORT": return <Share20Regular />;
-      case "HISTORY": return <History20Regular />;
-      case "ADMIN": return <Settings20Regular />;
-      default: return null;
-    }
-  };
-
-  const getLabel = (key: TabKey) => {
-    switch (key) {
-      case "RUN": return "Run";
-      case "MONTHLY": return "Monthly";
-      case "PEOPLE": return "People";
-      case "TRAINING": return "Training";
-      case "NEEDS": return "Needs";
-      case "EXPORT": return "Export";
-      case "HISTORY": return "History";
-      case "ADMIN": return "Admin";
-      default: return "";
-    }
-  };
-
   return (
-    <aside className={`${s.root} ${collapsed ? s.collapsed : s.expanded}`} aria-label="App navigation">
-      {/* Collapse/Expand toggle */}
-      <div className={s.section}>
-        <Tooltip content={collapsed ? "Expand sidebar" : "Collapse sidebar"} relationship="label">
-          <Button
-            appearance="subtle"
-            size="small"
-            className={s.collapseButton}
-            icon={collapsed ? <Navigation20Regular /> : <NavigationFilled />}
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+    <aside className={s.root} aria-label="App navigation">
+      <div className={s.navList}>
+        {navItems.map((item) => (
+          <RailItem
+            key={item.key}
+            icon={item.icon}
+            label={item.label}
+            active={activeTab === item.key}
+            onClick={() => setActiveTab(item.key)}
           />
-        </Tooltip>
-      </div>
-
-      {/* Navigation sections */}
-      <div className={`${s.section} ${s.grow}`}>
-        {sections.map((section, sectionIdx) => (
-          <React.Fragment key={sectionIdx}>
-            {sectionIdx > 0 && <Divider />}
-            {section.title && !collapsed && (
-              <div className={s.sectionHeader}>{section.title}</div>
-            )}
-            {section.tabs.map(tabKey => (
-              <RailItem
-                key={tabKey}
-                icon={getIcon(tabKey)}
-                label={getLabel(tabKey)}
-                active={activeTab === tabKey}
-                onClick={() => setActiveTab(tabKey)}
-                collapsed={collapsed}
-              />
-            ))}
-          </React.Fragment>
         ))}
       </div>
-
-      {/* Theme toggle at bottom */}
-      <div className={s.section}>
-        <Divider />
-        <Tooltip content={themeName === 'dark' ? 'Switch to Light' : 'Switch to Dark'} relationship="label">
+      <div className={s.themeToggle}>
+        <Tooltip 
+          content={themeName === 'dark' ? 'Switch to Light' : 'Switch to Dark'} 
+          relationship="label"
+        >
           <div
             className={s.item}
             role="button"
@@ -237,9 +168,7 @@ export default function SideRail({
             onClick={() => setThemeName(themeName === "dark" ? "light" : "dark")}
           >
             {themeName === "dark" ? <WeatherMoon20Regular /> : <WeatherSunny20Regular />}
-            <span className={`${s.label} ${collapsed ? s.labelHidden : ""}`}>
-              {themeName === "dark" ? "Dark" : "Light"}
-            </span>
+            <span className={s.label}>{themeName === "dark" ? "Dark" : "Light"}</span>
           </div>
         </Tooltip>
       </div>
