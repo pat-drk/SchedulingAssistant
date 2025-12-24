@@ -246,7 +246,13 @@ const useBaselineViewStyles = makeStyles({
 });
 
 const usePeopleEditorStyles = makeStyles({
-  root: { padding: tokens.spacingHorizontalM },
+  root: { 
+    padding: tokens.spacingHorizontalM,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      padding: tokens.spacingHorizontalS,
+    },
+  },
   tableWrap: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusLarge,
@@ -255,13 +261,50 @@ const usePeopleEditorStyles = makeStyles({
     maxHeight: '60vh',
     width: '100%',
     boxShadow: tokens.shadow2,
+    // On mobile, hide the table and show card layout instead
+    "@media (max-width: 767px)": {
+      overflowX: 'auto',
+    },
   },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: tokens.spacingVerticalS },
-  title: { fontWeight: tokens.fontWeightSemibold, fontSize: tokens.fontSizeBase400 },
-  actions: { display: 'flex', gap: tokens.spacingHorizontalS },
+  header: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    marginBottom: tokens.spacingVerticalS,
+    // Mobile: stack vertically
+    "@media (max-width: 767px)": {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: tokens.spacingVerticalS,
+    },
+  },
+  title: { 
+    fontWeight: tokens.fontWeightSemibold, 
+    fontSize: tokens.fontSizeBase400,
+  },
+  actions: { 
+    display: 'flex', 
+    gap: tokens.spacingHorizontalS,
+    // Mobile: full width buttons
+    "@media (max-width: 767px)": {
+      flexDirection: 'column',
+      width: '100%',
+      '& button': {
+        width: '100%',
+      },
+    },
+  },
   dialogSurface: {
     width: '700px',
     maxWidth: '95vw',
+    // Full-screen on mobile for better usability
+    "@media (max-width: 639px)": {
+      width: '100vw',
+      maxWidth: '100vw',
+      height: '100vh',
+      maxHeight: '100vh',
+      borderRadius: 0,
+    },
   },
   section: {
     marginBottom: tokens.spacingVerticalL,
@@ -279,12 +322,20 @@ const usePeopleEditorStyles = makeStyles({
     gridTemplateColumns: '1fr 1fr',
     gap: tokens.spacingHorizontalM,
     marginBottom: tokens.spacingVerticalM,
+    // Stack vertically on mobile
+    "@media (max-width: 639px)": {
+      gridTemplateColumns: '1fr',
+    },
   },
   formRowThree: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr 1fr',
     gap: tokens.spacingHorizontalM,
     marginBottom: tokens.spacingVerticalM,
+    // Stack vertically on mobile
+    "@media (max-width: 639px)": {
+      gridTemplateColumns: '1fr',
+    },
   },
   formField: {
     display: 'flex',
@@ -308,6 +359,10 @@ const usePeopleEditorStyles = makeStyles({
     display: 'grid',
     gridTemplateColumns: 'repeat(5, minmax(110px, 1fr))',
     gap: tokens.spacingHorizontalM,
+    // Better wrapping on mobile
+    "@media (max-width: 639px)": {
+      gridTemplateColumns: 'repeat(2, 1fr)',
+    },
   },
   formGrid: {
     display: 'grid',
@@ -403,6 +458,11 @@ const useAppShellStyles = makeStyles({
     boxSizing: 'border-box',
     paddingLeft: '72px',
     backgroundColor: tokens.colorNeutralBackground1,
+    // Remove left padding on mobile, add bottom padding for bottom nav
+    "@media (max-width: 767px)": {
+      paddingLeft: 0,
+      paddingBottom: '60px', // Space for bottom navigation
+    },
   },
   contentRow: {
     display: 'flex',

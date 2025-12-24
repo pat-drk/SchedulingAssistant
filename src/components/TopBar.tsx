@@ -32,11 +32,49 @@ const useStyles = makeStyles({
     padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
+      gap: tokens.spacingHorizontalS,
+    },
   },
-  left: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM },
-  actionsBar: { alignItems: 'center' },
-  right: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM },
-  status: { color: tokens.colorNeutralForeground2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 },
+  left: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    gap: tokens.spacingHorizontalM,
+    // Stack on very small screens
+    "@media (max-width: 480px)": {
+      gap: tokens.spacingHorizontalS,
+    },
+  },
+  actionsBar: { 
+    alignItems: 'center',
+    // Hide labels on mobile for toolbar buttons
+    "@media (max-width: 767px)": {
+      '& button': {
+        minWidth: '32px',
+      },
+    },
+  },
+  right: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    gap: tokens.spacingHorizontalM,
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
+  },
+  status: { 
+    color: tokens.colorNeutralForeground2, 
+    whiteSpace: 'nowrap', 
+    overflow: 'hidden', 
+    textOverflow: 'ellipsis', 
+    minWidth: 0,
+    // Hide on small mobile screens
+    "@media (max-width: 480px)": {
+      display: 'none',
+    },
+  },
 });
 
 export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status, syncStatus }: TopBarProps){

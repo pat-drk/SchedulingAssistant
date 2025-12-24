@@ -48,6 +48,10 @@ const useCrewHistoryViewStyles = makeStyles({
     gap: tokens.spacingVerticalM,
     paddingBlockEnd: tokens.spacingVerticalS,
     minWidth: 0,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingVerticalS,
+    },
   },
   primaryControls: {
     display: 'flex',
@@ -58,35 +62,62 @@ const useCrewHistoryViewStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
     borderRadius: tokens.borderRadiusMedium,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+      padding: tokens.spacingHorizontalS,
+    },
   },
   monthRangeSection: {
     display: 'flex',
     alignItems: 'center',
     gap: tokens.spacingHorizontalM,
     flexWrap: 'wrap',
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+      flex: "1 1 100%",
+    },
   },
   monthInput: {
     display: 'flex',
     flexDirection: 'column',
     gap: tokens.spacingVerticalXS,
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      flex: "1 1 100%",
+    },
   },
   secondaryControls: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: tokens.spacingHorizontalM,
     alignItems: 'end',
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
   },
   topRow: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: tokens.spacingHorizontalM,
     alignItems: 'end',
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
   },
   controlGroup: {
     display: 'flex',
     flexDirection: 'column',
     gap: tokens.spacingVerticalXS,
     minWidth: '140px',
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      minWidth: "100%",
+      flex: "1 1 100%",
+    },
   },
   inlineGroup: {
     display: 'flex',

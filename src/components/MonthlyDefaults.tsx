@@ -174,18 +174,31 @@ const useStyles = makeStyles({
     gap: tokens.spacingVerticalS,
     paddingBlockEnd: tokens.spacingVerticalS,
     minWidth: 0,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingVerticalXS,
+    },
   },
   topRow: {
     display: "flex",
     flexWrap: "wrap",
     gap: tokens.spacingHorizontalM,
     alignItems: "end",
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
   },
   controlGroup: {
     display: "flex",
     flexDirection: "column",
     gap: tokens.spacingVerticalXS,
     minWidth: "140px",
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      minWidth: "100%",
+      flex: "1 1 100%",
+    },
   },
   actionRow: {
     display: "flex",
@@ -194,17 +207,32 @@ const useStyles = makeStyles({
     alignItems: "center",
     paddingTop: tokens.spacingVerticalS,
     borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
   },
   primaryActions: {
     display: "flex",
     gap: tokens.spacingHorizontalS,
     alignItems: "center",
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      flex: "1 1 100%",
+      flexWrap: "wrap",
+    },
   },
   secondaryActions: {
     display: "flex",
     gap: tokens.spacingHorizontalM,
     alignItems: "center",
     marginLeft: "auto",
+    // Mobile: reset margin and full width
+    "@media (max-width: 767px)": {
+      marginLeft: 0,
+      flex: "1 1 100%",
+      gap: tokens.spacingHorizontalS,
+    },
   },
   copySection: {
     display: "flex",
@@ -219,6 +247,11 @@ const useStyles = makeStyles({
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: tokens.spacingHorizontalS,
     alignItems: "end",
+    // Mobile: stack vertically
+    "@media (max-width: 767px)": {
+      gridTemplateColumns: "1fr",
+      gap: tokens.spacingVerticalXS,
+    },
   },
   rightActions: {
     display: "flex",
@@ -226,6 +259,10 @@ const useStyles = makeStyles({
     alignItems: "end",
     flexWrap: "wrap",
     justifyContent: "flex-end",
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      justifyContent: "flex-start",
+    },
   },
   label: {
     fontSize: tokens.fontSizeBase200,

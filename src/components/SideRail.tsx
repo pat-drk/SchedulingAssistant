@@ -14,6 +14,7 @@ import {
   Navigation20Regular,
   NavigationFilled,
 } from "@fluentui/react-icons";
+import { useIsMobile } from "../hooks/useMediaQuery";
 import "../styles/tooltip.css";
 
 export type TabKey =
@@ -54,6 +55,30 @@ const useStyles = makeStyles({
     boxSizing: "border-box",
     transitionProperty: "width",
     transitionDuration: tokens.durationNormal,
+    // Hide on mobile
+    "@media (max-width: 767px)": {
+      display: "none",
+    },
+  },
+  // Mobile bottom navigation
+  bottomNav: {
+    display: "none",
+    "@media (max-width: 767px)": {
+      display: "flex",
+      position: "fixed",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: "60px",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-around",
+      padding: `${tokens.spacingVerticalXXS} ${tokens.spacingHorizontalXS}`,
+      borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+      backgroundColor: tokens.colorNeutralBackground1,
+      zIndex: 1000,
+      boxShadow: tokens.shadow16,
+    },
   },
   expanded: {
     width: "80px",
@@ -90,6 +115,30 @@ const useStyles = makeStyles({
       backgroundColor: tokens.colorNeutralBackground1Pressed,
     },
   },
+  // Mobile bottom nav item style
+  bottomNavItem: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: `${tokens.spacingVerticalXXS} ${tokens.spacingHorizontalXXS}`,
+    borderRadius: tokens.borderRadiusMedium,
+    gap: "2px",
+    cursor: "pointer",
+    color: tokens.colorNeutralForeground2,
+    userSelect: "none",
+    flex: 1,
+    minWidth: "44px",
+    minHeight: "44px",
+    transition: `background-color ${tokens.durationNormal} ${tokens.curveEasyEase}, color ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+      color: tokens.colorNeutralForeground1,
+    },
+    ":active": {
+      backgroundColor: tokens.colorNeutralBackground1Pressed,
+    },
+  },
   itemActive: {
     backgroundColor: tokens.colorNeutralBackground1Selected,
     color: tokens.colorBrandForeground1,
@@ -101,6 +150,12 @@ const useStyles = makeStyles({
   label: { 
     fontSize: tokens.fontSizeBase100, 
     lineHeight: tokens.lineHeightBase100,
+    textAlign: "center",
+    fontWeight: tokens.fontWeightRegular,
+  },
+  bottomNavLabel: {
+    fontSize: "10px",
+    lineHeight: "12px",
     textAlign: "center",
     fontWeight: tokens.fontWeightRegular,
   },
@@ -131,6 +186,7 @@ export default function SideRail({
   setThemeName,
 }: SideRailProps){
   const s = useStyles();
+  const isMobile = useIsMobile();
 
   const navItems: Array<{ key: TabKey; label: string; icon: React.ReactElement }> = [
     { key: "RUN", label: "Run", icon: <CalendarDay20Regular /> },
@@ -142,6 +198,42 @@ export default function SideRail({
     { key: "HISTORY", label: "History", icon: <History20Regular /> },
     { key: "ADMIN", label: "Admin", icon: <Settings20Regular /> },
   ];
+
+  // For mobile, show only primary tabs in bottom nav
+  const primaryMobileNavItems = [
+    { key: "RUN", label: "Run", icon: <CalendarDay20Regular /> },
+    { key: "PEOPLE", label: "People", icon: <PeopleCommunity20Regular /> },
+    { key: "MONTHLY", label: "Monthly", icon: <CalendarLtr20Regular /> },
+    { key: "EXPORT", label: "Export", icon: <Share20Regular /> },
+  ] as const;
+
+  if (isMobile) {
+    return (
+      <nav className={s.bottomNav} aria-label="App navigation">
+        {primaryMobileNavItems.map((item) => (
+          <div
+            key={item.key}
+            className={`${s.bottomNavItem} ${activeTab === item.key ? s.itemActive : ""}`}
+            onClick={() => setActiveTab(item.key as TabKey)}
+            role="button"
+            aria-current={activeTab === item.key ? "page" : undefined}
+          >
+            {item.icon}
+            <span className={s.bottomNavLabel}>{item.label}</span>
+          </div>
+        ))}
+        <div
+          className={s.bottomNavItem}
+          role="button"
+          aria-label={themeName === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
+          onClick={() => setThemeName(themeName === "dark" ? "light" : "dark")}
+        >
+          {themeName === "dark" ? <WeatherMoon20Regular /> : <WeatherSunny20Regular />}
+          <span className={s.bottomNavLabel}>Theme</span>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <aside className={s.root} aria-label="App navigation">
