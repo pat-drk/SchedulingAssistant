@@ -32,6 +32,9 @@ import {
   Subtitle2,
   Tooltip,
 } from "@fluentui/react-components";
+import AlertDialog from "./AlertDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 const Grid = WidthProvider(GridLayout);
 // Work around TS typing issues: cast WidthProvider result to any for JSX use
@@ -229,6 +232,7 @@ export default function DailyRunBoard({
   // Height of each react-grid-layout row in pixels. Increase to make group cards taller.
   const RGL_ROW_HEIGHT = 110;
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  const dialogs = useDialogs();
 
   useEffect(() => {
     const handleResize = () => {
@@ -346,7 +350,7 @@ export default function DailyRunBoard({
 
   function handleAutoFill() {
     if (!deficitRoles.length) {
-      alert("No unmet needs for this segment.");
+      dialogs.showAlert("No unmet needs for this segment. All roles are filled.", "No Unmet Needs");
       return;
     }
 
@@ -898,7 +902,7 @@ export default function DailyRunBoard({
           allTargets.push({ role: r, group: grp, need });
         }
         if (!allTargets.length) {
-          alert("No eligible destinations for this person.");
+          dialogs.showAlert("No eligible destinations found for this person. They may not be qualified or available for any open roles.", "No Eligible Destinations");
           return;
         }
         // Sort: needs first (descending), then by group/role
@@ -990,7 +994,7 @@ export default function DailyRunBoard({
               const pid = Number(val);
               const info = overlapByPerson.get(pid);
               if (info?.heavy) {
-                alert("Blocked by time off (major overlap) for this segment.");
+                dialogs.showAlert("This person is blocked by time off with major overlap for this segment.", "Time Off Conflict");
                 setAddSel([]);
                 return;
               }
@@ -1075,16 +1079,15 @@ export default function DailyRunBoard({
     );
   });
 
-  function confirmMove() {
+  async function confirmMove() {
     if (!moveContext || moveTargetId == null) return;
     const chosen = moveContext.targets.find((t) => t.role.id === moveTargetId);
     if (!chosen) return;
-    if (
-      !confirm(
-        `Move ${moveContext.assignment.last_name}, ${moveContext.assignment.first_name} to ${chosen.group.name} - ${chosen.role.name}?`
-      )
-    )
-      return;
+    const confirmed = await dialogs.showConfirm(
+      `Move ${moveContext.assignment.last_name}, ${moveContext.assignment.first_name} to ${chosen.group.name} - ${chosen.role.name}?`,
+      "Confirm Move"
+    );
+    if (!confirmed) return;
     deleteAssignment(moveContext.assignment.id);
     addAssignment(selectedDate, moveContext.assignment.person_id, chosen.role.id, seg);
     setMoveContext(null);
@@ -1241,6 +1244,27 @@ export default function DailyRunBoard({
             </DialogBody>
           </DialogSurface>
         </Dialog>
+      )}
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
       )}
     </div>
   );
