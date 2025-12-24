@@ -175,14 +175,30 @@ export function filterPeopleList<T extends Record<string, any>>(people: T[], sta
 }
 
 const useStyles = makeStyles({
-  bar: { display: "grid", gap: tokens.spacingVerticalS, width: "100%" },
+  bar: { 
+    display: "grid", 
+    gap: tokens.spacingVerticalS, 
+    width: "100%",
+  },
   topRow: {
     display: "flex",
     alignItems: "center",
     gap: tokens.spacingHorizontalS,
     flexWrap: "wrap",
+    // Better mobile spacing
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalXS,
+    },
   },
-  grow: { flex: 1, minWidth: "240px" },
+  grow: { 
+    flex: 1, 
+    minWidth: "240px",
+    // Full width on mobile
+    "@media (max-width: 767px)": {
+      minWidth: "100%",
+      flex: "1 1 100%",
+    },
+  },
   field: { width: "100%" },
   advanced: {
     display: "grid",
@@ -191,9 +207,25 @@ const useStyles = makeStyles({
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground2,
     borderRadius: tokens.borderRadiusLarge,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      padding: tokens.spacingVerticalXS,
+    },
   },
-  group: { display: "grid", gap: tokens.spacingHorizontalXS },
-  row: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS, flexWrap: "wrap" },
+  group: { 
+    display: "grid", 
+    gap: tokens.spacingHorizontalXS,
+  },
+  row: { 
+    display: "flex", 
+    alignItems: "center", 
+    gap: tokens.spacingHorizontalS, 
+    flexWrap: "wrap",
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalXS,
+    },
+  },
 });
 
 export function PeopleFiltersBar({

@@ -32,11 +32,69 @@ const useStyles = makeStyles({
     padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
+    flexWrap: 'wrap',
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalXS}`,
+      gap: tokens.spacingHorizontalXS,
+    },
   },
-  left: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM },
-  actionsBar: { alignItems: 'center' },
-  right: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM },
-  status: { color: tokens.colorNeutralForeground2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 },
+  logo: {
+    "@media (max-width: 767px)": {
+      width: '24px',
+      height: '24px',
+    },
+  },
+  left: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    gap: tokens.spacingHorizontalM,
+    minWidth: 0,
+    flex: '1 1 auto',
+    // Stack on very small screens
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalXS,
+    },
+  },
+  actionsBar: { 
+    alignItems: 'center',
+    // Hide button text on mobile, show icon only
+    "@media (max-width: 767px)": {
+      '& button': {
+        minWidth: '32px',
+        padding: tokens.spacingHorizontalXS,
+        '& > span:not(:has(svg))': {
+          display: 'none',
+        },
+      },
+    },
+  },
+  right: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    gap: tokens.spacingHorizontalM,
+    minWidth: 0,
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalXS,
+      flex: '0 0 auto',
+    },
+  },
+  status: { 
+    color: tokens.colorNeutralForeground2, 
+    whiteSpace: 'nowrap', 
+    overflow: 'hidden', 
+    textOverflow: 'ellipsis', 
+    minWidth: 0,
+    // Hide on mobile screens
+    "@media (max-width: 767px)": {
+      display: 'none',
+    },
+  },
+  mobileHidden: {
+    "@media (max-width: 767px)": {
+      display: 'none',
+    },
+  },
 });
 
 export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status, syncStatus }: TopBarProps){
@@ -50,7 +108,7 @@ export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, c
   return (
     <header className={s.root}>
       <div className={s.left}>
-        <img src={`${import.meta.env.BASE_URL}favicon-32x32.png`} alt={appName} width={32} height={32} />
+        <img src={`${import.meta.env.BASE_URL}favicon-32x32.png`} alt={appName} width={32} height={32} className={s.logo} />
         {!sqlDb && <Tooltip content="No database loaded" relationship="label"><Spinner size="tiny" /></Tooltip>}
         <FluentToolbar aria-label="File actions" className={s.actionsBar} size="small">
           <Tooltip content="New DB" relationship="label">

@@ -5,6 +5,7 @@ import PersonName from "./PersonName";
 import type { Segment } from "../services/segments";
 import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, usePersistentFilters } from "./filters/PeopleFilters";
 import { REQUIRED_TRAINING_AREAS, isInTrainingPeriod } from "../utils/trainingConstants";
+import FluentDateInput from "./FluentDateInput";
 
 function pad2(n: number) {
   return n < 10 ? `0${n}` : `${n}`;
@@ -48,6 +49,10 @@ const useCrewHistoryViewStyles = makeStyles({
     gap: tokens.spacingVerticalM,
     paddingBlockEnd: tokens.spacingVerticalS,
     minWidth: 0,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingVerticalS,
+    },
   },
   primaryControls: {
     display: 'flex',
@@ -58,35 +63,62 @@ const useCrewHistoryViewStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
     borderRadius: tokens.borderRadiusMedium,
     border: `1px solid ${tokens.colorNeutralStroke2}`,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+      padding: tokens.spacingHorizontalS,
+    },
   },
   monthRangeSection: {
     display: 'flex',
     alignItems: 'center',
     gap: tokens.spacingHorizontalM,
     flexWrap: 'wrap',
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+      flex: "1 1 100%",
+    },
   },
   monthInput: {
     display: 'flex',
     flexDirection: 'column',
     gap: tokens.spacingVerticalXS,
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      flex: "1 1 100%",
+    },
   },
   secondaryControls: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: tokens.spacingHorizontalM,
     alignItems: 'end',
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
   },
   topRow: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: tokens.spacingHorizontalM,
     alignItems: 'end',
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
   },
   controlGroup: {
     display: 'flex',
     flexDirection: 'column',
     gap: tokens.spacingVerticalXS,
     minWidth: '140px',
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      minWidth: "100%",
+      flex: "1 1 100%",
+    },
   },
   inlineGroup: {
     display: 'flex',
@@ -160,6 +192,22 @@ const useCrewHistoryViewStyles = makeStyles({
     overflowX: 'auto',
     overflowY: 'auto',
     overscrollBehaviorX: 'contain',
+    position: 'relative',
+    // Add mobile-specific styles for better touch scrolling
+    "@media (max-width: 767px)": {
+      WebkitOverflowScrolling: 'touch',
+      // Reduce max height on mobile to avoid issues
+      maxHeight: 'calc(100vh - 300px)',
+      // Add visual scrolling indicators
+      backgroundImage: `linear-gradient(to right, ${tokens.colorNeutralBackground1} 30%, transparent),
+                       linear-gradient(to left, ${tokens.colorNeutralBackground1} 30%, transparent),
+                       linear-gradient(to right, rgba(0,0,0,0.1), transparent 20%),
+                       linear-gradient(to left, rgba(0,0,0,0.1), transparent 20%)`,
+      backgroundPosition: 'left center, right center, left center, right center',
+      backgroundRepeat: 'no-repeat',
+      backgroundSize: '60px 100%, 60px 100%, 20px 100%, 20px 100%',
+      backgroundAttachment: 'local, local, scroll, scroll',
+    },
   },
   stickyName: {
     position: 'sticky',
@@ -170,6 +218,12 @@ const useCrewHistoryViewStyles = makeStyles({
     width: `${NAME_COL_PX}px`,
     minWidth: `${NAME_COL_PX}px`,
     maxWidth: `${NAME_COL_PX}px`,
+    // Reduce width on mobile
+    "@media (max-width: 767px)": {
+      width: '120px',
+      minWidth: '120px',
+      maxWidth: '120px',
+    },
   },
   stickySeg: {
     position: 'sticky',
@@ -180,6 +234,13 @@ const useCrewHistoryViewStyles = makeStyles({
     width: `${SEG_COL_PX}px`,
     minWidth: `${SEG_COL_PX}px`,
     maxWidth: `${SEG_COL_PX}px`,
+    // Adjust position for narrower name column on mobile
+    "@media (max-width: 767px)": {
+      left: '120px',
+      width: '80px',
+      minWidth: '80px',
+      maxWidth: '80px',
+    },
   },
 });
 
@@ -541,11 +602,11 @@ export default function CrewHistoryView({
           <div className={styles.monthRangeSection}>
             <div className={styles.monthInput}>
               <span className={styles.label}>From</span>
-              <Input type="month" value={startMonth} onChange={(_, d) => setStartMonth(d.value)} />
+              <FluentDateInput type="month" value={startMonth} onChange={(_, d) => setStartMonth(d.value)} />
             </div>
             <div className={styles.monthInput}>
               <span className={styles.label}>To</span>
-              <Input type="month" value={endMonth} onChange={(_, d) => setEndMonth(d.value)} />
+              <FluentDateInput type="month" value={endMonth} onChange={(_, d) => setEndMonth(d.value)} />
             </div>
           </div>
           <Checkbox label="Edit past months" checked={editPast} onChange={(_, data) => setEditPast(!!data.checked)} />

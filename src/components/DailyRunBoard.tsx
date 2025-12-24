@@ -152,6 +152,12 @@ const useStyles = makeStyles({
     paddingTop: tokens.spacingVerticalS,
     overflow: "auto",
     minHeight: 0,
+    maxHeight: "calc(100vh - 300px)", // Ensure scrollability
+    // Better mobile scrolling
+    "@media (max-width: 767px)": {
+      maxHeight: "calc(100vh - 200px)",
+      gap: tokens.spacingHorizontalXXS,
+    },
   },
   roleCard: {
     borderLeftWidth: "4px",
@@ -163,6 +169,11 @@ const useStyles = makeStyles({
     flexDirection: "column",
     minHeight: 0,
     overflow: "hidden",
+    maxHeight: "400px", // Prevent individual cards from becoming too tall
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
+    },
   },
   roleHeader: {
     display: "flex",

@@ -43,6 +43,7 @@ import PersonName from "./PersonName";
 import { exportMonthOneSheetXlsx } from "../excel/export-one-sheet";
 import { type Segment, type SegmentRow } from "../services/segments";
 import type { Availability } from "../services/availabilityOverrides";
+import FluentDateInput from "./FluentDateInput";
 import { SIX_MONTHS_MS, REQUIRED_TRAINING_AREAS, isInTrainingPeriod } from "../utils/trainingConstants";
 import { getWeekDateRange, formatDateRange, type WeekStartMode } from "../utils/weekCalculation";
 import AlertDialog from "./AlertDialog";
@@ -174,18 +175,31 @@ const useStyles = makeStyles({
     gap: tokens.spacingVerticalS,
     paddingBlockEnd: tokens.spacingVerticalS,
     minWidth: 0,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingVerticalXS,
+    },
   },
   topRow: {
     display: "flex",
     flexWrap: "wrap",
     gap: tokens.spacingHorizontalM,
     alignItems: "end",
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
   },
   controlGroup: {
     display: "flex",
     flexDirection: "column",
     gap: tokens.spacingVerticalXS,
     minWidth: "140px",
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      minWidth: "100%",
+      flex: "1 1 100%",
+    },
   },
   actionRow: {
     display: "flex",
@@ -194,17 +208,32 @@ const useStyles = makeStyles({
     alignItems: "center",
     paddingTop: tokens.spacingVerticalS,
     borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      gap: tokens.spacingHorizontalS,
+    },
   },
   primaryActions: {
     display: "flex",
     gap: tokens.spacingHorizontalS,
     alignItems: "center",
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      flex: "1 1 100%",
+      flexWrap: "wrap",
+    },
   },
   secondaryActions: {
     display: "flex",
     gap: tokens.spacingHorizontalM,
     alignItems: "center",
     marginLeft: "auto",
+    // Mobile: reset margin and full width
+    "@media (max-width: 767px)": {
+      marginLeft: 0,
+      flex: "1 1 100%",
+      gap: tokens.spacingHorizontalS,
+    },
   },
   copySection: {
     display: "flex",
@@ -219,6 +248,11 @@ const useStyles = makeStyles({
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     gap: tokens.spacingHorizontalS,
     alignItems: "end",
+    // Mobile: stack vertically
+    "@media (max-width: 767px)": {
+      gridTemplateColumns: "1fr",
+      gap: tokens.spacingVerticalXS,
+    },
   },
   rightActions: {
     display: "flex",
@@ -226,6 +260,10 @@ const useStyles = makeStyles({
     alignItems: "end",
     flexWrap: "wrap",
     justifyContent: "flex-end",
+    // Mobile: full width
+    "@media (max-width: 767px)": {
+      justifyContent: "flex-start",
+    },
   },
   label: {
     fontSize: tokens.fontSizeBase200,
@@ -1347,7 +1385,7 @@ export default function MonthlyDefaults({
         <div className={styles.topRow}>
           <div className={styles.controlGroup}>
             <span className={styles.label}>Month</span>
-            <Input className={styles.field} type="month" value={selectedMonth} onChange={(_, d) => setSelectedMonth(d.value)} />
+            <FluentDateInput className={styles.field} type="month" value={selectedMonth} onChange={(_, d) => setSelectedMonth(d.value)} />
           </div>
           <div className={styles.controlGroup}>
             <span className={styles.label}>Sort by</span>
@@ -1413,7 +1451,7 @@ export default function MonthlyDefaults({
             <div className={styles.copySection}>
               <div className={styles.controlGroup} style={{ minWidth: '110px' }}>
                 <span className={styles.label}>Copy from</span>
-                <Input type="month" value={copyFromMonth} onChange={(_, d) => setCopyFromMonth(d.value)} />
+                <FluentDateInput type="month" value={copyFromMonth} onChange={(_, d) => setCopyFromMonth(d.value)} />
               </div>
               <Button appearance="primary" size="small" onClick={handleCopyClick}>
                 Copy

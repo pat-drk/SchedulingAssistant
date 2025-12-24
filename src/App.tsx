@@ -31,6 +31,7 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import EmailInputDialog from "./components/EmailInputDialog";
 import { ToastContainer, useToast } from "./components/Toast";
 import { logger } from "./utils/logger";
+import { MOBILE_NAV_HEIGHT, BREAKPOINTS } from "./styles/breakpoints";
 
 /*
 MVP: Pure-browser scheduler for Microsoft Teams Shifts
@@ -246,7 +247,13 @@ const useBaselineViewStyles = makeStyles({
 });
 
 const usePeopleEditorStyles = makeStyles({
-  root: { padding: tokens.spacingHorizontalM },
+  root: { 
+    padding: tokens.spacingHorizontalM,
+    // Mobile adjustments
+    "@media (max-width: 767px)": {
+      padding: tokens.spacingHorizontalS,
+    },
+  },
   tableWrap: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusLarge,
@@ -255,13 +262,89 @@ const usePeopleEditorStyles = makeStyles({
     maxHeight: '60vh',
     width: '100%',
     boxShadow: tokens.shadow2,
+    position: 'relative',
+    // On mobile, enable horizontal scroll for table
+    "@media (max-width: 767px)": {
+      overflowX: 'auto',
+      WebkitOverflowScrolling: 'touch',
+      // Add subtle gradient to indicate scrollability
+      backgroundImage: `linear-gradient(to right, ${tokens.colorNeutralBackground1} 30%, transparent),
+                       linear-gradient(to left, ${tokens.colorNeutralBackground1} 30%, transparent),
+                       linear-gradient(to right, ${tokens.colorNeutralStroke2Alpha}, transparent 30%),
+                       linear-gradient(to left, ${tokens.colorNeutralStroke2Alpha}, transparent 30%)`,
+      backgroundPosition: 'left center, right center, left center, right center',
+      backgroundRepeat: 'no-repeat',
+      backgroundSize: '40px 100%, 40px 100%, 10px 100%, 10px 100%',
+      backgroundAttachment: 'local, local, scroll, scroll',
+    },
   },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: tokens.spacingVerticalS },
-  title: { fontWeight: tokens.fontWeightSemibold, fontSize: tokens.fontSizeBase400 },
-  actions: { display: 'flex', gap: tokens.spacingHorizontalS },
+  mobileHideCell: {
+    // Hide less important columns on mobile
+    "@media (max-width: 767px)": {
+      display: 'none',
+    },
+  },
+  actionButtons: {
+    display: 'flex',
+    gap: tokens.spacingHorizontalXS,
+    // Stack vertically on mobile for better touch targets
+    "@media (max-width: 767px)": {
+      flexDirection: 'column',
+      gap: tokens.spacingVerticalXXS,
+      '& button': {
+        width: '100%',
+        minWidth: '60px',
+      },
+    },
+  },
+  header: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    marginBottom: tokens.spacingVerticalS,
+    // Mobile: stack vertically
+    "@media (max-width: 767px)": {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: tokens.spacingVerticalS,
+    },
+  },
+  title: { 
+    fontWeight: tokens.fontWeightSemibold, 
+    fontSize: tokens.fontSizeBase400,
+  },
+  actions: { 
+    display: 'flex', 
+    gap: tokens.spacingHorizontalS,
+    // Mobile: full width buttons
+    "@media (max-width: 767px)": {
+      flexDirection: 'column',
+      width: '100%',
+      '& button': {
+        width: '100%',
+      },
+    },
+  },
   dialogSurface: {
     width: '700px',
     maxWidth: '95vw',
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    // Full-screen on mobile for better usability
+    [`@media ${BREAKPOINTS.mobile.maxQuery}`]: {
+      width: '100vw',
+      maxWidth: '100vw',
+      height: '100vh',
+      maxHeight: '100vh',
+      borderRadius: 0,
+    },
+  },
+  dialogContent: {
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    flex: '1 1 auto',
+    minHeight: 0,
   },
   section: {
     marginBottom: tokens.spacingVerticalL,
@@ -279,12 +362,20 @@ const usePeopleEditorStyles = makeStyles({
     gridTemplateColumns: '1fr 1fr',
     gap: tokens.spacingHorizontalM,
     marginBottom: tokens.spacingVerticalM,
+    // Stack vertically on mobile
+    [`@media ${BREAKPOINTS.mobile.maxQuery}`]: {
+      gridTemplateColumns: '1fr',
+    },
   },
   formRowThree: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr 1fr',
     gap: tokens.spacingHorizontalM,
     marginBottom: tokens.spacingVerticalM,
+    // Stack vertically on mobile
+    [`@media ${BREAKPOINTS.mobile.maxQuery}`]: {
+      gridTemplateColumns: '1fr',
+    },
   },
   formField: {
     display: 'flex',
@@ -308,6 +399,10 @@ const usePeopleEditorStyles = makeStyles({
     display: 'grid',
     gridTemplateColumns: 'repeat(5, minmax(110px, 1fr))',
     gap: tokens.spacingHorizontalM,
+    // Better wrapping on mobile
+    [`@media ${BREAKPOINTS.mobile.maxQuery}`]: {
+      gridTemplateColumns: 'repeat(2, 1fr)',
+    },
   },
   formGrid: {
     display: 'grid',
@@ -403,6 +498,12 @@ const useAppShellStyles = makeStyles({
     boxSizing: 'border-box',
     paddingLeft: '72px',
     backgroundColor: tokens.colorNeutralBackground1,
+    transition: `padding-left ${tokens.durationNormal} ${tokens.curveEasyEase}, padding-bottom ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+    // Remove left padding on mobile, add bottom padding for bottom nav
+    [`@media ${BREAKPOINTS.mobile.maxQuery}`]: {
+      paddingLeft: 0,
+      paddingBottom: MOBILE_NAV_HEIGHT,
+    },
   },
   contentRow: {
     display: 'flex',
@@ -1807,11 +1908,11 @@ function PeopleEditor(){
             <TableHeader>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>Work Email</TableHeaderCell>
-                <TableHeaderCell>B/S</TableHeaderCell>
-                <TableHeaderCell>Commute</TableHeaderCell>
+                <TableHeaderCell className={s.mobileHideCell}>Work Email</TableHeaderCell>
+                <TableHeaderCell className={s.mobileHideCell}>B/S</TableHeaderCell>
+                <TableHeaderCell className={s.mobileHideCell}>Commute</TableHeaderCell>
                 <TableHeaderCell>Active</TableHeaderCell>
-                <TableHeaderCell>Availability</TableHeaderCell>
+                <TableHeaderCell className={s.mobileHideCell}>Availability</TableHeaderCell>
                 <TableHeaderCell>Actions</TableHeaderCell>
               </TableRow>
             </TableHeader>
@@ -1819,17 +1920,17 @@ function PeopleEditor(){
               {viewPeople.map(p => (
                 <TableRow key={p.id}>
                   <TableCell className={s.cellWrap}><PersonName personId={p.id}>{p.last_name}, {p.first_name}</PersonName></TableCell>
-                  <TableCell className={s.cellWrap}>{p.work_email}</TableCell>
-                  <TableCell>{p.brother_sister||'-'}</TableCell>
-                  <TableCell>{p.commuter?"Yes":"No"}</TableCell>
+                  <TableCell className={`${s.cellWrap} ${s.mobileHideCell}`}>{p.work_email}</TableCell>
+                  <TableCell className={s.mobileHideCell}>{p.brother_sister||'-'}</TableCell>
+                  <TableCell className={s.mobileHideCell}>{p.commuter?"Yes":"No"}</TableCell>
                   <TableCell>{p.active?"Yes":"No"}</TableCell>
-                  <TableCell className={s.cellWrap}>
+                  <TableCell className={`${s.cellWrap} ${s.mobileHideCell}`}>
                     <div className={s.availText}>
                       Mon: {p.avail_mon || 'U'} | Tue: {p.avail_tue || 'U'} | Wed: {p.avail_wed || 'U'} | Thu: {p.avail_thu || 'U'} | Fri: {p.avail_fri || 'U'}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div className={s.actionButtons}>
                       <Button size="small" onClick={()=>openModal(p)}>Edit</Button>
                       <Button size="small" appearance="secondary" onClick={()=>{ setPersonToDelete(p.id); }}>Delete</Button>
                     </div>
@@ -1911,7 +2012,7 @@ function PeopleEditor(){
         <DialogSurface className={s.dialogSurface}>
           <DialogBody>
             <DialogTitle>{editing ? 'Edit Person' : 'Add Person'}</DialogTitle>
-            <DialogContent>
+            <DialogContent className={s.dialogContent}>
               {/* Basic Information Section */}
               <div className={s.section}>
                 <div className={s.sectionTitle}>Basic Information</div>
