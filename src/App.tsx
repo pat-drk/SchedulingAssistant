@@ -106,41 +106,103 @@ async function loadXLSX(){
 }
 
 const useRequiredCellStyles = makeStyles({
-  row: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalS },
-  input: { width: '7ch' },
+  row: { 
+    display: 'flex', 
+    alignItems: 'center', 
+    gap: tokens.spacingHorizontalS,
+  },
+  input: { 
+    width: '7ch',
+    minHeight: '32px',
+  },
+  button: {
+    minHeight: '32px',
+  },
 });
 
 const useBaselineViewStyles = makeStyles({
-  root: { padding: tokens.spacingHorizontalM },
-  title: { fontWeight: tokens.fontWeightSemibold, fontSize: tokens.fontSizeBase400, marginBottom: tokens.spacingVerticalM },
+  root: { 
+    padding: tokens.spacingHorizontalL,
+  },
+  header: {
+    marginBottom: tokens.spacingVerticalL,
+  },
+  title: { 
+    fontWeight: tokens.fontWeightSemibold, 
+    fontSize: tokens.fontSizeBase500, 
+    marginBottom: tokens.spacingVerticalS,
+  },
+  description: {
+    fontSize: tokens.fontSizeBase300,
+    color: tokens.colorNeutralForeground2,
+    marginBottom: tokens.spacingVerticalM,
+  },
+  metricsRow: {
+    display: 'flex',
+    gap: tokens.spacingHorizontalM,
+    marginBottom: tokens.spacingVerticalL,
+    flexWrap: 'wrap',
+  },
+  metricCard: {
+    padding: tokens.spacingHorizontalM,
+    borderRadius: tokens.borderRadiusLarge,
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    minWidth: '150px',
+    flex: '1 1 auto',
+  },
+  metricValue: {
+    fontSize: tokens.fontSizeBase600,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorBrandForeground1,
+  },
+  metricLabel: {
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground3,
+    marginTop: tokens.spacingVerticalXXS,
+  },
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr',
-    gap: tokens.spacingHorizontalM,
+    gap: tokens.spacingHorizontalL,
     ['@media (min-width: 1024px)']: { gridTemplateColumns: 'repeat(2, 1fr)' },
-    ['@media (min-width: 1280px)']: { gridTemplateColumns: 'repeat(3, 1fr)' },
+    ['@media (min-width: 1440px)']: { gridTemplateColumns: 'repeat(3, 1fr)' },
   },
   card: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusLarge,
-    padding: tokens.spacingHorizontalM,
+    padding: tokens.spacingHorizontalL,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow2,
+    transition: `box-shadow ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+    ":hover": {
+      boxShadow: tokens.shadow4,
+    },
   },
   roleCard: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: tokens.borderRadiusLarge,
+    borderRadius: tokens.borderRadiusMedium,
     padding: tokens.spacingHorizontalM,
     marginBottom: tokens.spacingVerticalM,
+    backgroundColor: tokens.colorNeutralBackground2,
   },
   roleGrid: {
     display: 'grid',
-    gap: tokens.spacingHorizontalS,
-    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+    gap: tokens.spacingHorizontalM,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
     alignItems: 'start',
   },
-  subTitle: { fontWeight: tokens.fontWeightSemibold, marginBottom: tokens.spacingVerticalS },
-  label: { fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3, marginBottom: tokens.spacingVerticalXS },
+  subTitle: { 
+    fontWeight: tokens.fontWeightSemibold, 
+    fontSize: tokens.fontSizeBase400,
+    marginBottom: tokens.spacingVerticalM,
+  },
+  label: { 
+    fontSize: tokens.fontSizeBase200, 
+    color: tokens.colorNeutralForeground3, 
+    marginBottom: tokens.spacingVerticalXS,
+    fontWeight: tokens.fontWeightSemibold,
+  },
 });
 
 const usePeopleEditorStyles = makeStyles({
@@ -188,28 +250,43 @@ const useNeedsEditorStyles = makeStyles({
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr',
-    gap: tokens.spacingHorizontalM,
+    gap: tokens.spacingHorizontalL,
     ['@media (min-width: 1024px)']: { gridTemplateColumns: 'repeat(2, 1fr)' },
-    ['@media (min-width: 1280px)']: { gridTemplateColumns: 'repeat(3, 1fr)' },
+    ['@media (min-width: 1440px)']: { gridTemplateColumns: 'repeat(3, 1fr)' },
   },
   card: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusLarge,
-    padding: tokens.spacingHorizontalM,
+    padding: tokens.spacingHorizontalL,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow2,
   },
   roleCard: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: tokens.borderRadiusLarge,
+    borderRadius: tokens.borderRadiusMedium,
     padding: tokens.spacingHorizontalM,
     marginBottom: tokens.spacingVerticalM,
+    backgroundColor: tokens.colorNeutralBackground2,
   },
-  subTitle: { fontWeight: tokens.fontWeightSemibold, marginBottom: tokens.spacingVerticalS },
-  roleGrid: { display: 'grid', gap: tokens.spacingHorizontalS, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', alignItems: 'start' },
-  label: { fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3, marginBottom: tokens.spacingVerticalXS },
+  subTitle: { 
+    fontWeight: tokens.fontWeightSemibold, 
+    fontSize: tokens.fontSizeBase400,
+    marginBottom: tokens.spacingVerticalM,
+  },
+  roleGrid: { 
+    display: 'grid', 
+    gap: tokens.spacingHorizontalM, 
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', 
+    alignItems: 'start',
+  },
+  label: { 
+    fontSize: tokens.fontSizeBase200, 
+    color: tokens.colorNeutralForeground3, 
+    marginBottom: tokens.spacingVerticalXS,
+    fontWeight: tokens.fontWeightSemibold,
+  },
   content: { overflowY: 'auto', overflowX: 'hidden' },
-  surface: { width: '90vw', maxWidth: '1200px', maxHeight: '85vh' },
+  surface: { width: '90vw', maxWidth: '1400px', maxHeight: '85vh' },
 });
 
 const useAppShellStyles = makeStyles({
@@ -1264,6 +1341,7 @@ async function exportShifts() {
     const [val,setVal] = useState<number>(req);
     useEffect(()=>setVal(req),[req]);
     const r = useRequiredCellStyles();
+    const hasChanged = val !== req;
     return (
       <div className={r.row}>
         <Input
@@ -1272,8 +1350,15 @@ async function exportShifts() {
           onChange={(_, d)=>setVal(parseInt(d.value||'0',10))}
           className={r.input}
           size="small"
+          appearance="outline"
         />
-        <Button size="small" appearance="primary" onClick={()=>setRequired(date, group.id, role.id, segment, val)}>
+        <Button 
+          size="small" 
+          appearance={hasChanged ? "primary" : "secondary"}
+          onClick={()=>setRequired(date, group.id, role.id, segment, val)}
+          className={r.button}
+          disabled={!hasChanged}
+        >
           Save
         </Button>
       </div>
@@ -1281,9 +1366,43 @@ async function exportShifts() {
   }
   function BaselineView(){
     const s = useBaselineViewStyles();
+    
+    // Calculate summary metrics
+    const totalRoles = roles.length;
+    const totalSegments = segments.length;
+    const totalGroups = groups.length;
+    const totalBaselines = useMemo(() => {
+      return all(`SELECT COUNT(*) as count FROM needs_baseline WHERE required > 0`)[0]?.count || 0;
+    }, [all]);
+    
     return (
       <div className={s.root}>
-        <div className={s.title}>Baseline Needs</div>
+        <div className={s.header}>
+          <div className={s.title}>Baseline Needs</div>
+          <div className={s.description}>
+            Configure the default staffing requirements for each role and segment. These baselines can be overridden for specific dates.
+          </div>
+          
+          <div className={s.metricsRow}>
+            <div className={s.metricCard}>
+              <div className={s.metricValue}>{totalGroups}</div>
+              <div className={s.metricLabel}>Groups</div>
+            </div>
+            <div className={s.metricCard}>
+              <div className={s.metricValue}>{totalRoles}</div>
+              <div className={s.metricLabel}>Roles</div>
+            </div>
+            <div className={s.metricCard}>
+              <div className={s.metricValue}>{totalSegments}</div>
+              <div className={s.metricLabel}>Segments</div>
+            </div>
+            <div className={s.metricCard}>
+              <div className={s.metricValue}>{totalBaselines}</div>
+              <div className={s.metricLabel}>Configured Needs</div>
+            </div>
+          </div>
+        </div>
+        
         <div className={s.grid}>
           {groups.map((g:any)=> (
             <div key={g.id} className={s.card}>
@@ -1294,7 +1413,7 @@ async function exportShifts() {
                   <div className={s.roleGrid}>
                       {segments.map((seg) => (
                         <div key={seg.name}>
-                          <div className={s.label}>{seg.name} Required</div>
+                          <div className={s.label}>{seg.name}</div>
                           <RequiredCell date={null} group={g} role={r} segment={seg.name as Segment} />
                         </div>
                       ))}
