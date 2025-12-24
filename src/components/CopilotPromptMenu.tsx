@@ -13,6 +13,8 @@ import {
 } from "@fluentui/react-components";
 import { ChevronDown20Regular, Lightbulb20Regular } from "@fluentui/react-icons";
 import { getCopilotShortcut } from "../utils/edgeBrowser";
+import AlertDialog from "./AlertDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 const useStyles = makeStyles({
   toastContainer: {
@@ -74,6 +76,7 @@ const PROMPTS = [
  */
 export default function CopilotPromptMenu() {
   const styles = useStyles();
+  const dialogs = useDialogs();
   const [showToast, setShowToast] = useState(false);
   const shortcut = getCopilotShortcut();
 
@@ -84,7 +87,7 @@ export default function CopilotPromptMenu() {
       setTimeout(() => setShowToast(false), 4000);
     } catch (err) {
       // Fallback: show alert if clipboard API fails
-      alert(`Prompt ready:\n\n${prompt}\n\nPress ${shortcut} to open Copilot and paste.`);
+      dialogs.showAlert(`Prompt ready:\n\n${prompt}\n\nPress ${shortcut} to open Copilot and paste.`, "Prompt Ready");
     }
   };
 
@@ -120,6 +123,15 @@ export default function CopilotPromptMenu() {
             ✅ Prompt copied! Open Copilot (<span className={styles.shortcutText}>{shortcut}</span>) and paste.
           </Text>
         </div>
+      )}
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
       )}
     </>
   );

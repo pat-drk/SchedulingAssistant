@@ -1,5 +1,7 @@
 import * as React from "react";
 import { Button, Input, Dropdown, Option, Table, TableHeader, TableHeaderCell, TableRow, TableBody, TableCell, makeStyles, tokens, Textarea, Tooltip, Dialog, DialogSurface, DialogBody, DialogTitle, DialogContent, DialogActions, DialogTrigger } from "@fluentui/react-components";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface TimeOffManagerProps {
   all: (sql: string, params?: any[]) => any[];
@@ -126,6 +128,7 @@ const useStyles = makeStyles({
 
 export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProps){
   const s = useStyles();
+  const dialogs = useDialogs();
   const [status, setStatus] = React.useState<string>("");
   const [importSummary, setImportSummary] = React.useState<null | { added: number; updated: number; ignored: number; skipped: number; noEmail: number; badDate: number; matchedByName: number }>(null);
 
@@ -329,8 +332,9 @@ export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProp
     setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
   }
 
-  function remove(id: number){
-    if (!confirm('Delete this time-off entry?')) return;
+  async function remove(id: number){
+    const confirmed = await dialogs.showConfirm('Are you sure you want to delete this time-off entry?', 'Delete Time Off');
+    if (!confirmed) return;
     run(`DELETE FROM timeoff WHERE id=?`, [id]);
     setStatus('Deleted.');
   refresh();
@@ -442,6 +446,18 @@ export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProp
           </TableBody>
         </Table>
       </div>
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
+      )}
     </section>
   );
 }

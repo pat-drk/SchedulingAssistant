@@ -1,5 +1,8 @@
 import React from "react";
 import { Button, Input, Table, TableHeader, TableRow, TableHeaderCell, TableBody, TableCell, makeStyles, tokens, Dropdown, Option, Label } from "@fluentui/react-components";
+import AlertDialog from "./AlertDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface SkillsEditorProps {
   all: (sql: string, params?: any[]) => any[];
@@ -23,6 +26,7 @@ const useSkillsEditorStyles = makeStyles({
 
 export default function SkillsEditor({ all, run, refresh }: SkillsEditorProps) {
   const s = useSkillsEditorStyles();
+  const dialogs = useDialogs();
 
   const [rows, setRows] = React.useState<SkillRow[]>([]);
   const [code, setCode] = React.useState("");
@@ -82,16 +86,17 @@ export default function SkillsEditor({ all, run, refresh }: SkillsEditorProps) {
     refresh();
   }
 
-  function deleteSkill(id: number) {
-  // eslint-disable-next-line no-alert
-  const ok = confirm('Delete this skill permanently? This cannot be undone.');
-  if (!ok) return;
+  async function deleteSkill(id: number) {
+    const confirmed = await dialogs.showConfirm(
+      'This will permanently delete this skill. This cannot be undone.',
+      'Delete Skill'
+    );
+    if (!confirmed) return;
     // Only allow delete when there are no references
     const c = all(`SELECT COUNT(1) AS c FROM person_skill WHERE skill_id=?`, [id]);
     const count = Number(c?.[0]?.c ?? 0);
     if (count > 0) {
-      // eslint-disable-next-line no-alert
-      alert('Cannot delete: this skill has ratings. Deactivate instead.');
+      dialogs.showAlert('Cannot delete: this skill has ratings. Deactivate instead.', 'Cannot Delete');
       return;
     }
     run(`DELETE FROM skill_order WHERE skill_id=?`, [id]);
@@ -210,6 +215,27 @@ export default function SkillsEditor({ all, run, refresh }: SkillsEditorProps) {
           </TableBody>
         </Table>
       </div>
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
+      )}
     </div>
   );
 }
