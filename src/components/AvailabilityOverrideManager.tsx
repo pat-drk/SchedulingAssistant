@@ -107,6 +107,12 @@ export default function AvailabilityOverrideManager({
   )[]>([null, null, null, null, null]);
   const [rev, setRev] = React.useState(0);
 
+  const selectedPersonLabel = React.useMemo(() => {
+    if (personId == null) return '';
+    const person = people.find((p: any) => p.id === personId);
+    return person ? `${person.first_name} ${person.last_name}` : '';
+  }, [personId, people]);
+
   const rows = React.useMemo(
     () =>
       all(
@@ -208,7 +214,7 @@ export default function AvailabilityOverrideManager({
           className={s.personCol}
           placeholder="Select person..."
           selectedOptions={personId != null ? [String(personId)] : []}
-          value={personId != null ? people.find((p: any) => p.id === personId) ? `${people.find((p: any) => p.id === personId)?.first_name} ${people.find((p: any) => p.id === personId)?.last_name}` : '' : ''}
+          value={selectedPersonLabel}
           onOptionSelect={(_, d) => setPersonId(Number(d.optionValue))}
         >
           {people.map((p: any) => {
