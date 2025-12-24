@@ -9,6 +9,7 @@ import CopilotContext from "./components/CopilotContext";
 const DailyRunBoard = React.lazy(() => import("./components/DailyRunBoard"));
 const AdminView = React.lazy(() => import("./components/AdminView"));
 const ExportPreview = React.lazy(() => import("./components/ExportPreview"));
+const SpecialEvents = React.lazy(() => import("./components/SpecialEvents"));
 // import { exportMonthOneSheetXlsx } from "./excel/export-one-sheet"; // not directly used here
 import PersonName from "./components/PersonName";
 import PersonProfileModal from "./components/PersonProfileModal";
@@ -2344,6 +2345,17 @@ function PeopleEditor(){
           )}
 
 
+          {activeTab === 'EVENTS' && (
+            <Suspense fallback={<div className="p-4 text-slate-600">Loading Special Events…</div>}>
+              <SpecialEvents
+                sqlDb={sqlDb}
+                all={all}
+                run={run}
+                people={people}
+                refreshCaches={refreshCaches}
+              />
+            </Suspense>
+          )}
           {activeTab === 'HISTORY' && (
             <CrewHistoryView
               sqlDb={sqlDb}

@@ -238,6 +238,44 @@ export const migrate25AddWeekStartMode: Migration = (db) => {
   }
 };
 
+// 26. Create special_event table for volunteer events
+export const migrate26AddSpecialEvent: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS special_event (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    event_date TEXT NOT NULL,
+    start_time TEXT NOT NULL DEFAULT '16:00',
+    end_time TEXT NOT NULL DEFAULT '20:00',
+    description TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );`);
+};
+
+// 27. Create special_event_menu_item table
+export const migrate27AddSpecialEventMenuItem: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS special_event_menu_item (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES special_event(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    kitchen_quota INTEGER NOT NULL DEFAULT 1,
+    waiter_quota INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_header INTEGER NOT NULL DEFAULT 0,
+    header_color TEXT DEFAULT '#0070C0'
+  );`);
+};
+
+// 28. Create special_event_assignment table
+export const migrate28AddSpecialEventAssignment: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS special_event_assignment (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES special_event(id) ON DELETE CASCADE,
+    menu_item_id INTEGER NOT NULL REFERENCES special_event_menu_item(id) ON DELETE CASCADE,
+    person_id INTEGER NOT NULL REFERENCES person(id),
+    role_type TEXT NOT NULL CHECK(role_type IN ('kitchen', 'waiter'))
+  );`);
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -752,6 +790,9 @@ const migrations: Record<number, Migration> = {
   23: migrate23AddTrainingAreaOverride,
   24: migrate24AddSyncVersion,
   25: migrate25AddWeekStartMode,
+  26: migrate26AddSpecialEvent,
+  27: migrate27AddSpecialEventMenuItem,
+  28: migrate28AddSpecialEventAssignment,
 };
 
 export function addMigration(version: number, fn: Migration) {

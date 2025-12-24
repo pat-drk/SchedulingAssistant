@@ -14,6 +14,7 @@ import {
   Navigation20Regular,
   NavigationFilled,
   MoreHorizontal20Regular,
+  Sparkle20Regular,
 } from "@fluentui/react-icons";
 import { useIsMobile } from "../hooks/useMediaQuery";
 import { MOBILE_NAV_HEIGHT, BREAKPOINTS } from "../styles/breakpoints";
@@ -26,6 +27,7 @@ export type TabKey =
   | "NEEDS"
   | "EXPORT"
   | "MONTHLY"
+  | "EVENTS"
   | "HISTORY"
   | "ADMIN";
 
@@ -194,6 +196,7 @@ export default function SideRail({
   const navItems: Array<{ key: TabKey; label: string; icon: React.ReactElement }> = [
     { key: "RUN", label: "Run", icon: <CalendarDay20Regular /> },
     { key: "MONTHLY", label: "Monthly", icon: <CalendarLtr20Regular /> },
+    { key: "EVENTS", label: "Events", icon: <Sparkle20Regular /> },
     { key: "PEOPLE", label: "People", icon: <PeopleCommunity20Regular /> },
     { key: "TRAINING", label: "Training", icon: <LearningApp20Regular /> },
     { key: "NEEDS", label: "Needs", icon: <DocumentTable20Regular /> },
@@ -203,7 +206,7 @@ export default function SideRail({
   ];
 
   // For mobile, show only primary tabs in bottom nav (derived from main nav items)
-  const primaryMobileTabs: TabKey[] = ["RUN", "PEOPLE", "MONTHLY"];
+  const primaryMobileTabs: TabKey[] = ["RUN", "PEOPLE", "MONTHLY", "EVENTS"];
   const primaryMobileNavItems = navItems.filter((item) => primaryMobileTabs.includes(item.key));
   const secondaryMobileNavItems = navItems.filter((item) => !primaryMobileTabs.includes(item.key));
 
