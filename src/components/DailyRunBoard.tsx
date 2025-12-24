@@ -213,6 +213,7 @@ const useStyles = makeStyles({
     padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
     columnGap: tokens.spacingHorizontalS,
     flexShrink: 0,
+    width: "100%", // Ensure item fills the available width
     fontSize: tokens.fontSizeBase200,
     transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
     ":hover": {
@@ -656,7 +657,7 @@ export default function DailyRunBoard({
 
   async function handleExportDaily() {
     try {
-      await exportDailyScheduleXlsx(ymd(selectedDateObj), seg);
+      await exportDailyScheduleXlsx(ymd(selectedDateObj));
     } catch (error) {
       dialogs.showAlert(
         `Failed to export schedule: ${error instanceof Error ? error.message : 'Unknown error'}`,

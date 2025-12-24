@@ -720,13 +720,15 @@ type DailyAssignmentRow = {
   group_name: string;
   group_id: number;
   commuter: number;
+  segment: string;
 };
 
 /**
- * Export daily schedule for a specific date and segment to XLSX.
+ * Export daily schedule for a specific date to XLSX.
+ * Exports all segments for the day.
  * Uses the same format and styling as the monthly export.
  */
-export async function exportDailyScheduleXlsx(date: string, segment: string): Promise<void> {
+export async function exportDailyScheduleXlsx(date: string): Promise<void> {
   requireDb();
 
   // Load ExcelJS
@@ -734,9 +736,9 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
 
   const { info: GROUP_INFO, col1: KITCHEN_COL1_GROUPS, col2: KITCHEN_COL2_GROUPS, dining: DINING_GROUPS } = loadExportGroups();
 
-  // Query all assignments for the given date and segment
+  // Query all assignments for the given date (all segments except LUNCH)
   const assignments = all<DailyAssignmentRow>(
-    `SELECT a.person_id, a.role_id,
+    `SELECT a.person_id, a.role_id, a.segment,
             (p.last_name || ', ' || p.first_name) AS person,
             r.name AS role_name,
             g.name AS group_name, g.id AS group_id,
@@ -745,13 +747,14 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
       JOIN person p ON p.id = a.person_id
       JOIN role r ON r.id = a.role_id
       JOIN grp g ON g.id = r.group_id
-      WHERE a.date = ? AND a.segment = ?
+      WHERE a.date = ? AND TRIM(UPPER(a.segment)) != 'LUNCH'
       ORDER BY g.name, person`,
-    [date, segment]
+    [date]
   );
 
-  // Organize assignments by regular/commuter -> group code -> person -> roles
+  // Organize assignments by regular/commuter -> group code -> person -> segments and roles
   type PersonBucket = {
+    segments: Set<string>;
     roles: Set<string>;
   };
   const buckets: Record<'regular' | 'commuter', Record<string, Record<string, PersonBucket>>> = {
@@ -765,7 +768,8 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
 
     const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
     const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
-    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { roles: new Set<string>() });
+    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { segments: new Set<string>(), roles: new Set<string>() });
+    personBucket.segments.add(row.segment);
     personBucket.roles.add(row.role_name);
   }
 
@@ -796,14 +800,14 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
 
     const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
     const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
-    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { roles: new Set<string>() });
+    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { segments: new Set<string>(), roles: new Set<string>() });
+    personBucket.segments.add('LUNCH');
     personBucket.roles.add(row.role_name);
   }
 
   // ---------- Sheet rendering ----------
   const dateObj = new Date(date);
   const dateText = dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const segmentText = segment.toUpperCase();
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Schedule');
@@ -815,7 +819,7 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
 
   ws.mergeCells(1, 1, 1, 14);
   const titleCell = ws.getCell(1, 1);
-  titleCell.value = `Kitchen / Dining Room Schedule — ${dateText} — ${segmentText}`;
+  titleCell.value = `Kitchen / Dining Room Schedule — ${dateText}`;
   titleCell.font = { bold: true, size: 18, name: 'Calibri' };
   titleCell.alignment = { horizontal: 'center' };
 
@@ -873,8 +877,9 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
       const roleText = Array.from(new Set(roleNames)).sort().join('/');
       ws.getCell(r, startCol + 1).value = roleText;
 
-      // For daily schedule, we don't show shift (AM/PM) in the shift column as it's in the title
-      // Leave shift column (startCol + 2) blank
+      // For daily schedule, show segments (AM/PM) in the shift column
+      const segments = Array.from(info.segments).sort().join('/');
+      ws.getCell(r, startCol + 2).value = segments;
 
       // For daily schedule, we show the single day
       const dayCell = ws.getCell(r, startCol + 3);
@@ -1041,7 +1046,7 @@ export async function exportDailyScheduleXlsx(date: string, segment: string): Pr
   const a = document.createElement('a');
   a.href = url;
   const shortDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  a.download = `Daily Schedule — ${shortDate} — ${segmentText}.xlsx`;
+  a.download = `Daily Schedule — ${shortDate}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
