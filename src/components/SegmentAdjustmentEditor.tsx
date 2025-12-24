@@ -17,6 +17,9 @@ import {
 } from "@fluentui/react-components";
 import type { SegmentRow } from "../services/segments";
 import type { SegmentAdjustmentRow } from "../services/segmentAdjustments";
+import AlertDialog from "./AlertDialog";
+import ConfirmDialog from "./ConfirmDialog";
+import { useDialogs } from "../hooks/useDialogs";
 
 interface Props {
   all: (sql: string, params?: any[]) => any[];
@@ -75,6 +78,7 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
   const [formVisible, setFormVisible] = useState(false);
   const [form, setForm] = useState<typeof empty>(empty);
   const [roles, setRoles] = useState<any[]>([]);
+  const dialogs = useDialogs();
   const conditionRoleLabel = useMemo(() => {
     if (form.condition_role_id == null) return "Any";
     const role = roles.find((ro: any) => ro.id === form.condition_role_id);
@@ -152,7 +156,7 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
 
   function save() {
     if (!form.condition_segment || !form.target_segment) {
-      window.alert("Segments required");
+      dialogs.showAlert("Both condition and target segments are required", "Validation Error");
       return;
     }
     const params = [
@@ -185,8 +189,9 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
     setForm(empty);
   }
 
-  function remove(id: number) {
-    if (!window.confirm("Delete adjustment?")) return;
+  async function remove(id: number) {
+    const confirmed = await dialogs.showConfirm("Are you sure you want to delete this adjustment?", "Delete Adjustment");
+    if (!confirmed) return;
     run(`DELETE FROM segment_adjustment WHERE id=?`, [id]);
     load();
     refresh();
@@ -367,6 +372,27 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
             <Button onClick={cancel}>Cancel</Button>
           </div>
         </div>
+      )}
+      
+      {dialogs.alertState && (
+        <AlertDialog
+          open={true}
+          title={dialogs.alertState.title}
+          message={dialogs.alertState.message}
+          onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {dialogs.confirmState && (
+        <ConfirmDialog
+          open={true}
+          title={dialogs.confirmState.options.title}
+          message={dialogs.confirmState.options.message}
+          confirmText={dialogs.confirmState.options.confirmText}
+          cancelText={dialogs.confirmState.options.cancelText}
+          onConfirm={() => dialogs.handleConfirm(true)}
+          onCancel={() => dialogs.handleConfirm(false)}
+        />
       )}
     </div>
   );
