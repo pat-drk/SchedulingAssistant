@@ -12,6 +12,12 @@ export interface SegmentAdjustmentRow {
   exclusive_group: string | null;
 }
 
+export interface PendingAdjustment {
+  targetSegment: string;
+  targetField: 'start' | 'end';
+  newValue: Date;
+}
+
 export function listSegmentAdjustments(db: Database): SegmentAdjustmentRow[] {
   const res = db.exec(`SELECT id, condition_segment, condition_role_id, target_segment, target_field, baseline, offset_minutes, priority, exclusive_group FROM segment_adjustment`);
   const values = res[0]?.values || [];

@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { applyMigrations } from "./services/migrations";
 import { listSegments, type Segment, type SegmentRow } from "./services/segments";
-import { listSegmentAdjustments, type SegmentAdjustmentRow } from "./services/segmentAdjustments";
+import { listSegmentAdjustments, type SegmentAdjustmentRow, type PendingAdjustment } from "./services/segmentAdjustments";
 import { availabilityFor } from "./services/availability";
 import SideRail, { TabKey } from "./components/SideRail";
 import TopBar from "./components/TopBar";
@@ -1046,11 +1046,6 @@ export default function App() {
     const firedExclusiveGroups = new Set<string>();
 
     // Calculate all adjustments using original baselines
-    interface PendingAdjustment {
-      targetSegment: string;
-      targetField: 'start' | 'end';
-      newValue: Date;
-    }
     const pendingAdjustments: PendingAdjustment[] = [];
 
     for (const adj of sortedAdjustments) {
@@ -1139,11 +1134,6 @@ export default function App() {
     const firedExclusiveGroups = new Set<string>();
 
     // Calculate all adjustments using original baselines
-    interface PendingAdjustment {
-      targetSegment: string;
-      targetField: 'start' | 'end';
-      newValue: Date;
-    }
     const pendingAdjustments: PendingAdjustment[] = [];
 
     // Apply segment adjustments only if this person has assignments in the condition segment

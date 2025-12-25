@@ -3,7 +3,7 @@ import GridLayout, { WidthProvider } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import type { Segment, SegmentRow } from "../services/segments";
-import type { SegmentAdjustmentRow } from "../services/segmentAdjustments";
+import type { SegmentAdjustmentRow, PendingAdjustment } from "../services/segmentAdjustments";
 import "../styles/scrollbar.css";
 import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
@@ -919,11 +919,6 @@ export default function DailyRunBoard({
       const firedExclusiveGroups = new Set<string>();
 
       // Calculate all adjustments using original baselines
-      interface PendingAdjustment {
-        targetSegment: string;
-        targetField: 'start' | 'end';
-        newValue: Date;
-      }
       const pendingAdjustments: PendingAdjustment[] = [];
 
       for (const adj of sortedAdjustments) {
