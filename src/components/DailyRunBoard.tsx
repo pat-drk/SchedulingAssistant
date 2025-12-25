@@ -8,6 +8,7 @@ import "../styles/scrollbar.css";
 import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
 import { exportDailyScheduleXlsx } from "../excel/export-one-sheet";
+import { getEffectiveMonth, getWeekOfMonth, type WeekStartMode } from "../utils/weekCalculation";
 import {
   Button,
   Dropdown,
@@ -271,6 +272,19 @@ interface DailyRunBoardProps {
   ) => void;
   deleteAssignment: (id: number) => void;
   segmentAdjustments: SegmentAdjustmentRow[];
+  loadMonthlyDefaultsForMonth: (month: string) => {
+    defaults: any[];
+    overrides: any[];
+    weekOverrides: any[];
+  };
+  people: any[];
+  allRoles: any[];
+  availabilityFor: (db: any, personId: number, date: Date) => string;
+  isSegmentBlockedByTimeOff: (personId: number, date: Date, segment: Segment) => boolean;
+  weekdayName: (d: Date) => string;
+  refreshCaches: () => void;
+  setStatus: (msg: string) => void;
+  run: (sql: string, params?: any[]) => void;
 }
 
 export default function DailyRunBoard({
@@ -295,6 +309,15 @@ export default function DailyRunBoard({
   addAssignment,
   deleteAssignment,
   segmentAdjustments,
+  loadMonthlyDefaultsForMonth,
+  people,
+  allRoles,
+  availabilityFor,
+  isSegmentBlockedByTimeOff,
+  weekdayName,
+  refreshCaches,
+  setStatus,
+  run,
 }: DailyRunBoardProps) {
   // Height of each react-grid-layout row in pixels. Increase to make group cards taller.
   const RGL_ROW_HEIGHT = 110;
@@ -657,6 +680,142 @@ export default function DailyRunBoard({
 
   function cancelAutoFill() {
     setAutoFillOpen(false);
+  }
+
+  async function handleCopyDefaults() {
+    if (!sqlDb) {
+      dialogs.showAlert("No database connection available.", "Database Error");
+      return;
+    }
+
+    try {
+      // Load week_start_mode setting from meta table
+      let weekStartMode: WeekStartMode = 'first_monday';
+      try {
+        const modeRows = all(`SELECT value FROM meta WHERE key='week_start_mode'`);
+        if (modeRows.length > 0 && modeRows[0].value) {
+          const modeValue = modeRows[0].value;
+          if (modeValue === 'first_monday' || modeValue === 'first_day') {
+            weekStartMode = modeValue;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load week_start_mode:', e);
+      }
+
+      // Get the effective month for the selected date
+      const effectiveMonth = getEffectiveMonth(selectedDateObj, weekStartMode);
+      
+      // Load monthly defaults for the effective month
+      const { defaults, overrides, weekOverrides } = loadMonthlyDefaultsForMonth(effectiveMonth);
+      
+      if (defaults.length === 0 && overrides.length === 0 && weekOverrides.length === 0) {
+        dialogs.showAlert(
+          `No monthly defaults found for ${effectiveMonth}. Please set up monthly defaults first.`,
+          "No Defaults Found"
+        );
+        return;
+      }
+
+      // Build maps for quick lookup
+      const defaultMap = new Map<string, number>();
+      for (const def of defaults) {
+        defaultMap.set(`${def.person_id}|${def.segment}`, def.role_id);
+      }
+      const overrideMap = new Map<string, number>();
+      for (const ov of overrides) {
+        overrideMap.set(`${ov.person_id}|${ov.weekday}|${ov.segment}`, ov.role_id);
+      }
+      const weekOverrideMap = new Map<string, number>();
+      for (const wov of weekOverrides) {
+        weekOverrideMap.set(`${wov.person_id}|${wov.week_number}|${wov.segment}`, wov.role_id);
+      }
+
+      // Calculate week number and weekday for the selected date
+      const weekNum = getWeekOfMonth(selectedDateObj, weekStartMode);
+      const wdNum = selectedDateObj.getDay(); // 0=Sun, 1=Mon, etc.
+      const wdName = weekdayName(selectedDateObj);
+      
+      if (wdName === 'Weekend') {
+        dialogs.showAlert("Cannot copy defaults for weekend dates.", "Invalid Date");
+        return;
+      }
+
+      // Collect assignments to be created
+      const assignmentsToCreate: Array<{ personId: number; roleId: number; segment: Segment; personName: string }> = [];
+      
+      for (const person of people) {
+        for (const segmentRow of segments) {
+          const seg = segmentRow.name as Segment;
+          
+          // Priority: week override > weekday override > default
+          let roleId = weekNum > 0 ? weekOverrideMap.get(`${person.id}|${weekNum}|${seg}`) : undefined;
+          if (roleId === undefined) roleId = overrideMap.get(`${person.id}|${wdNum}|${seg}`);
+          if (roleId === undefined) roleId = defaultMap.get(`${person.id}|${seg}`);
+          if (roleId == null) continue;
+          
+          // Check availability
+          const avail = availabilityFor(sqlDb, person.id, selectedDateObj);
+          let ok = false;
+          if (seg === 'AM' || seg === 'Early') ok = avail === 'AM' || avail === 'B';
+          else if (seg === 'PM') ok = avail === 'PM' || avail === 'B';
+          else if (seg === 'Lunch') ok = avail === 'AM' || avail === 'PM' || avail === 'B';
+          else ok = avail === 'AM' || avail === 'PM' || avail === 'B';
+          if (!ok) continue;
+          
+          // Check time-off blocking (skip Early segment)
+          if (seg !== 'Early' && isSegmentBlockedByTimeOff(person.id, selectedDateObj, seg)) continue;
+          
+          // Check if already assigned
+          const dateStr = ymd(selectedDateObj);
+          const existing = all(
+            `SELECT role_id FROM assignment WHERE date=? AND person_id=? AND segment=?`,
+            [dateStr, person.id, seg]
+          );
+          if (existing.length > 0) continue; // Skip if already assigned
+          
+          assignmentsToCreate.push({
+            personId: person.id,
+            roleId,
+            segment: seg,
+            personName: `${person.last_name}, ${person.first_name}`,
+          });
+        }
+      }
+
+      if (assignmentsToCreate.length === 0) {
+        dialogs.showAlert(
+          "No new assignments to create. All defaults are either already assigned or blocked by availability/time-off.",
+          "No Changes Needed"
+        );
+        return;
+      }
+
+      // Show confirmation dialog
+      const confirmed = await dialogs.showConfirm(
+        `Apply ${assignmentsToCreate.length} assignment(s) from monthly defaults for ${effectiveMonth} to ${fmtDateMDY(selectedDateObj)}?`,
+        "Confirm Copy Defaults"
+      );
+
+      if (!confirmed) return;
+
+      // Apply the assignments
+      for (const assign of assignmentsToCreate) {
+        const dateStr = ymd(selectedDateObj);
+        run(
+          `INSERT OR REPLACE INTO assignment (date, person_id, role_id, segment) VALUES (?,?,?,?)`,
+          [dateStr, assign.personId, assign.roleId, assign.segment]
+        );
+      }
+
+      refreshCaches();
+      setStatus(`Applied ${assignmentsToCreate.length} assignment(s) from monthly defaults.`);
+    } catch (error) {
+      dialogs.showAlert(
+        `Failed to copy defaults: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        "Copy Defaults Error"
+      );
+    }
   }
 
   async function handleExportDaily() {
@@ -1134,6 +1293,7 @@ export default function DailyRunBoard({
               sortedOpts.map((o) => {
                 const info = overlapByPerson.get(o.id);
                 const isHeavy = Boolean(info?.heavy);
+                const isPartial = Boolean(info?.partial);
                 const text = formatCandidateLabel(o);
                 return (
                   <Option
@@ -1141,6 +1301,7 @@ export default function DailyRunBoard({
                     value={String(o.id)}
                     disabled={isHeavy}
                     text={text}
+                    style={isPartial ? { fontStyle: 'italic', color: tokens.colorPaletteYellowForeground1 } : undefined}
                   >
                     {text}
                   </Option>
@@ -1265,6 +1426,7 @@ export default function DailyRunBoard({
         <div className={s.headerRight}>
           <Button appearance="secondary" onClick={handleExportDaily}>Export</Button>
           <Button appearance="secondary" onClick={handleAutoFill}>Auto Fill</Button>
+          <Button appearance="secondary" onClick={handleCopyDefaults}>Copy Defaults</Button>
           <Button appearance="secondary" onClick={() => setShowNeedsEditor(true)}>
             Edit Needs for This Day
           </Button>

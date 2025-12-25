@@ -560,23 +560,78 @@
                             </div>
                         </div>
 
-                        <div class="mt-8 mb-8">
-                            <h4 class="font-bold text-[#242424] mb-4">Status Indicators</h4>
-                            <div class="table-container">
+                        <div class="mt-8">
+                            <h4 class="font-bold text-[#242424] mb-4">Daily Run Board Features</h4>
+                            <div class="table-container mb-8">
                                 <table class="w-full text-left text-sm">
                                     <thead class="bg-[#fafafa] border-b text-[#616161]">
                                         <tr>
-                                            <th class="p-3 font-semibold">Indicator</th>
-                                            <th class="p-3 font-semibold">Meaning</th>
+                                            <th class="p-3 font-semibold">Feature</th>
+                                            <th class="p-3 font-semibold">Description</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
-                                        <tr><td class="p-3">(Untrained)</td><td class="p-3">Person is not trained for this role</td></tr>
-                                        <tr><td class="p-3">(Assigned)</td><td class="p-3">Person is assigned to another role that needs them</td></tr>
-                                        <tr><td class="p-3">(Overstaffed)</td><td class="p-3">Person is assigned to a role with more staff than needed</td></tr>
-                                        <tr><td class="p-3">(Time-off)</td><td class="p-3">Person has major time-off overlap with this segment</td></tr>
-                                        <tr><td class="p-3">(Partial Time-off)</td><td class="p-3">Person has partial time-off overlap</td></tr>
-                                        <tr><td class="p-3">X/Y Badge</td><td class="p-3">Group header shows filled positions vs. total needed</td></tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Export</td>
+                                            <td class="p-3">Export the current day's schedule to Excel format.</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Auto Fill</td>
+                                            <td class="p-3">Generate intelligent assignment suggestions for unfilled roles based on training, availability, and historical patterns.</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Copy Defaults</td>
+                                            <td class="p-3">Apply assignments from monthly defaults for the selected date. Respects the Week Calculation Settings to determine which month's defaults to use. In "First Monday" mode, dates before the first Monday use the prior month's defaults. Follows the same override priority as Apply Defaults (week override &gt; weekday override &gt; default).</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Edit Needs for This Day</td>
+                                            <td class="p-3">Adjust the required staffing levels for specific roles on the selected date.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <h4 class="font-bold text-[#242424] mb-4">Status Indicators</h4>
+                            <div class="table-container mb-8">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-[#fafafa] border-b text-[#616161]">
+                                        <tr>
+                                            <th class="p-3 font-semibold">Badge</th>
+                                            <th class="p-3 font-semibold">Meaning</th>
+                                            <th class="p-3 font-semibold">Can Assign/Move?</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
+                                        <tr>
+                                            <td class="p-3 font-semibold">(Untrained)</td>
+                                            <td class="p-3">Person is not yet trained for this role.</td>
+                                            <td class="p-3">✅ Yes</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">(Assigned)</td>
+                                            <td class="p-3">Person is assigned to another role that needs them.</td>
+                                            <td class="p-3">✅ Yes</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">(Overstaffed)</td>
+                                            <td class="p-3">Person is assigned to a role with more staff than needed.</td>
+                                            <td class="p-3">✅ Yes</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Partial Time Off</td>
+                                            <td class="p-3">Person has some time-off during this segment but not major overlap. Shows in italic text with yellow color in dropdowns.</td>
+                                            <td class="p-3">✅ Yes</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Time Off</td>
+                                            <td class="p-3">Person has major overlap with time-off during this segment.</td>
+                                            <td class="p-3">❌ No (blocked)</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">X/Y Badge</td>
+                                            <td class="p-3">Group header shows filled positions vs. total needed.</td>
+                                            <td class="p-3">N/A</td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -817,7 +872,7 @@
                                     </tr>
                                     <tr>
                                         <td class="p-3 font-semibold">Apply Defaults</td>
-                                        <td class="p-3">Push default assignments to actual Daily Run Board dates.</td>
+                                        <td class="p-3">Push default assignments to actual Daily Run Board dates. Respects Week Calculation Settings (Admin tab) to determine which dates belong to this month. In "First Monday" mode, dates before the first Monday are considered part of the prior month's workweek. Also available as "Copy Defaults" button on Daily Run Board for individual dates.</td>
                                     </tr>
                                     <tr>
                                         <td class="p-3 font-semibold">Export to Excel</td>

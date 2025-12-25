@@ -151,3 +151,38 @@ export function formatDateRange(start: Date, end: Date): string {
   
   return `${month} ${startDay}-${endDay}`;
 }
+
+/**
+ * Get the effective month for a given date based on week start mode.
+ * In "first_monday" mode, dates before the first Monday belong to the prior month.
+ * In "first_day" mode, uses the calendar month.
+ * @param date The date to check
+ * @param mode The week calculation mode
+ * @returns Month in YYYY-MM format
+ */
+export function getEffectiveMonth(date: Date, mode: WeekStartMode): string {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1; // 1-12
+  
+  if (mode === "first_day") {
+    // Use calendar month
+    const monthStr = month.toString().padStart(2, '0');
+    return `${year}-${monthStr}`;
+  } else {
+    // first_monday mode: check if date is before first Monday
+    const firstMonday = getFirstMondayOfMonth(year, month);
+    
+    if (!firstMonday || date < firstMonday) {
+      // Date is before the first Monday - belongs to prior month
+      const priorDate = new Date(year, month - 2, 1); // Go to previous month
+      const priorYear = priorDate.getFullYear();
+      const priorMonth = priorDate.getMonth() + 1;
+      const priorMonthStr = priorMonth.toString().padStart(2, '0');
+      return `${priorYear}-${priorMonthStr}`;
+    }
+    
+    // Date is on or after first Monday - use current month
+    const monthStr = month.toString().padStart(2, '0');
+    return `${year}-${monthStr}`;
+  }
+}

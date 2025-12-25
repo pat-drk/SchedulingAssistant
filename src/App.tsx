@@ -1162,6 +1162,22 @@ export default function App() {
     syncTrainingFromMonthly(db);
   }
 
+  // Load monthly defaults for a specific month (without setting state)
+  // Used by Daily Run Board "Copy Defaults" feature
+  function loadMonthlyDefaultsForMonth(month: string): {
+    defaults: any[];
+    overrides: any[];
+    weekOverrides: any[];
+  } {
+    if (!sqlDb) {
+      return { defaults: [], overrides: [], weekOverrides: [] };
+    }
+    const defaults = all(`SELECT * FROM monthly_default WHERE month=?`, [month], sqlDb);
+    const overrides = all(`SELECT * FROM monthly_default_day WHERE month=?`, [month], sqlDb);
+    const weekOverrides = all(`SELECT * FROM monthly_default_week WHERE month=?`, [month], sqlDb);
+    return { defaults, overrides, weekOverrides };
+  }
+
   function setMonthlyDefault(personId: number, segment: Segment, roleId: number | null) {
     if (!sqlDb) return;
     if (roleId != null) {
@@ -2354,6 +2370,15 @@ function PeopleEditor(){
                   addAssignment={addAssignment}
                   deleteAssignment={deleteAssignment}
                   segmentAdjustments={segmentAdjustments}
+                  loadMonthlyDefaultsForMonth={loadMonthlyDefaultsForMonth}
+                  people={people}
+                  allRoles={roles}
+                  availabilityFor={availabilityFor}
+                  isSegmentBlockedByTimeOff={isSegmentBlockedByTimeOff}
+                  weekdayName={weekdayName}
+                  refreshCaches={refreshCaches}
+                  setStatus={setStatus}
+                  run={run}
                 />
               </Suspense>
             )}
