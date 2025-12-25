@@ -238,6 +238,20 @@ export const migrate25AddWeekStartMode: Migration = (db) => {
   }
 };
 
+// 26. Add priority and exclusive_group columns to segment_adjustment table
+export const migrate26AddSegmentAdjustmentPriorityAndExclusiveGroup: Migration = (db) => {
+  try {
+    db.run(`ALTER TABLE segment_adjustment ADD COLUMN priority INTEGER DEFAULT 0;`);
+  } catch (e) {
+    console.log('Priority column may already exist:', e);
+  }
+  try {
+    db.run(`ALTER TABLE segment_adjustment ADD COLUMN exclusive_group TEXT DEFAULT NULL;`);
+  } catch (e) {
+    console.log('Exclusive_group column may already exist:', e);
+  }
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -752,6 +766,7 @@ const migrations: Record<number, Migration> = {
   23: migrate23AddTrainingAreaOverride,
   24: migrate24AddSyncVersion,
   25: migrate25AddWeekStartMode,
+  26: migrate26AddSegmentAdjustmentPriorityAndExclusiveGroup,
 };
 
 export function addMigration(version: number, fn: Migration) {

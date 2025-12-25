@@ -1022,6 +1022,12 @@ export default function App() {
       out[s.name] = { start: mk(s.start_time), end: mk(s.end_time) };
     }
 
+    // Store original segment times before any adjustments
+    const original: Record<string, { start: Date; end: Date }> = {};
+    for (const s of segments) {
+      original[s.name] = { start: mk(s.start_time), end: mk(s.end_time) };
+    }
+
     const assigns = listAssignmentsForDate(fmtDateMDY(date));
     const segRoleMap = new Map<string, Set<number>>();
     for (const a of assigns) {
@@ -1032,13 +1038,33 @@ export default function App() {
       }
       set.add(a.role_id);
     }
-    for (const adj of segmentAdjustments) {
+
+    // Sort adjustments by priority (higher priority first)
+    const sortedAdjustments = [...segmentAdjustments].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+    // Track which exclusive groups have already fired
+    const firedExclusiveGroups = new Set<string>();
+
+    // Calculate all adjustments using original baselines
+    interface PendingAdjustment {
+      targetSegment: string;
+      targetField: 'start' | 'end';
+      newValue: Date;
+    }
+    const pendingAdjustments: PendingAdjustment[] = [];
+
+    for (const adj of sortedAdjustments) {
+      // Skip if this adjustment's exclusive group has already fired
+      if (adj.exclusive_group && firedExclusiveGroups.has(adj.exclusive_group)) {
+        continue;
+      }
+
       const roles = segRoleMap.get(adj.condition_segment);
       if (!roles) continue;
       if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) continue;
-      const target = out[adj.target_segment];
+      const target = original[adj.target_segment];
       if (!target) continue;
-      const cond = out[adj.condition_segment];
+      const cond = original[adj.condition_segment];
       let base: Date | undefined;
       switch (adj.baseline) {
         case 'condition.start': base = cond?.start; break;
@@ -1047,7 +1073,26 @@ export default function App() {
         case 'target.end': base = target.end; break;
       }
       if (!base) continue;
-      target[adj.target_field] = addMinutes(base, adj.offset_minutes);
+
+      // Mark this exclusive group as fired
+      if (adj.exclusive_group) {
+        firedExclusiveGroups.add(adj.exclusive_group);
+      }
+
+      // Store the pending adjustment
+      pendingAdjustments.push({
+        targetSegment: adj.target_segment,
+        targetField: adj.target_field,
+        newValue: addMinutes(base, adj.offset_minutes)
+      });
+    }
+
+    // Apply all pending adjustments after calculating them from original baselines
+    for (const pending of pendingAdjustments) {
+      const target = out[pending.targetSegment];
+      if (target) {
+        target[pending.targetField] = pending.newValue;
+      }
     }
 
     return out;
@@ -1070,6 +1115,12 @@ export default function App() {
       out[s.name] = { start: mk(s.start_time), end: mk(s.end_time) };
     }
 
+    // Store original segment times before any adjustments
+    const original: Record<string, { start: Date; end: Date }> = {};
+    for (const s of segments) {
+      original[s.name] = { start: mk(s.start_time), end: mk(s.end_time) };
+    }
+
     // Build segment-role map only for this person's assignments
     const segRoleMap = new Map<string, Set<number>>();
     for (const a of personAssigns) {
@@ -1081,14 +1132,33 @@ export default function App() {
       set.add(a.role_id);
     }
 
+    // Sort adjustments by priority (higher priority first)
+    const sortedAdjustments = [...segmentAdjustments].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+    // Track which exclusive groups have already fired
+    const firedExclusiveGroups = new Set<string>();
+
+    // Calculate all adjustments using original baselines
+    interface PendingAdjustment {
+      targetSegment: string;
+      targetField: 'start' | 'end';
+      newValue: Date;
+    }
+    const pendingAdjustments: PendingAdjustment[] = [];
+
     // Apply segment adjustments only if this person has assignments in the condition segment
-    for (const adj of segmentAdjustments) {
+    for (const adj of sortedAdjustments) {
+      // Skip if this adjustment's exclusive group has already fired
+      if (adj.exclusive_group && firedExclusiveGroups.has(adj.exclusive_group)) {
+        continue;
+      }
+
       const roles = segRoleMap.get(adj.condition_segment);
       if (!roles) continue;
       if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) continue;
-      const target = out[adj.target_segment];
+      const target = original[adj.target_segment];
       if (!target) continue;
-      const cond = out[adj.condition_segment];
+      const cond = original[adj.condition_segment];
       let base: Date | undefined;
       switch (adj.baseline) {
         case 'condition.start': base = cond?.start; break;
@@ -1097,7 +1167,26 @@ export default function App() {
         case 'target.end': base = target.end; break;
       }
       if (!base) continue;
-      target[adj.target_field] = addMinutes(base, adj.offset_minutes);
+
+      // Mark this exclusive group as fired
+      if (adj.exclusive_group) {
+        firedExclusiveGroups.add(adj.exclusive_group);
+      }
+
+      // Store the pending adjustment
+      pendingAdjustments.push({
+        targetSegment: adj.target_segment,
+        targetField: adj.target_field,
+        newValue: addMinutes(base, adj.offset_minutes)
+      });
+    }
+
+    // Apply all pending adjustments after calculating them from original baselines
+    for (const pending of pendingAdjustments) {
+      const target = out[pending.targetSegment];
+      if (target) {
+        target[pending.targetField] = pending.newValue;
+      }
     }
 
     return out;

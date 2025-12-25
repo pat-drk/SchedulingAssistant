@@ -72,6 +72,8 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
     target_field: "start",
     baseline: "condition.start",
     offset_minutes: 0,
+    priority: 0,
+    exclusive_group: null,
   };
   const [rows, setRows] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(null);
@@ -130,7 +132,7 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
   }
 
   function load() {
-    setRows(all(`SELECT id,condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes FROM segment_adjustment`));
+    setRows(all(`SELECT id,condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,priority,exclusive_group FROM segment_adjustment ORDER BY priority DESC, id`));
     setRoles(all(`SELECT id,name FROM role ORDER BY name`));
   }
   useEffect(load, []);
@@ -150,6 +152,8 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
       target_field: r.target_field,
       baseline: r.baseline,
       offset_minutes: r.offset_minutes,
+      priority: r.priority ?? 0,
+      exclusive_group: r.exclusive_group ?? null,
     });
     setFormVisible(true);
   }
@@ -166,15 +170,17 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
       form.target_field,
       form.baseline,
       form.offset_minutes,
+      form.priority,
+      form.exclusive_group,
     ];
     if (editing) {
       run(
-        `UPDATE segment_adjustment SET condition_segment=?, condition_role_id=?, target_segment=?, target_field=?, baseline=?, offset_minutes=? WHERE id=?`,
+        `UPDATE segment_adjustment SET condition_segment=?, condition_role_id=?, target_segment=?, target_field=?, baseline=?, offset_minutes=?, priority=?, exclusive_group=? WHERE id=?`,
         [...params, editing.id]
       );
     } else {
       run(
-        `INSERT INTO segment_adjustment (condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes) VALUES (?,?,?,?,?,?)`,
+        `INSERT INTO segment_adjustment (condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,priority,exclusive_group) VALUES (?,?,?,?,?,?,?,?)`,
         params
       );
     }
@@ -211,24 +217,28 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
         <Table aria-label="Segment adjustments">
           <TableHeader>
             <TableRow>
+              <TableHeaderCell>Priority</TableHeaderCell>
               <TableHeaderCell>Condition Segment</TableHeaderCell>
               <TableHeaderCell>Condition Role</TableHeaderCell>
               <TableHeaderCell>Target</TableHeaderCell>
               <TableHeaderCell>Field</TableHeaderCell>
               <TableHeaderCell>Baseline</TableHeaderCell>
               <TableHeaderCell>Offset (min)</TableHeaderCell>
+              <TableHeaderCell>Exclusive Group</TableHeaderCell>
               <TableHeaderCell></TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((r: any) => (
               <TableRow key={r.id}>
+                <TableCell>{r.priority ?? 0}</TableCell>
                 <TableCell>{r.condition_segment}</TableCell>
                 <TableCell>{roles.find((ro:any)=>ro.id===r.condition_role_id)?.name || ""}</TableCell>
                 <TableCell>{r.target_segment}</TableCell>
                 <TableCell>{r.target_field}</TableCell>
                 <TableCell>{r.baseline}</TableCell>
                 <TableCell>{r.offset_minutes}</TableCell>
+                <TableCell>{r.exclusive_group || ""}</TableCell>
                 <TableCell>
                   <div className={s.actionsRow}>
                     <Button size="small" onClick={() => startEdit(r)}>
@@ -331,6 +341,32 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
                 onChange={(_, d) =>
                   setForm({ ...form, offset_minutes: Number(d.value || 0) })
                 }
+              />
+            </Field>
+            <Field 
+              label="Priority" 
+              className={s.number}
+              hint="Higher values apply first"
+            >
+              <Input
+                type="number"
+                value={String(form.priority)}
+                onChange={(_, d) =>
+                  setForm({ ...form, priority: Number(d.value || 0) })
+                }
+              />
+            </Field>
+            <Field 
+              label="Exclusive Group" 
+              className={s.flex1}
+              hint="Only first matching rule in group fires"
+            >
+              <Input
+                value={form.exclusive_group || ""}
+                onChange={(_, d) =>
+                  setForm({ ...form, exclusive_group: d.value || null })
+                }
+                placeholder="(optional)"
               />
             </Field>
           </div>

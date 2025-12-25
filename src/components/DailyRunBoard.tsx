@@ -892,6 +892,13 @@ export default function DailyRunBoard({
       for (const srow of segments) {
         map[srow.name] = { start: mk(srow.start_time), end: mk(srow.end_time) };
       }
+
+      // Store original segment times before any adjustments
+      const original: Record<string, { start: Date; end: Date }> = {};
+      for (const srow of segments) {
+        original[srow.name] = { start: mk(srow.start_time), end: mk(srow.end_time) };
+      }
+
       const rows = all(`SELECT segment, role_id FROM assignment WHERE date=?`, [ymd(selectedDateObj)]);
       const segRoleMap = new Map<string, Set<number>>();
       for (const r of rows) {
@@ -902,14 +909,35 @@ export default function DailyRunBoard({
         }
         set.add(r.role_id);
       }
+
       const addMinutes = (d: Date, mins: number) => new Date(d.getTime() + mins * 60000);
-      for (const adj of segmentAdjustments) {
+
+      // Sort adjustments by priority (higher priority first)
+      const sortedAdjustments = [...segmentAdjustments].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+      // Track which exclusive groups have already fired
+      const firedExclusiveGroups = new Set<string>();
+
+      // Calculate all adjustments using original baselines
+      interface PendingAdjustment {
+        targetSegment: string;
+        targetField: 'start' | 'end';
+        newValue: Date;
+      }
+      const pendingAdjustments: PendingAdjustment[] = [];
+
+      for (const adj of sortedAdjustments) {
+        // Skip if this adjustment's exclusive group has already fired
+        if (adj.exclusive_group && firedExclusiveGroups.has(adj.exclusive_group)) {
+          continue;
+        }
+
         const roles = segRoleMap.get(adj.condition_segment);
         if (!roles) continue;
         if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) continue;
-        const target = map[adj.target_segment];
+        const target = original[adj.target_segment];
         if (!target) continue;
-        const cond = map[adj.condition_segment];
+        const cond = original[adj.condition_segment];
         let base: Date | undefined;
         switch (adj.baseline) {
           case 'condition.start': base = cond?.start; break;
@@ -918,8 +946,28 @@ export default function DailyRunBoard({
           case 'target.end': base = target.end; break;
         }
         if (!base) continue;
-        (target as any)[adj.target_field] = addMinutes(base, adj.offset_minutes);
+
+        // Mark this exclusive group as fired
+        if (adj.exclusive_group) {
+          firedExclusiveGroups.add(adj.exclusive_group);
+        }
+
+        // Store the pending adjustment
+        pendingAdjustments.push({
+          targetSegment: adj.target_segment,
+          targetField: adj.target_field,
+          newValue: addMinutes(base, adj.offset_minutes)
+        });
       }
+
+      // Apply all pending adjustments after calculating them from original baselines
+      for (const pending of pendingAdjustments) {
+        const target = map[pending.targetSegment];
+        if (target) {
+          (target as any)[pending.targetField] = pending.newValue;
+        }
+      }
+
       return map;
     }, [all, segments, selectedDateObj, ymd, segmentAdjustments]);
 
