@@ -4,6 +4,7 @@ import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import type { Segment, SegmentRow } from "../services/segments";
 import type { SegmentAdjustmentRow } from "../services/segmentAdjustments";
+import { listSegmentAdjustmentConditions } from "../services/segmentAdjustments";
 import "../styles/scrollbar.css";
 import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
@@ -850,13 +851,58 @@ export default function DailyRunBoard({
       }
       set.add(r.role_id);
     }
+    
+    // Helper function to check if adjustment conditions are met
+    const checkAdjustmentConditions = (adj: SegmentAdjustmentRow): boolean => {
+      try {
+        const conditions = listSegmentAdjustmentConditions(sqlDb, adj.id);
+        
+        // If no conditions in new table, fall back to old format
+        if (conditions.length === 0) {
+          const roles = segRoleMap.get(adj.condition_segment);
+          if (!roles) return false;
+          if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) return false;
+          return true;
+        }
+        
+        // Check multiple conditions with AND/OR logic
+        const logicOp = adj.logic_operator || 'AND';
+        
+        if (logicOp === 'AND') {
+          // All conditions must be met
+          return conditions.every(cond => {
+            const roles = segRoleMap.get(cond.condition_segment);
+            if (!roles) return false;
+            if (cond.condition_role_id != null && !roles.has(cond.condition_role_id)) return false;
+            return true;
+          });
+        } else {
+          // At least one condition must be met (OR)
+          return conditions.some(cond => {
+            const roles = segRoleMap.get(cond.condition_segment);
+            if (!roles) return false;
+            if (cond.condition_role_id != null && !roles.has(cond.condition_role_id)) return false;
+            return true;
+          });
+        }
+      } catch (e) {
+        // If table doesn't exist yet (old DB), fall back to old format
+        const roles = segRoleMap.get(adj.condition_segment);
+        if (!roles) return false;
+        if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) return false;
+        return true;
+      }
+    };
+    
     const addMinutes = (d: Date, mins: number) => new Date(d.getTime() + mins * 60000);
     for (const adj of segmentAdjustments) {
-      const roles = segRoleMap.get(adj.condition_segment);
-      if (!roles) continue;
-      if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) continue;
+      // Check if conditions are met (supports both single and multi-condition)
+      if (!checkAdjustmentConditions(adj)) continue;
+      
       const target = map[adj.target_segment];
       if (!target) continue;
+      
+      // Use first condition's segment for baseline calculation (backward compatible)
       const cond = map[adj.condition_segment];
       let base: Date | undefined;
       switch (adj.baseline) {
@@ -869,7 +915,7 @@ export default function DailyRunBoard({
       (target as any)[adj.target_field] = addMinutes(base, adj.offset_minutes);
     }
     return map;
-  }, [all, segments, selectedDateObj, ymd, segmentAdjustments]);
+  }, [all, segments, selectedDateObj, ymd, segmentAdjustments, sqlDb]);
 
   const segDurationMinutesTop = useMemo(() => {
     const st = segTimesTop[seg]?.start;
@@ -1061,13 +1107,58 @@ export default function DailyRunBoard({
         }
         set.add(r.role_id);
       }
+      
+      // Helper function to check if adjustment conditions are met
+      const checkAdjustmentConditions = (adj: SegmentAdjustmentRow): boolean => {
+        try {
+          const conditions = listSegmentAdjustmentConditions(sqlDb, adj.id);
+          
+          // If no conditions in new table, fall back to old format
+          if (conditions.length === 0) {
+            const roles = segRoleMap.get(adj.condition_segment);
+            if (!roles) return false;
+            if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) return false;
+            return true;
+          }
+          
+          // Check multiple conditions with AND/OR logic
+          const logicOp = adj.logic_operator || 'AND';
+          
+          if (logicOp === 'AND') {
+            // All conditions must be met
+            return conditions.every(cond => {
+              const roles = segRoleMap.get(cond.condition_segment);
+              if (!roles) return false;
+              if (cond.condition_role_id != null && !roles.has(cond.condition_role_id)) return false;
+              return true;
+            });
+          } else {
+            // At least one condition must be met (OR)
+            return conditions.some(cond => {
+              const roles = segRoleMap.get(cond.condition_segment);
+              if (!roles) return false;
+              if (cond.condition_role_id != null && !roles.has(cond.condition_role_id)) return false;
+              return true;
+            });
+          }
+        } catch (e) {
+          // If table doesn't exist yet (old DB), fall back to old format
+          const roles = segRoleMap.get(adj.condition_segment);
+          if (!roles) return false;
+          if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) return false;
+          return true;
+        }
+      };
+      
       const addMinutes = (d: Date, mins: number) => new Date(d.getTime() + mins * 60000);
       for (const adj of segmentAdjustments) {
-        const roles = segRoleMap.get(adj.condition_segment);
-        if (!roles) continue;
-        if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) continue;
+        // Check if conditions are met (supports both single and multi-condition)
+        if (!checkAdjustmentConditions(adj)) continue;
+        
         const target = map[adj.target_segment];
         if (!target) continue;
+        
+        // Use first condition's segment for baseline calculation (backward compatible)
         const cond = map[adj.condition_segment];
         let base: Date | undefined;
         switch (adj.baseline) {
@@ -1080,7 +1171,7 @@ export default function DailyRunBoard({
         (target as any)[adj.target_field] = addMinutes(base, adj.offset_minutes);
       }
       return map;
-    }, [all, segments, selectedDateObj, ymd, segmentAdjustments]);
+    }, [all, segments, selectedDateObj, ymd, segmentAdjustments, sqlDb]);
 
     // Compute time-off overlap vs this segment; derive partial/heavy flags
     const overlapByPerson = useMemo(() => {

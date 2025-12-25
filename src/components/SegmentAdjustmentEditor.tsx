@@ -14,9 +14,13 @@ import {
   Text,
   makeStyles,
   tokens,
+  Badge,
+  ToggleButton,
 } from "@fluentui/react-components";
+import { Delete20Regular } from "@fluentui/react-icons";
 import type { SegmentRow } from "../services/segments";
-import type { SegmentAdjustmentRow } from "../services/segmentAdjustments";
+import type { SegmentAdjustmentRow, SegmentAdjustmentCondition } from "../services/segmentAdjustments";
+import { listSegmentAdjustmentConditions } from "../services/segmentAdjustments";
 import AlertDialog from "./AlertDialog";
 import ConfirmDialog from "./ConfirmDialog";
 import { useDialogs } from "../hooks/useDialogs";
@@ -26,6 +30,7 @@ interface Props {
   run: (sql: string, params?: any[]) => void;
   refresh: () => void;
   segments: SegmentRow[];
+  db: any; // SQLite database for querying conditions
 }
 
 const baselineOpts = [
@@ -62,9 +67,50 @@ const useSegmentAdjustmentStyles = makeStyles({
   condBar: { position: "absolute", top: 0, bottom: 0, background: tokens.colorNeutralForeground3, opacity: 0.3 },
   targetBar: { position: "absolute", top: 0, bottom: 0, background: tokens.colorNeutralForeground2, opacity: 0.4 },
   adjustedBar: { position: "absolute", top: 0, bottom: 0, background: tokens.colorBrandBackground },
+  conditionSection: { 
+    display: "flex", 
+    flexDirection: "column", 
+    gap: tokens.spacingVerticalS,
+    padding: tokens.spacingVerticalM,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  conditionRow: { 
+    display: "flex", 
+    alignItems: "flex-end",
+    gap: tokens.spacingHorizontalS 
+  },
+  conditionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: tokens.spacingVerticalXS,
+  },
+  logicToggle: {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalXS,
+  },
+  conditionDescription: {
+    padding: tokens.spacingVerticalS,
+    backgroundColor: tokens.colorNeutralBackground3,
+    borderRadius: tokens.borderRadiusMedium,
+    fontSize: tokens.fontSizeBase300,
+  },
+  conditionBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalXXS,
+  },
 });
 
-export default function SegmentAdjustmentEditor({ all, run, refresh, segments }: Props) {
+export default function SegmentAdjustmentEditor({ all, run, refresh, segments, db }: Props) {
+  interface Condition {
+    condition_segment: string;
+    condition_role_id: number | null;
+  }
+  
   const empty: Omit<SegmentAdjustmentRow, "id"> = {
     condition_segment: "",
     condition_role_id: null,
@@ -72,112 +118,199 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
     target_field: "start",
     baseline: "condition.start",
     offset_minutes: 0,
+    logic_operator: "AND",
   };
+  
   const [rows, setRows] = useState<any[]>([]);
   const [editing, setEditing] = useState<any | null>(null);
   const [formVisible, setFormVisible] = useState(false);
   const [form, setForm] = useState<typeof empty>(empty);
+  const [conditions, setConditions] = useState<Condition[]>([{ condition_segment: "", condition_role_id: null }]);
+  const [logicOperator, setLogicOperator] = useState<'AND' | 'OR'>('AND');
   const [roles, setRoles] = useState<any[]>([]);
+  const [adjustmentConditions, setAdjustmentConditions] = useState<Map<number, SegmentAdjustmentCondition[]>>(new Map());
   const dialogs = useDialogs();
-  const conditionRoleLabel = useMemo(() => {
-    if (form.condition_role_id == null) return "Any";
-    const role = roles.find((ro: any) => ro.id === form.condition_role_id);
-    return role ? role.name : "";
-  }, [form.condition_role_id, roles]);
+  
   const baselineLabel = useMemo(() => {
     const match = baselineOpts.find((o) => o.value === form.baseline);
     return match ? match.label : "";
   }, [form.baseline]);
 
-  const condSeg = segments.find((s) => s.name === form.condition_segment);
+  // Build preview based on first condition for visualization
+  const firstCondSeg = segments.find((s) => s.name === conditions[0]?.condition_segment);
   const targetSeg = segments.find((s) => s.name === form.target_segment);
+  
   let preview: {
-    condStart: number;
-    condEnd: number;
+    conditionSegments: { start: number; end: number; name: string }[];
     targetStart: number;
     targetEnd: number;
     newStart: number;
     newEnd: number;
   } | null = null;
-  if (condSeg && targetSeg) {
-    const condStart = mins(condSeg.start_time);
-    const condEnd = mins(condSeg.end_time);
+  
+  if (targetSeg) {
     const targetStart = mins(targetSeg.start_time);
     const targetEnd = mins(targetSeg.end_time);
-    let base: number | null = null;
-    switch (form.baseline) {
-      case "condition.start":
-        base = condStart;
-        break;
-      case "condition.end":
-        base = condEnd;
-        break;
-      case "target.start":
-        base = targetStart;
-        break;
-      case "target.end":
-        base = targetEnd;
-        break;
-    }
-    if (base != null) {
-      const adj = base + form.offset_minutes;
-      let newStart = targetStart;
-      let newEnd = targetEnd;
-      if (form.target_field === "start") newStart = adj;
-      else newEnd = adj;
-      preview = { condStart, condEnd, targetStart, targetEnd, newStart, newEnd };
+    
+    const conditionSegments = conditions
+      .map(c => {
+        const seg = segments.find(s => s.name === c.condition_segment);
+        return seg ? {
+          start: mins(seg.start_time),
+          end: mins(seg.end_time),
+          name: seg.name
+        } : null;
+      })
+      .filter(Boolean) as { start: number; end: number; name: string }[];
+    
+    if (firstCondSeg && conditionSegments.length > 0) {
+      const condStart = mins(firstCondSeg.start_time);
+      const condEnd = mins(firstCondSeg.end_time);
+      
+      let base: number | null = null;
+      switch (form.baseline) {
+        case "condition.start":
+          base = condStart;
+          break;
+        case "condition.end":
+          base = condEnd;
+          break;
+        case "target.start":
+          base = targetStart;
+          break;
+        case "target.end":
+          base = targetEnd;
+          break;
+      }
+      
+      if (base != null) {
+        const adj = base + form.offset_minutes;
+        let newStart = targetStart;
+        let newEnd = targetEnd;
+        if (form.target_field === "start") newStart = adj;
+        else newEnd = adj;
+        preview = { conditionSegments, targetStart, targetEnd, newStart, newEnd };
+      }
     }
   }
 
   function load() {
-    setRows(all(`SELECT id,condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes FROM segment_adjustment`));
+    const adjRows = all(`SELECT id,condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,COALESCE(logic_operator,'AND') as logic_operator FROM segment_adjustment`);
+    setRows(adjRows);
     setRoles(all(`SELECT id,name FROM role ORDER BY name`));
+    
+    // Load conditions for each adjustment
+    const condMap = new Map<number, SegmentAdjustmentCondition[]>();
+    for (const row of adjRows) {
+      try {
+        const conds = listSegmentAdjustmentConditions(db, row.id);
+        if (conds.length > 0) {
+          condMap.set(row.id, conds);
+        }
+      } catch (e) {
+        console.error('Error loading conditions for adjustment', row.id, e);
+      }
+    }
+    setAdjustmentConditions(condMap);
   }
-  useEffect(load, []);
+  
+  useEffect(load, [all, db]);
 
   function startAdd() {
     setEditing(null);
     setForm(empty);
+    setConditions([{ condition_segment: "", condition_role_id: null }]);
+    setLogicOperator('AND');
     setFormVisible(true);
   }
 
   function startEdit(r: any) {
     setEditing(r);
     setForm({
-      condition_segment: r.condition_segment,
+      condition_segment: r.condition_segment || "",
       condition_role_id: r.condition_role_id ?? null,
       target_segment: r.target_segment,
       target_field: r.target_field,
       baseline: r.baseline,
       offset_minutes: r.offset_minutes,
+      logic_operator: r.logic_operator || 'AND',
     });
+    
+    // Load conditions for this adjustment
+    const existingConditions = adjustmentConditions.get(r.id);
+    if (existingConditions && existingConditions.length > 0) {
+      setConditions(existingConditions.map(c => ({
+        condition_segment: c.condition_segment,
+        condition_role_id: c.condition_role_id
+      })));
+    } else {
+      // Fall back to old single condition from main table
+      setConditions([{
+        condition_segment: r.condition_segment || "",
+        condition_role_id: r.condition_role_id ?? null
+      }]);
+    }
+    
+    setLogicOperator(r.logic_operator || 'AND');
     setFormVisible(true);
   }
 
   function save() {
-    if (!form.condition_segment || !form.target_segment) {
-      dialogs.showAlert("Both condition and target segments are required", "Validation Error");
+    // Validate at least one condition exists
+    const validConditions = conditions.filter(c => c.condition_segment);
+    if (validConditions.length === 0) {
+      dialogs.showAlert("At least one condition is required", "Validation Error");
       return;
     }
+    
+    if (!form.target_segment) {
+      dialogs.showAlert("Target segment is required", "Validation Error");
+      return;
+    }
+    
+    // Use first condition for backward compatibility fields
+    const firstCondition = validConditions[0];
+    
     const params = [
-      form.condition_segment,
-      form.condition_role_id,
+      firstCondition.condition_segment,
+      firstCondition.condition_role_id,
       form.target_segment,
       form.target_field,
       form.baseline,
       form.offset_minutes,
+      logicOperator,
     ];
+    
+    let adjustmentId: number;
+    
     if (editing) {
       run(
-        `UPDATE segment_adjustment SET condition_segment=?, condition_role_id=?, target_segment=?, target_field=?, baseline=?, offset_minutes=? WHERE id=?`,
+        `UPDATE segment_adjustment SET condition_segment=?, condition_role_id=?, target_segment=?, target_field=?, baseline=?, offset_minutes=?, logic_operator=? WHERE id=?`,
         [...params, editing.id]
       );
+      adjustmentId = editing.id;
+      
+      // Delete existing conditions
+      run(`DELETE FROM segment_adjustment_condition WHERE adjustment_id=?`, [adjustmentId]);
     } else {
       run(
-        `INSERT INTO segment_adjustment (condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes) VALUES (?,?,?,?,?,?)`,
+        `INSERT INTO segment_adjustment (condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,logic_operator) VALUES (?,?,?,?,?,?,?)`,
         params
       );
+      
+      // Get the last inserted ID
+      const result = all(`SELECT last_insert_rowid() as id`);
+      adjustmentId = result[0]?.id;
     }
+    
+    // Insert all conditions into the condition table
+    for (const cond of validConditions) {
+      run(
+        `INSERT INTO segment_adjustment_condition (adjustment_id, condition_segment, condition_role_id) VALUES (?, ?, ?)`,
+        [adjustmentId, cond.condition_segment, cond.condition_role_id]
+      );
+    }
+    
     load();
     refresh();
     cancel();
@@ -187,14 +320,65 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
     setFormVisible(false);
     setEditing(null);
     setForm(empty);
+    setConditions([{ condition_segment: "", condition_role_id: null }]);
+    setLogicOperator('AND');
   }
 
   async function remove(id: number) {
     const confirmed = await dialogs.showConfirm("Are you sure you want to delete this adjustment?", "Delete Adjustment");
     if (!confirmed) return;
     run(`DELETE FROM segment_adjustment WHERE id=?`, [id]);
+    run(`DELETE FROM segment_adjustment_condition WHERE adjustment_id=?`, [id]);
     load();
     refresh();
+  }
+  
+  function addCondition() {
+    setConditions([...conditions, { condition_segment: "", condition_role_id: null }]);
+  }
+  
+  function removeCondition(index: number) {
+    if (conditions.length > 1) {
+      setConditions(conditions.filter((_, i) => i !== index));
+    }
+  }
+  
+  function updateCondition(index: number, field: 'condition_segment' | 'condition_role_id', value: any) {
+    const newConditions = [...conditions];
+    newConditions[index] = { ...newConditions[index], [field]: value };
+    setConditions(newConditions);
+  }
+  
+  // Build description text for a rule
+  function buildRuleDescription(adjustment: any, conds: SegmentAdjustmentCondition[]): string {
+    if (!conds || conds.length === 0) {
+      // Fallback to old format
+      const roleText = adjustment.condition_role_id 
+        ? ` (${roles.find(r => r.id === adjustment.condition_role_id)?.name || ''})`
+        : '';
+      return `When ${adjustment.condition_segment}${roleText} is scheduled`;
+    }
+    
+    if (conds.length === 1) {
+      const roleText = conds[0].condition_role_id
+        ? ` (${roles.find(r => r.id === conds[0].condition_role_id)?.name || ''})`
+        : '';
+      return `When ${conds[0].condition_segment}${roleText} is scheduled`;
+    }
+    
+    const operator = adjustment.logic_operator || 'AND';
+    const condTexts = conds.map(c => {
+      const roleText = c.condition_role_id
+        ? ` (${roles.find(r => r.id === c.condition_role_id)?.name || ''})`
+        : '';
+      return `${c.condition_segment}${roleText}`;
+    });
+    
+    if (operator === 'AND') {
+      return `When ${condTexts.join(' AND ')} are scheduled`;
+    } else {
+      return `When ${condTexts.join(' OR ')} is scheduled`;
+    }
   }
 
   const s = useSegmentAdjustmentStyles();
@@ -211,8 +395,7 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
         <Table aria-label="Segment adjustments">
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>Condition Segment</TableHeaderCell>
-              <TableHeaderCell>Condition Role</TableHeaderCell>
+              <TableHeaderCell>Conditions</TableHeaderCell>
               <TableHeaderCell>Target</TableHeaderCell>
               <TableHeaderCell>Field</TableHeaderCell>
               <TableHeaderCell>Baseline</TableHeaderCell>
@@ -221,68 +404,152 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((r: any) => (
-              <TableRow key={r.id}>
-                <TableCell>{r.condition_segment}</TableCell>
-                <TableCell>{roles.find((ro:any)=>ro.id===r.condition_role_id)?.name || ""}</TableCell>
-                <TableCell>{r.target_segment}</TableCell>
-                <TableCell>{r.target_field}</TableCell>
-                <TableCell>{r.baseline}</TableCell>
-                <TableCell>{r.offset_minutes}</TableCell>
-                <TableCell>
-                  <div className={s.actionsRow}>
-                    <Button size="small" onClick={() => startEdit(r)}>
-                      Edit
-                    </Button>
-                    <Button size="small" appearance="secondary" onClick={() => remove(r.id)}>
-                      Delete
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+            {rows.map((r: any) => {
+              const conds = adjustmentConditions.get(r.id) || [];
+              const description = buildRuleDescription(r, conds);
+              const logicOp = r.logic_operator || 'AND';
+              
+              return (
+                <TableRow key={r.id}>
+                  <TableCell>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalXS }}>
+                      {description}
+                      {conds.length > 1 && (
+                        <Badge appearance="outline" color={logicOp === 'AND' ? 'informative' : 'warning'}>
+                          {logicOp}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>{r.target_segment}</TableCell>
+                  <TableCell>{r.target_field}</TableCell>
+                  <TableCell>{r.baseline}</TableCell>
+                  <TableCell>{r.offset_minutes}</TableCell>
+                  <TableCell>
+                    <div className={s.actionsRow}>
+                      <Button size="small" onClick={() => startEdit(r)}>
+                        Edit
+                      </Button>
+                      <Button size="small" appearance="secondary" onClick={() => remove(r.id)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
       {formVisible && (
         <div className={s.section}>
+          {/* Conditions Section */}
+          <div className={s.conditionSection}>
+            <div className={s.conditionHeader}>
+              <Text weight="semibold">Conditions</Text>
+              {conditions.length > 1 && (
+                <div className={s.logicToggle}>
+                  <Text size={200}>Logic:</Text>
+                  <ToggleButton
+                    checked={logicOperator === 'AND'}
+                    onClick={() => setLogicOperator(logicOperator === 'AND' ? 'OR' : 'AND')}
+                    appearance="outline"
+                    size="small"
+                  >
+                    {logicOperator}
+                  </ToggleButton>
+                </div>
+              )}
+            </div>
+            
+            {conditions.map((cond, idx) => (
+              <div key={idx} className={s.conditionRow}>
+                <Field label={`Segment ${idx + 1}`} className={s.flex1}>
+                  <Dropdown
+                    selectedOptions={[cond.condition_segment]}
+                    value={cond.condition_segment}
+                    onOptionSelect={(_, d) => updateCondition(idx, 'condition_segment', d.optionValue || '')}
+                  >
+                    {segments.map((sg) => (
+                      <Option key={sg.name} value={sg.name} text={sg.name}>
+                        {sg.name}
+                      </Option>
+                    ))}
+                  </Dropdown>
+                </Field>
+                
+                <Field label={`Role ${idx + 1}`} className={s.flex1}>
+                  <Dropdown
+                    selectedOptions={[cond.condition_role_id == null ? "" : String(cond.condition_role_id)]}
+                    value={
+                      cond.condition_role_id == null
+                        ? "Any"
+                        : roles.find(r => r.id === cond.condition_role_id)?.name || ""
+                    }
+                    onOptionSelect={(_, d) => 
+                      updateCondition(idx, 'condition_role_id', d.optionValue ? Number(d.optionValue) : null)
+                    }
+                  >
+                    <Option value="" text="Any">
+                      Any
+                    </Option>
+                    {roles.map((ro: any) => (
+                      <Option key={ro.id} value={String(ro.id)} text={ro.name}>
+                        {ro.name}
+                      </Option>
+                    ))}
+                  </Dropdown>
+                </Field>
+                
+                {conditions.length > 1 && (
+                  <Button
+                    icon={<Delete20Regular />}
+                    appearance="subtle"
+                    onClick={() => removeCondition(idx)}
+                    aria-label="Remove condition"
+                  />
+                )}
+              </div>
+            ))}
+            
+            <Button appearance="subtle" onClick={addCondition} size="small">
+              + Add Condition
+            </Button>
+            
+            {/* Description preview */}
+            {conditions.some(c => c.condition_segment) && (
+              <div className={s.conditionDescription}>
+                <Text size={200}>
+                  {conditions.filter(c => c.condition_segment).length === 1
+                    ? `When ${conditions.find(c => c.condition_segment)?.condition_segment}${
+                        conditions.find(c => c.condition_segment)?.condition_role_id
+                          ? ` (${roles.find(r => r.id === conditions.find(c => c.condition_segment)?.condition_role_id)?.name})`
+                          : ''
+                      } is scheduled`
+                    : conditions.filter(c => c.condition_segment).length > 1
+                    ? `When ${conditions
+                        .filter(c => c.condition_segment)
+                        .map(c => {
+                          const roleText = c.condition_role_id
+                            ? ` (${roles.find(r => r.id === c.condition_role_id)?.name})`
+                            : '';
+                          return `${c.condition_segment}${roleText}`;
+                        })
+                        .join(` ${logicOperator} `)} ${logicOperator === 'AND' ? 'are' : 'is'} scheduled`
+                    : 'Select condition segments'}
+                  {form.target_segment && `, adjust ${form.target_segment}'s ${form.target_field} time`}
+                </Text>
+              </div>
+            )}
+          </div>
+          
+          {/* Target and Adjustment Settings */}
           <div className={s.row}>
-            <Field label="Condition Segment" className={s.flex1}>
-              <Dropdown
-                selectedOptions={[form.condition_segment]}
-                value={form.condition_segment}
-                onOptionSelect={(_, d) => setForm({ ...form, condition_segment: d.optionValue })}
-              >
-                {segments.map((sg) => (
-                  <Option key={sg.name} value={sg.name} text={sg.name}>
-                    {sg.name}
-                  </Option>
-                ))}
-              </Dropdown>
-            </Field>
-            <Field label="Condition Role" className={s.flex1}>
-              <Dropdown
-                selectedOptions={[form.condition_role_id == null ? "" : String(form.condition_role_id)]}
-                value={conditionRoleLabel}
-                onOptionSelect={(_, d) =>
-                  setForm({ ...form, condition_role_id: d.optionValue ? Number(d.optionValue) : null })
-                }
-              >
-                <Option value="" text="Any">
-                  Any
-                </Option>
-                {roles.map((ro: any) => (
-                  <Option key={ro.id} value={String(ro.id)} text={ro.name}>
-                    {ro.name}
-                  </Option>
-                ))}
-              </Dropdown>
-            </Field>
             <Field label="Target Segment" className={s.flex1}>
               <Dropdown
                 selectedOptions={[form.target_segment]}
                 value={form.target_segment}
-                onOptionSelect={(_, d) => setForm({ ...form, target_segment: d.optionValue })}
+                onOptionSelect={(_, d) => setForm({ ...form, target_segment: d.optionValue || '' })}
               >
                 {segments.map((sg) => (
                   <Option key={sg.name} value={sg.name} text={sg.name}>
@@ -308,6 +575,7 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
               </Dropdown>
             </Field>
           </div>
+          
           <div className={s.row}>
             <Field label="Baseline" className={s.flex1}>
               <Dropdown
@@ -334,17 +602,23 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
               />
             </Field>
           </div>
+          
           {preview && (
             <div className={s.previewWrap}>
               <Text size={200}>Preview</Text>
               <div className={s.timeline}>
-                <div
-                  className={s.condBar}
-                  style={{
-                    left: `${(preview.condStart / (24 * 60)) * 100}%`,
-                    width: `${((preview.condEnd - preview.condStart) / (24 * 60)) * 100}%`,
-                  }}
-                />
+                {/* Show all condition segments */}
+                {preview.conditionSegments.map((cond, idx) => (
+                  <div
+                    key={idx}
+                    className={s.condBar}
+                    style={{
+                      left: `${(cond.start / (24 * 60)) * 100}%`,
+                      width: `${((cond.end - cond.start) / (24 * 60)) * 100}%`,
+                      opacity: 0.3 - idx * 0.05,
+                    }}
+                  />
+                ))}
                 <div
                   className={s.targetBar}
                   style={{

@@ -238,6 +238,61 @@ export const migrate25AddWeekStartMode: Migration = (db) => {
   }
 };
 
+// 26. Add multi-condition support for segment adjustments
+export const migrate26AddMultiConditionSegmentAdjustments: Migration = (db) => {
+  try {
+    console.log('Starting migration 26 - Add multi-condition segment adjustments');
+    
+    // 1. Create the new segment_adjustment_condition table
+    db.run(`CREATE TABLE IF NOT EXISTS segment_adjustment_condition (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      adjustment_id INTEGER NOT NULL,
+      condition_segment TEXT NOT NULL,
+      condition_role_id INTEGER,
+      FOREIGN KEY (adjustment_id) REFERENCES segment_adjustment(id) ON DELETE CASCADE,
+      FOREIGN KEY (condition_role_id) REFERENCES role(id)
+    );`);
+    
+    // 2. Add logic_operator column to segment_adjustment table (default to 'AND')
+    try {
+      db.run(`ALTER TABLE segment_adjustment ADD COLUMN logic_operator TEXT CHECK(logic_operator IN ('AND','OR')) NOT NULL DEFAULT 'AND';`);
+    } catch (e) {
+      // Column might already exist
+      console.log('logic_operator column may already exist:', e);
+    }
+    
+    // 3. Migrate existing data from segment_adjustment to segment_adjustment_condition
+    // Get all existing adjustments
+    const existingAdjustments = db.exec(`SELECT id, condition_segment, condition_role_id FROM segment_adjustment;`);
+    
+    if (existingAdjustments && existingAdjustments[0] && existingAdjustments[0].values) {
+      for (const row of existingAdjustments[0].values) {
+        const [adjustmentId, conditionSegment, conditionRoleId] = row;
+        
+        // Check if this adjustment already has conditions in the new table
+        const existingConditions = db.exec(
+          `SELECT COUNT(*) FROM segment_adjustment_condition WHERE adjustment_id = ?;`,
+          [adjustmentId]
+        );
+        const conditionCount = existingConditions[0]?.values?.[0]?.[0] || 0;
+        
+        // Only migrate if no conditions exist yet
+        if (conditionCount === 0 && conditionSegment) {
+          db.run(
+            `INSERT INTO segment_adjustment_condition (adjustment_id, condition_segment, condition_role_id) VALUES (?, ?, ?);`,
+            [adjustmentId, conditionSegment, conditionRoleId]
+          );
+        }
+      }
+    }
+    
+    console.log('Migration 26 complete');
+  } catch (e) {
+    console.error('migrate26AddMultiConditionSegmentAdjustments failed:', e);
+    throw e;
+  }
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -752,6 +807,7 @@ const migrations: Record<number, Migration> = {
   23: migrate23AddTrainingAreaOverride,
   24: migrate24AddSyncVersion,
   25: migrate25AddWeekStartMode,
+  26: migrate26AddMultiConditionSegmentAdjustments,
 };
 
 export function addMigration(version: number, fn: Migration) {

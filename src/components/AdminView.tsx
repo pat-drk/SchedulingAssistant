@@ -124,7 +124,7 @@ export default function AdminView({ sqlDb, all, run, refresh, segments }: AdminV
           <Text className={s.sectionTitle}>Data Configuration</Text>
         </div>
         <SegmentEditor all={all} run={run} refresh={refresh} />
-        <SegmentAdjustmentEditor all={all} run={run} refresh={refresh} segments={segments} />
+        <SegmentAdjustmentEditor all={all} run={run} refresh={refresh} segments={segments} db={sqlDb} />
         <GroupEditor all={all} run={run} refresh={refresh} />
         <RoleEditor all={all} run={run} refresh={refresh} segments={segments} />
         <ExportGroupEditor all={all} run={run} refresh={refresh} />
