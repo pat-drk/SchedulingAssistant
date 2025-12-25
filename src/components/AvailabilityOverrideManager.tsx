@@ -165,6 +165,39 @@ export default function AvailabilityOverrideManager({
     setOrigOverrides(overrides);
   }, [personId, weekDate, all, rev]);
 
+  /**
+   * Remove assignments that conflict with the new availability.
+   * Called after availability overrides are saved.
+   */
+  function removeConflictingAssignments(pid: number, date: string, newAvail: Availability) {
+    if (!sqlDb) return;
+    // Get all assignments for this person on this date
+    const assignments = all(
+      `SELECT a.id, a.segment FROM assignment a WHERE a.person_id=? AND a.date=?`,
+      [pid, date]
+    );
+    
+    for (const a of assignments) {
+      // Check if the assignment segment conflicts with the new availability
+      let shouldRemove = false;
+      if (newAvail === 'U') {
+        // Unavailable - remove all assignments
+        shouldRemove = true;
+      } else if (newAvail === 'AM') {
+        // Only AM available - remove PM assignments
+        if (a.segment === 'PM') shouldRemove = true;
+      } else if (newAvail === 'PM') {
+        // Only PM available - remove AM and Early assignments
+        if (a.segment === 'AM' || a.segment === 'Early') shouldRemove = true;
+      }
+      // 'B' (Both) doesn't conflict with any segment
+      
+      if (shouldRemove) {
+        sqlDb.run(`DELETE FROM assignment WHERE id=?`, [a.id]);
+      }
+    }
+  }
+
   function updateWeek() {
     if (!sqlDb || personId == null) return;
     const start = startOfWeek(parseDate(weekDate));
@@ -194,6 +227,8 @@ export default function AvailabilityOverrideManager({
         if (orig != null) deleteOverride(sqlDb, personId, ds);
       } else {
         setOverride(sqlDb, personId, ds, val);
+        // Remove any conflicting assignments for this date
+        removeConflictingAssignments(personId, ds, val);
       }
     }
     setRev((r) => r + 1);

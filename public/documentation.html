@@ -556,7 +556,29 @@
                             </div>
                             <div class="p-6 bg-[#f0f7ff] rounded-lg border border-[#cce5ff]">
                                 <h4 class="font-bold text-[#005a9e] mb-2 text-sm">Auto-Fill Engine</h4>
-                                <p class="text-xs text-[#005a9e] leading-relaxed">System-generated suggestions based on training, availability patterns, and history weights.</p>
+                                <p class="text-xs text-[#005a9e] leading-relaxed">System-generated suggestions based on training, availability patterns, and history weights. People with time-off conflicts are automatically excluded from suggestions.</p>
+                            </div>
+                        </div>
+
+                        <div class="mt-8 mb-8">
+                            <h4 class="font-bold text-[#242424] mb-4">Status Indicators</h4>
+                            <div class="table-container">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-[#fafafa] border-b text-[#616161]">
+                                        <tr>
+                                            <th class="p-3 font-semibold">Indicator</th>
+                                            <th class="p-3 font-semibold">Meaning</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
+                                        <tr><td class="p-3">(Untrained)</td><td class="p-3">Person is not trained for this role</td></tr>
+                                        <tr><td class="p-3">(Assigned)</td><td class="p-3">Person is assigned to another role that needs them</td></tr>
+                                        <tr><td class="p-3">(Overstaffed)</td><td class="p-3">Person is assigned to a role with more staff than needed</td></tr>
+                                        <tr><td class="p-3">(Time-off)</td><td class="p-3">Person has major time-off overlap with this segment</td></tr>
+                                        <tr><td class="p-3">(Partial Time-off)</td><td class="p-3">Person has partial time-off overlap</td></tr>
+                                        <tr><td class="p-3">X/Y Badge</td><td class="p-3">Group header shows filled positions vs. total needed</td></tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -987,7 +1009,7 @@
                         </div>
 
                         <h4 class="font-bold text-[#242424] mb-4">Exporting to XLSX</h4>
-                        <p class="text-xs text-[#616161] mb-4">Click the "Export to XLSX" button to download a formatted spreadsheet compatible with Microsoft Teams Shifts bulk import.</p>
+                        <p class="text-xs text-[#616161] mb-4">Click the "Export to XLSX" button to download a formatted spreadsheet compatible with Microsoft Teams Shifts bulk import. Each shift automatically includes the time range (e.g., "8-12" or "1-5") in the Notes field for quick reference.</p>
                         
                         <div class="p-4 bg-[#f0f7ff] border border-[#cce5ff] rounded-lg flex gap-3 items-start">
                             <i class="fas fa-lightbulb text-[#0078d4] mt-1"></i>
