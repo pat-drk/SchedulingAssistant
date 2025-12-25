@@ -814,13 +814,14 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Schedule');
+  // 3 columns per pane: Name, Role, Segment (no day column for daily export)
   ws.columns = [
-    { width: 30 }, { width: 20 }, { width: 10 }, { width: 18 }, { width: 2 },
-    { width: 30 }, { width: 20 }, { width: 10 }, { width: 18 }, { width: 2 },
-    { width: 30 }, { width: 20 }, { width: 10 }, { width: 18 }
+    { width: 30 }, { width: 24 }, { width: 18 }, { width: 2 },
+    { width: 30 }, { width: 24 }, { width: 18 }, { width: 2 },
+    { width: 30 }, { width: 24 }, { width: 18 }
   ];
 
-  ws.mergeCells(1, 1, 1, 14);
+  ws.mergeCells(1, 1, 1, 11);
   const titleCell = ws.getCell(1, 1);
   titleCell.value = `Kitchen / Dining Room Schedule — ${dateText}`;
   titleCell.font = { bold: true, size: 18, name: 'Calibri' };
@@ -843,21 +844,23 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
     group: string,
     people: Record<string, PersonBucket>
   ) {
-    const startCol = pane === 'kitchen1' ? 1 : pane === 'kitchen2' ? 6 : 11;
+    // 3 columns per pane: Name, Role, Segment (no day column)
+    // Pane start columns: kitchen1=1, kitchen2=5, dining=9 (with 1-col gap between panes)
+    const startCol = pane === 'kitchen1' ? 1 : pane === 'kitchen2' ? 5 : 9;
     if (!people || !Object.keys(people).length) return;
     const rowIndex = paneState[pane];
 
-    // Group header
-    ws.mergeCells(rowIndex, startCol, rowIndex, startCol + 3);
+    // Group header (spans 3 columns: Name, Role, Segment)
+    ws.mergeCells(rowIndex, startCol, rowIndex, startCol + 2);
     const hcell = ws.getCell(rowIndex, startCol);
     hcell.value = group;
     hcell.alignment = { horizontal: 'left' };
     const fill = GROUP_INFO[group]?.color || 'FFEFEFEF';
     hcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
-    for (let c = startCol; c <= startCol + 3; c++) {
+    for (let c = startCol; c <= startCol + 2; c++) {
       ws.getCell(rowIndex, c).font = { bold: true, size: 18 };
     }
-    setRowBorders(ws.getRow(rowIndex), startCol, startCol + 3);
+    setRowBorders(ws.getRow(rowIndex), startCol, startCol + 2);
 
     function simplifyRole(role: string): string | null {
       if (role === group) return null;
@@ -882,19 +885,15 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
       ws.getCell(r, startCol + 1).value = roleText;
       ws.getCell(r, startCol + 1).alignment = { vertical: 'top', wrapText: true };
 
-      // For daily schedule, show segments (AM/PM) in the shift column
+      // For daily schedule, show segments (Early/AM/PM etc.) in the segment column
       const segments = Array.from(info.segments).sort().join('/');
       ws.getCell(r, startCol + 2).value = segments;
+      ws.getCell(r, startCol + 2).alignment = { vertical: 'top', wrapText: true };
 
-      // For daily schedule, we show the single day
-      const dayCell = ws.getCell(r, startCol + 3);
-      dayCell.value = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-      dayCell.alignment = { vertical: 'top', wrapText: true };
-
-      for (let c = startCol; c <= startCol + 3; c++) {
+      for (let c = startCol; c <= startCol + 2; c++) {
         ws.getCell(r, c).font = { size: 16 };
       }
-      setRowBorders(ws.getRow(r), startCol, startCol + 3);
+      setRowBorders(ws.getRow(r), startCol, startCol + 2);
       r++;
     }
     paneState[pane] = r;
@@ -930,7 +929,7 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
 
   if (hasAny('commuter')) {
     const afterRegular = Math.max(paneState.kitchen1, paneState.kitchen2, paneState.dining);
-    ws.mergeCells(afterRegular, 1, afterRegular, 14);
+    ws.mergeCells(afterRegular, 1, afterRegular, 11);
     const commCell = ws.getCell(afterRegular, 1);
     commCell.value = 'COMMUTERS';
     commCell.font = { bold: true, size: 18 };
@@ -951,9 +950,10 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
 
   if (lunchHasAny('regular') || lunchHasAny('commuter')) {
     const wsL = wb.addWorksheet('Lunch');
-    wsL.columns = [{ width: 30 }, { width: 20 }, { width: 10 }, { width: 18 }];
+    // 2 columns for daily lunch: Name, Role (no day column needed)
+    wsL.columns = [{ width: 30 }, { width: 24 }];
 
-    wsL.mergeCells(1, 1, 1, 4);
+    wsL.mergeCells(1, 1, 1, 2);
     const lunchTitleCell = wsL.getCell(1, 1);
     lunchTitleCell.value = `Lunch Jobs — ${dateText}`;
     lunchTitleCell.font = { bold: true, size: 18, name: 'Calibri' };
@@ -964,16 +964,16 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
     function renderLunchBlock(group: string, people: Record<string, PersonBucket>) {
       if (!people || !Object.keys(people).length) return;
 
-      wsL.mergeCells(lunchRow, 1, lunchRow, 4);
+      wsL.mergeCells(lunchRow, 1, lunchRow, 2);
       const hcell = wsL.getCell(lunchRow, 1);
       hcell.value = group;
       hcell.alignment = { horizontal: 'left' };
       const fill = GROUP_INFO[group]?.color || 'FFEFEFEF';
       hcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
-      for (let c = 1; c <= 4; c++) {
+      for (let c = 1; c <= 2; c++) {
         wsL.getCell(lunchRow, c).font = { bold: true, size: 18 };
       }
-      setRowBorders(wsL.getRow(lunchRow), 1, 4);
+      setRowBorders(wsL.getRow(lunchRow), 1, 2);
 
       function simplifyRole(role: string): string | null {
         if (role === group) return null;
@@ -998,15 +998,10 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
         wsL.getCell(r, 2).value = roleText;
         wsL.getCell(r, 2).alignment = { vertical: 'top', wrapText: true };
 
-        // No shift column for lunch
-        const dayCell = wsL.getCell(r, 4);
-        dayCell.value = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-        dayCell.alignment = { vertical: 'top', wrapText: true };
-
-        for (let c = 1; c <= 4; c++) {
+        for (let c = 1; c <= 2; c++) {
           wsL.getCell(r, c).font = { size: 16 };
         }
-        setRowBorders(wsL.getRow(r), 1, 4);
+        setRowBorders(wsL.getRow(r), 1, 2);
         r++;
       }
       lunchRow = r;
@@ -1036,7 +1031,7 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
     renderLunchSection('regular');
 
     if (lunchHasAny('commuter')) {
-      wsL.mergeCells(lunchRow, 1, lunchRow, 4);
+      wsL.mergeCells(lunchRow, 1, lunchRow, 2);
       const commCell = wsL.getCell(lunchRow, 1);
       commCell.value = 'COMMUTERS';
       commCell.font = { bold: true, size: 18 };

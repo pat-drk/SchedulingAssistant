@@ -153,10 +153,8 @@ const useStyles = makeStyles({
     paddingTop: tokens.spacingVerticalS,
     overflow: "auto",
     minHeight: 0,
-    maxHeight: "calc(100vh - 300px)", // Ensure scrollability
     // Better mobile scrolling
     "@media (max-width: 767px)": {
-      maxHeight: "calc(100vh - 200px)",
       gap: tokens.spacingHorizontalXXS,
     },
   },
