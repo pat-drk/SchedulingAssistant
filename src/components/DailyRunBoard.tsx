@@ -7,6 +7,7 @@ import type { SegmentAdjustmentRow } from "../services/segmentAdjustments";
 import "../styles/scrollbar.css";
 import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
+import { exportDailyScheduleXlsx } from "../excel/export-one-sheet";
 import {
   Button,
   Dropdown,
@@ -152,10 +153,8 @@ const useStyles = makeStyles({
     paddingTop: tokens.spacingVerticalS,
     overflow: "auto",
     minHeight: 0,
-    maxHeight: "calc(100vh - 300px)", // Ensure scrollability
     // Better mobile scrolling
     "@media (max-width: 767px)": {
-      maxHeight: "calc(100vh - 200px)",
       gap: tokens.spacingHorizontalXXS,
     },
   },
@@ -168,8 +167,9 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
-    overflow: "hidden",
-    maxHeight: "400px", // Prevent individual cards from becoming too tall
+    height: "100%", // Fill container height
+    overflowY: "auto",
+    overflowX: "hidden",
     // Mobile adjustments
     "@media (max-width: 767px)": {
       padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
@@ -211,6 +211,7 @@ const useStyles = makeStyles({
     padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
     columnGap: tokens.spacingHorizontalS,
     flexShrink: 0,
+    width: "100%", // Ensure item fills the available width
     fontSize: tokens.fontSizeBase200,
     transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
     ":hover": {
@@ -650,6 +651,17 @@ export default function DailyRunBoard({
 
   function cancelAutoFill() {
     setAutoFillOpen(false);
+  }
+
+  async function handleExportDaily() {
+    try {
+      await exportDailyScheduleXlsx(ymd(selectedDateObj));
+    } catch (error) {
+      dialogs.showAlert(
+        `Failed to export schedule: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        "Export Error"
+      );
+    }
   }
 
   // Precompute segment times for the selected date at top-level for reuse in move dialog
@@ -1201,6 +1213,7 @@ export default function DailyRunBoard({
           </TabList>
         </div>
         <div className={s.headerRight}>
+          <Button appearance="secondary" onClick={handleExportDaily}>Export</Button>
           <Button appearance="secondary" onClick={handleAutoFill}>Auto Fill</Button>
           <Button appearance="secondary" onClick={() => setShowNeedsEditor(true)}>
             Edit Needs for This Day

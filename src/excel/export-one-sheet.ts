@@ -306,9 +306,9 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Schedule');
   ws.columns = [
-    { width:26 }, { width:16 }, { width:5 }, { width:14 }, { width:2 },
-    { width:26 }, { width:16 }, { width:5 }, { width:14 }, { width:2 },
-    { width:26 }, { width:16 }, { width:5 }, { width:14 }
+    { width:30 }, { width:20 }, { width:10 }, { width:18 }, { width:2 },
+    { width:30 }, { width:20 }, { width:10 }, { width:18 }, { width:2 },
+    { width:30 }, { width:20 }, { width:10 }, { width:18 }
   ];
 
   ws.mergeCells(1,1,1,14);
@@ -394,12 +394,14 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       }
 
       ws.getCell(r, startCol).value = name;
+      ws.getCell(r, startCol).alignment = { vertical: 'top', wrapText: true };
 
       const roleNames = Array.from(info.roles)
         .map(simplifyRole)
         .filter((v): v is string => Boolean(v));
       const roleText = Array.from(new Set(roleNames)).sort().join('/');
       ws.getCell(r, startCol + 1).value = roleText;
+      ws.getCell(r, startCol + 1).alignment = { vertical: 'top', wrapText: true };
 
       if (hasAM && hasPM) {
         // both -> blank
@@ -411,9 +413,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
       const dayCell = ws.getCell(r, startCol + 3);
       dayCell.value = days;
-      if (days.includes(';')) {
-        dayCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
-      }
+      dayCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
       // Apply font to each cell individually to avoid interfering with other
       // panes that may use the same worksheet row.
       for (let c = startCol; c <= startCol + 3; c++) {
@@ -608,11 +608,15 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     for (const name of names) {
       const info = people[name];
       wsL.getCell(r, 1).value = name;
+      wsL.getCell(r, 1).alignment = { vertical: 'top', wrapText: true };
+      
       const roleNames = Array.from(info.roles)
         .map(simplifyRole)
         .filter((v): v is string => Boolean(v));
       const roleText = Array.from(new Set(roleNames)).sort().join('/');
       wsL.getCell(r, 2).value = roleText;
+      wsL.getCell(r, 2).alignment = { vertical: 'top', wrapText: true };
+      
       wsL.getCell(r, 3).value = 'Lunch';
       const dayList = DAY_ORDER.filter(d => info.days.has(d));
       const simplifiedRoleDayMap = new Map<string, Set<DayLetter>>();
@@ -647,9 +651,8 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       }
       const dayCell = wsL.getCell(r, 4);
       dayCell.value = days;
-      if (days.includes(';') || days.includes(':')) {
-        dayCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
-      }
+      dayCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+      
       for (let c = 1; c <= 4; c++) {
         wsL.getCell(r, c).font = { size: 16 };
       }
@@ -705,6 +708,349 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   a.href = url;
   const monthName = monthDate.toLocaleString('default',{ month: 'long', year: 'numeric' });
   a.download = `Kitchen-DR Schedule — ${monthName}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Daily assignment row type
+type DailyAssignmentRow = {
+  person_id: number;
+  person: string;
+  role_id: number;
+  role_name: string;
+  group_name: string;
+  group_id: number;
+  commuter: number;
+  segment: string;
+};
+
+/**
+ * Export daily schedule for a specific date to XLSX.
+ * Exports all segments for the day.
+ * Uses the same format and styling as the monthly export.
+ */
+export async function exportDailyScheduleXlsx(date: string): Promise<void> {
+  requireDb();
+
+  // Load ExcelJS
+  const ExcelJS = await loadExcelJS();
+
+  const { info: GROUP_INFO, col1: KITCHEN_COL1_GROUPS, col2: KITCHEN_COL2_GROUPS, dining: DINING_GROUPS } = loadExportGroups();
+
+  // Query all assignments for the given date (all segments except LUNCH)
+  const assignments = all<DailyAssignmentRow>(
+    `SELECT a.person_id, a.role_id, a.segment,
+            (p.last_name || ', ' || p.first_name) AS person,
+            r.name AS role_name,
+            g.name AS group_name, g.id AS group_id,
+            p.commuter AS commuter
+       FROM assignment a
+      JOIN person p ON p.id = a.person_id
+      JOIN role r ON r.id = a.role_id
+      JOIN grp g ON g.id = r.group_id
+      WHERE a.date = ? AND TRIM(UPPER(a.segment)) != 'LUNCH'
+      ORDER BY g.name, person`,
+    [date]
+  );
+
+  // Organize assignments by regular/commuter -> group code -> person -> segments and roles
+  type PersonBucket = {
+    segments: Set<string>;
+    roles: Set<string>;
+  };
+  const buckets: Record<'regular' | 'commuter', Record<string, Record<string, PersonBucket>>> = {
+    regular: {},
+    commuter: {}
+  };
+
+  for (const row of assignments) {
+    const code = GROUP_INFO[row.group_name]?.code;
+    if (!code) continue;
+
+    const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
+    const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
+    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { segments: new Set<string>(), roles: new Set<string>() });
+    personBucket.segments.add(row.segment);
+    personBucket.roles.add(row.role_name);
+  }
+
+  // Handle Lunch assignments separately
+  const lunchAssignments = all<DailyAssignmentRow>(
+    `SELECT a.person_id, a.role_id,
+            (p.last_name || ', ' || p.first_name) AS person,
+            r.name AS role_name,
+            g.name AS group_name, g.id AS group_id,
+            p.commuter AS commuter
+       FROM assignment a
+      JOIN person p ON p.id = a.person_id
+      JOIN role r ON r.id = a.role_id
+      JOIN grp g ON g.id = r.group_id
+      WHERE a.date = ? AND TRIM(UPPER(a.segment)) = 'LUNCH'
+      ORDER BY g.name, person`,
+    [date]
+  );
+
+  const lunchBuckets: Record<'regular' | 'commuter', Record<string, Record<string, PersonBucket>>> = {
+    regular: {},
+    commuter: {}
+  };
+
+  for (const row of lunchAssignments) {
+    const code = GROUP_INFO[row.group_name]?.code;
+    if (!code) continue;
+
+    const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
+    const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
+    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { segments: new Set<string>(), roles: new Set<string>() });
+    personBucket.segments.add('LUNCH');
+    personBucket.roles.add(row.role_name);
+  }
+
+  // ---------- Sheet rendering ----------
+  const dateObj = new Date(date);
+  const dateText = dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Schedule');
+  // 3 columns per pane: Name, Role, Segment (no day column for daily export)
+  ws.columns = [
+    { width: 30 }, { width: 24 }, { width: 18 }, { width: 2 },
+    { width: 30 }, { width: 24 }, { width: 18 }, { width: 2 },
+    { width: 30 }, { width: 24 }, { width: 18 }
+  ];
+
+  ws.mergeCells(1, 1, 1, 11);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = `Kitchen / Dining Room Schedule — ${dateText}`;
+  titleCell.font = { bold: true, size: 18, name: 'Calibri' };
+  titleCell.alignment = { horizontal: 'center' };
+
+  const paneState = { kitchen1: 2, kitchen2: 2, dining: 2 } as Record<'kitchen1' | 'kitchen2' | 'dining', number>;
+
+  function setRowBorders(row: any, startCol: number, endCol: number) {
+    for (let c = startCol; c <= endCol; c++) {
+      const cell = row.getCell(c);
+      const border: any = { bottom: { style: 'thin' } };
+      if (c === startCol) border.left = { style: 'thin' };
+      if (c === endCol) border.right = { style: 'thin' };
+      cell.border = border;
+    }
+  }
+
+  function renderBlock(
+    pane: 'kitchen1' | 'kitchen2' | 'dining',
+    group: string,
+    people: Record<string, PersonBucket>
+  ) {
+    // 3 columns per pane: Name, Role, Segment (no day column)
+    // Pane start columns: kitchen1=1, kitchen2=5, dining=9 (with 1-col gap between panes)
+    const startCol = pane === 'kitchen1' ? 1 : pane === 'kitchen2' ? 5 : 9;
+    if (!people || !Object.keys(people).length) return;
+    const rowIndex = paneState[pane];
+
+    // Group header (spans 3 columns: Name, Role, Segment)
+    ws.mergeCells(rowIndex, startCol, rowIndex, startCol + 2);
+    const hcell = ws.getCell(rowIndex, startCol);
+    hcell.value = group;
+    hcell.alignment = { horizontal: 'left' };
+    const fill = GROUP_INFO[group]?.color || 'FFEFEFEF';
+    hcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+    for (let c = startCol; c <= startCol + 2; c++) {
+      ws.getCell(rowIndex, c).font = { bold: true, size: 18 };
+    }
+    setRowBorders(ws.getRow(rowIndex), startCol, startCol + 2);
+
+    function simplifyRole(role: string): string | null {
+      if (role === group) return null;
+      const prefix = group + ' ';
+      if (role.startsWith(prefix)) {
+        return role.slice(prefix.length);
+      }
+      return role;
+    }
+
+    let r = rowIndex + 1;
+    const names = Object.keys(people).sort((a, b) => a.localeCompare(b));
+    for (const name of names) {
+      const info = people[name];
+      ws.getCell(r, startCol).value = name;
+      ws.getCell(r, startCol).alignment = { vertical: 'top', wrapText: true };
+
+      const roleNames = Array.from(info.roles)
+        .map(simplifyRole)
+        .filter((v): v is string => Boolean(v));
+      const roleText = Array.from(new Set(roleNames)).sort().join('/');
+      ws.getCell(r, startCol + 1).value = roleText;
+      ws.getCell(r, startCol + 1).alignment = { vertical: 'top', wrapText: true };
+
+      // For daily schedule, show segments (Early/AM/PM etc.) in the segment column
+      const segments = Array.from(info.segments).sort().join('/');
+      ws.getCell(r, startCol + 2).value = segments;
+      ws.getCell(r, startCol + 2).alignment = { vertical: 'top', wrapText: true };
+
+      for (let c = startCol; c <= startCol + 2; c++) {
+        ws.getCell(r, c).font = { size: 16 };
+      }
+      setRowBorders(ws.getRow(r), startCol, startCol + 2);
+      r++;
+    }
+    paneState[pane] = r;
+  }
+
+  function renderSection(kind: 'regular' | 'commuter') {
+    for (const g of KITCHEN_COL1_GROUPS) {
+      const code = GROUP_INFO[g]?.code;
+      if (!code) continue;
+      const people = buckets[kind][code];
+      if (people && Object.keys(people).length) renderBlock('kitchen1', g, people);
+    }
+    for (const g of KITCHEN_COL2_GROUPS) {
+      const code = GROUP_INFO[g]?.code;
+      if (!code) continue;
+      const people = buckets[kind][code];
+      if (people && Object.keys(people).length) renderBlock('kitchen2', g, people);
+    }
+    for (const g of DINING_GROUPS) {
+      const code = GROUP_INFO[g]?.code;
+      if (!code) continue;
+      const people = buckets[kind][code];
+      if (people && Object.keys(people).length) renderBlock('dining', g, people);
+    }
+  }
+
+  // Regulars first
+  renderSection('regular');
+
+  // Insert COMMUTERS divider if needed, then render commuters
+  const hasAny = (kind: 'regular' | 'commuter') =>
+    Object.values(buckets[kind]).some(groupMap => groupMap && Object.keys(groupMap).length);
+
+  if (hasAny('commuter')) {
+    const afterRegular = Math.max(paneState.kitchen1, paneState.kitchen2, paneState.dining);
+    ws.mergeCells(afterRegular, 1, afterRegular, 11);
+    const commCell = ws.getCell(afterRegular, 1);
+    commCell.value = 'COMMUTERS';
+    commCell.font = { bold: true, size: 18 };
+    commCell.alignment = { horizontal: 'left' };
+    commCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFEF' } };
+    commCell.border = { top: { style: 'thick' } };
+
+    paneState.kitchen1 = afterRegular + 1;
+    paneState.kitchen2 = afterRegular + 1;
+    paneState.dining = afterRegular + 1;
+
+    renderSection('commuter');
+  }
+
+  // ---------- Lunch jobs sheet ----------
+  const lunchHasAny = (kind: 'regular' | 'commuter') =>
+    Object.values(lunchBuckets[kind]).some(groupMap => groupMap && Object.keys(groupMap).length);
+
+  if (lunchHasAny('regular') || lunchHasAny('commuter')) {
+    const wsL = wb.addWorksheet('Lunch');
+    // 2 columns for daily lunch: Name, Role (no day column needed)
+    wsL.columns = [{ width: 30 }, { width: 24 }];
+
+    wsL.mergeCells(1, 1, 1, 2);
+    const lunchTitleCell = wsL.getCell(1, 1);
+    lunchTitleCell.value = `Lunch Jobs — ${dateText}`;
+    lunchTitleCell.font = { bold: true, size: 18, name: 'Calibri' };
+    lunchTitleCell.alignment = { horizontal: 'center' };
+
+    let lunchRow = 2;
+
+    function renderLunchBlock(group: string, people: Record<string, PersonBucket>) {
+      if (!people || !Object.keys(people).length) return;
+
+      wsL.mergeCells(lunchRow, 1, lunchRow, 2);
+      const hcell = wsL.getCell(lunchRow, 1);
+      hcell.value = group;
+      hcell.alignment = { horizontal: 'left' };
+      const fill = GROUP_INFO[group]?.color || 'FFEFEFEF';
+      hcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+      for (let c = 1; c <= 2; c++) {
+        wsL.getCell(lunchRow, c).font = { bold: true, size: 18 };
+      }
+      setRowBorders(wsL.getRow(lunchRow), 1, 2);
+
+      function simplifyRole(role: string): string | null {
+        if (role === group) return null;
+        const prefix = group + ' ';
+        if (role.startsWith(prefix)) {
+          return role.slice(prefix.length);
+        }
+        return role;
+      }
+
+      let r = lunchRow + 1;
+      const names = Object.keys(people).sort((a, b) => a.localeCompare(b));
+      for (const name of names) {
+        const info = people[name];
+        wsL.getCell(r, 1).value = name;
+        wsL.getCell(r, 1).alignment = { vertical: 'top', wrapText: true };
+
+        const roleNames = Array.from(info.roles)
+          .map(simplifyRole)
+          .filter((v): v is string => Boolean(v));
+        const roleText = Array.from(new Set(roleNames)).sort().join('/');
+        wsL.getCell(r, 2).value = roleText;
+        wsL.getCell(r, 2).alignment = { vertical: 'top', wrapText: true };
+
+        for (let c = 1; c <= 2; c++) {
+          wsL.getCell(r, c).font = { size: 16 };
+        }
+        setRowBorders(wsL.getRow(r), 1, 2);
+        r++;
+      }
+      lunchRow = r;
+    }
+
+    function renderLunchSection(kind: 'regular' | 'commuter') {
+      for (const g of KITCHEN_COL1_GROUPS) {
+        const code = GROUP_INFO[g]?.code;
+        if (!code) continue;
+        const people = lunchBuckets[kind][code];
+        if (people && Object.keys(people).length) renderLunchBlock(g, people);
+      }
+      for (const g of KITCHEN_COL2_GROUPS) {
+        const code = GROUP_INFO[g]?.code;
+        if (!code) continue;
+        const people = lunchBuckets[kind][code];
+        if (people && Object.keys(people).length) renderLunchBlock(g, people);
+      }
+      for (const g of DINING_GROUPS) {
+        const code = GROUP_INFO[g]?.code;
+        if (!code) continue;
+        const people = lunchBuckets[kind][code];
+        if (people && Object.keys(people).length) renderLunchBlock(g, people);
+      }
+    }
+
+    renderLunchSection('regular');
+
+    if (lunchHasAny('commuter')) {
+      wsL.mergeCells(lunchRow, 1, lunchRow, 2);
+      const commCell = wsL.getCell(lunchRow, 1);
+      commCell.value = 'COMMUTERS';
+      commCell.font = { bold: true, size: 18 };
+      commCell.alignment = { horizontal: 'left' };
+      commCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFEF' } };
+      commCell.border = { top: { style: 'thick' } };
+      lunchRow += 1;
+
+      renderLunchSection('commuter');
+    }
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const shortDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  a.download = `Daily Schedule — ${shortDate}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
