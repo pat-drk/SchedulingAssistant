@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import type { Database } from "sql.js";
 import {
   Button,
   Field,
@@ -16,12 +17,14 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import type { SegmentRow } from "../services/segments";
+import { listSegmentAdjustments } from "../services/segmentAdjustments";
 import type { SegmentAdjustmentRow } from "../services/segmentAdjustments";
 import AlertDialog from "./AlertDialog";
 import ConfirmDialog from "./ConfirmDialog";
 import { useDialogs } from "../hooks/useDialogs";
 
 interface Props {
+  sqlDb: Database;
   all: (sql: string, params?: any[]) => any[];
   run: (sql: string, params?: any[]) => void;
   refresh: () => void;
@@ -64,7 +67,7 @@ const useSegmentAdjustmentStyles = makeStyles({
   adjustedBar: { position: "absolute", top: 0, bottom: 0, background: tokens.colorBrandBackground },
 });
 
-export default function SegmentAdjustmentEditor({ all, run, refresh, segments }: Props) {
+export default function SegmentAdjustmentEditor({ sqlDb, all, run, refresh, segments }: Props) {
   const empty: Omit<SegmentAdjustmentRow, "id"> = {
     condition_segment: "",
     condition_role_id: null,
@@ -132,7 +135,8 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments }:
   }
 
   function load() {
-    setRows(all(`SELECT id,condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,priority,exclusive_group FROM segment_adjustment ORDER BY priority DESC, id`));
+    const adjustments = listSegmentAdjustments(sqlDb).sort((a, b) => b.priority - a.priority || a.id - b.id);
+    setRows(adjustments);
     setRoles(all(`SELECT id,name FROM role ORDER BY name`));
   }
   useEffect(load, []);
