@@ -1339,6 +1339,15 @@ export default function App() {
         const color = bg ? contrastColor(bg) : '';
         const style = bg ? ` style="background:${bg};color:${color};"` : '';
         const overrideStrs: string[] = [];
+        // Week overrides (Week 1-5)
+        for (let weekNum = 1; weekNum <= 5; weekNum++) {
+          const wov = monthlyWeekOverrides.find(o => o.person_id===p.id && o.week_number===weekNum && o.segment===seg);
+          const wovRole = roles.find(r => r.id===wov?.role_id);
+          if (wovRole && wovRole.id !== def?.role_id) {
+            overrideStrs.push(`Week ${weekNum}: ${escapeHtml(wovRole.name)}`);
+          }
+        }
+        // Weekday overrides (Mon-Fri)
         for (let w = 1; w <= 5; w++) {
           const ov = monthlyOverrides.find(o => o.person_id===p.id && o.weekday===w && o.segment===seg);
           const ovRole = roles.find(r => r.id===ov?.role_id);

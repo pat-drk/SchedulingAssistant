@@ -1,5 +1,6 @@
 import { loadExcelJS } from './exceljs-loader';
 import { availabilityFor } from '../services/availability';
+import { getWeekOfMonth } from '../utils/weekCalculation';
 
 type ExportGroupRow = {
   group_name: string;
@@ -64,6 +65,18 @@ type DefaultRow = WithAvail & {
 type DayRow = WithAvail & {
   person_id: number;
   weekday: number; // tolerate 0..4 or 1..5; we’ll normalize to DayLetter
+  segment: string | null;
+  group_name: string;
+  role_id: number;
+  role_name: string;
+  person: string;
+  commuter: number;
+  month: string;
+};
+
+type WeekRow = WithAvail & {
+  person_id: number;
+  week_number: number; // 1-5
   segment: string | null;
   group_name: string;
   role_id: number;
@@ -224,7 +237,37 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     mddMonth.params
   );
 
+  const mdwMonth = monthWhere('mdw.month', monthKey);
+  const perWeeks = all<WeekRow>(
+    `SELECT mdw.person_id, mdw.week_number, mdw.segment,
+            g.name AS group_name, r.id AS role_id, r.name AS role_name,
+            (p.last_name || ', ' || p.first_name) AS person,
+            p.commuter AS commuter,
+            p.avail_mon, p.avail_tue, p.avail_wed, p.avail_thu, p.avail_fri,
+            mdw.month as month
+       FROM monthly_default_week mdw
+      JOIN role r ON r.id = mdw.role_id
+      JOIN grp  g ON g.id = r.group_id
+      JOIN person p ON p.id = mdw.person_id
+      WHERE ${mdwMonth.where} AND p.active = 1`,
+    mdwMonth.params
+  );
+
   const buckets: Buckets = { regular: {}, commuter: {} };
+
+  // Load week_start_mode setting from meta table
+  let weekStartMode: 'first_monday' | 'first_day' = 'first_monday';
+  try {
+    const modeRows = all(`SELECT value FROM meta WHERE key='week_start_mode'`);
+    if (modeRows.length > 0 && modeRows[0].value) {
+      const modeValue = modeRows[0].value;
+      if (modeValue === 'first_monday' || modeValue === 'first_day') {
+        weekStartMode = modeValue;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load week_start_mode:', e);
+  }
 
   // Map (person_id|segment) -> Map<DayLetter, role_id> for precise subtraction
   const psKey = (pid:number, seg:Seg) => `${pid}|${seg}`;
@@ -261,7 +304,53 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     }
   }
 
-  // 2) Apply defaults, but:
+  // 2) Add week-based assignments (higher priority than per-day)
+  // Week overrides apply to all days within that week number
+  for (const row of perWeeks) {
+    const segNorm = (row.segment || '').toString().trim().toUpperCase();
+    if (segNorm === 'LUNCH') continue;
+
+    const segs = expandSegments(segNorm);
+    for (const s of segs) {
+      const code = GROUP_INFO[row.group_name]?.code;
+      if (!code) continue;
+
+      // Determine which day letters are in this week
+      const daysInWeek: DayLetter[] = [];
+      for (const dayLetter of DAY_ORDER) {
+        const date = dateForDay(row.month, dayLetter);
+        const weekNum = getWeekOfMonth(date, weekStartMode);
+        if (weekNum === row.week_number) {
+          // Check availability for this day
+          if (isAllowedByAvail(dayLetter, s, row)) {
+            daysInWeek.push(dayLetter);
+          }
+        }
+      }
+
+      if (daysInWeek.length === 0) continue;
+
+      const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
+      const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
+      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>() });
+      personBucket.roles.add(row.role_name);
+
+      let dayMap = perDayMap.get(psKey(row.person_id, s));
+      if (!dayMap) {
+        dayMap = new Map<DayLetter, number>();
+        perDayMap.set(psKey(row.person_id, s), dayMap);
+      }
+
+      // Apply week override to all applicable days
+      for (const dayLetter of daysInWeek) {
+        if (s === 'AM') personBucket.AM.add(dayLetter);
+        else personBucket.PM.add(dayLetter);
+        dayMap.set(dayLetter, row.role_id);
+      }
+    }
+  }
+
+  // 3) Apply defaults, but:
   //    - Respect AVAILABILITY
   //    - SUBTRACT days that have per-day rows with a DIFFERENT role (by DAY LETTER)
   for (const row of defaults) {
@@ -502,6 +591,21 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     mddMonth.params
   );
 
+  const lunchPerWeeks = all<WeekRow>(
+    `SELECT mdw.person_id, mdw.week_number, mdw.segment,
+            g.name AS group_name, r.id AS role_id, r.name AS role_name,
+            (p.last_name || ', ' || p.first_name) AS person,
+            p.commuter AS commuter,
+            p.avail_mon, p.avail_tue, p.avail_wed, p.avail_thu, p.avail_fri,
+            mdw.month as month
+       FROM monthly_default_week mdw
+      JOIN role r ON r.id = mdw.role_id
+      JOIN grp  g ON g.id = r.group_id
+      JOIN person p ON p.id = mdw.person_id
+      WHERE ${mdwMonth.where} AND p.active = 1 AND TRIM(UPPER(mdw.segment)) = 'LUNCH'`,
+    mdwMonth.params
+  );
+
   const lunchBuckets: LunchBuckets = { regular: {}, commuter: {} };
   const lunchPerDayMap = new Map<number, Map<DayLetter, number>>();
 
@@ -532,6 +636,55 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       lunchPerDayMap.set(row.person_id, dayMap);
     }
     dayMap.set(dayLetter, row.role_id);
+  }
+
+  // Process lunch week overrides (higher priority than per-day)
+  for (const row of lunchPerWeeks) {
+    const code = GROUP_INFO[row.group_name]?.code;
+    if (!code) continue;
+
+    // Determine which day letters are in this week
+    const daysInWeek: DayLetter[] = [];
+    for (const dayLetter of DAY_ORDER) {
+      const date = dateForDay(row.month, dayLetter);
+      const weekNum = getWeekOfMonth(date, weekStartMode);
+      if (weekNum === row.week_number) {
+        // Check availability for this day
+        if (isAllowedForLunch(dayLetter, row)) {
+          daysInWeek.push(dayLetter);
+        }
+      }
+    }
+
+    if (daysInWeek.length === 0) continue;
+
+    const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
+    const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
+    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = {
+      days: new Set<DayLetter>(),
+      roles: new Set<string>(),
+      roleDays: new Map<string, Set<DayLetter>>()
+    });
+    personBucket.roles.add(row.role_name);
+
+    let roleDaySet = personBucket.roleDays.get(row.role_name);
+    if (!roleDaySet) {
+      roleDaySet = new Set<DayLetter>();
+      personBucket.roleDays.set(row.role_name, roleDaySet);
+    }
+
+    let dayMap = lunchPerDayMap.get(row.person_id);
+    if (!dayMap) {
+      dayMap = new Map<DayLetter, number>();
+      lunchPerDayMap.set(row.person_id, dayMap);
+    }
+
+    // Apply week override to all applicable days
+    for (const dayLetter of daysInWeek) {
+      roleDaySet.add(dayLetter);
+      personBucket.days.add(dayLetter);
+      dayMap.set(dayLetter, row.role_id);
+    }
   }
 
   for (const row of lunchDefaults) {
