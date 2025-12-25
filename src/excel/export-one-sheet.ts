@@ -367,7 +367,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
     // For each role, add to buckets
     for (const [roleId, { days, weeks }] of roleIdToDaysAndWeeks.entries()) {
-      // Find the row with this person_id, segment, and role_id from either perDays or perWeeks
+      // Find the row with this person_id and role_id from either perDays or perWeeks
       let row = perDays.find(r => r.person_id === personId && r.role_id === roleId) ||
                 perWeeks.find(r => r.person_id === personId && r.role_id === roleId);
       
@@ -380,20 +380,27 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
       const personEntries = groupBucket[row.person] || (groupBucket[row.person] = []);
       
-      // Create a new entry for this role assignment
-      const entry: BucketEntry = {
-        AM: new Set<DayLetter>(),
-        PM: new Set<DayLetter>(),
-        roles: new Set<string>([row.role_name]),
-        weeks: weeks
-      };
+      // Find existing entry for this role, or create a new one
+      let entry = personEntries.find(e => e.roles.has(row.role_name));
+      if (!entry) {
+        entry = {
+          AM: new Set<DayLetter>(),
+          PM: new Set<DayLetter>(),
+          roles: new Set<string>([row.role_name]),
+          weeks: new Set<number>()
+        };
+        personEntries.push(entry);
+      }
       
+      // Add days and weeks to the entry
       for (const dayLetter of days) {
         if (seg === 'AM') entry.AM.add(dayLetter);
         else entry.PM.add(dayLetter);
       }
+      for (const weekNum of weeks) {
+        entry.weeks.add(weekNum);
+      }
       
-      personEntries.push(entry);
       groupBucket[row.person] = personEntries;
     }
   }
@@ -431,20 +438,27 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
       const personEntries = groupBucket[row.person] || (groupBucket[row.person] = []);
       
-      // Create a new entry for this default assignment
-      const entry: BucketEntry = {
-        AM: new Set<DayLetter>(),
-        PM: new Set<DayLetter>(),
-        roles: new Set<string>([row.role_name]),
-        weeks: keepWeeks
-      };
+      // Find existing entry for this role, or create a new one
+      let entry = personEntries.find(e => e.roles.has(row.role_name));
+      if (!entry) {
+        entry = {
+          AM: new Set<DayLetter>(),
+          PM: new Set<DayLetter>(),
+          roles: new Set<string>([row.role_name]),
+          weeks: new Set<number>()
+        };
+        personEntries.push(entry);
+      }
       
+      // Add days and weeks to the entry
       for (const d of keepLetters) {
         if (s === 'AM') entry.AM.add(d);
         else entry.PM.add(d);
       }
+      for (const weekNum of keepWeeks) {
+        entry.weeks.add(weekNum);
+      }
       
-      personEntries.push(entry);
       groupBucket[row.person] = personEntries;
     }
   }
@@ -801,27 +815,32 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
       const personEntries = groupBucket[row.person] || (groupBucket[row.person] = []);
       
-      // Create a new entry for this role assignment
-      const roleDayMap = new Map<string, Set<DayLetter>>();
-      const daySet = new Set<DayLetter>();
+      // Find existing entry for this role, or create a new one
+      let entry = personEntries.find(e => e.roles.has(row.role_name));
+      if (!entry) {
+        entry = {
+          days: new Set<DayLetter>(),
+          roles: new Set<string>([row.role_name]),
+          roleDays: new Map<string, Set<DayLetter>>(),
+          weeks: new Set<number>()
+        };
+        personEntries.push(entry);
+      }
+      
+      // Add days and weeks to the entry
       for (const dayLetter of days) {
-        daySet.add(dayLetter);
-        let roleDaySet = roleDayMap.get(row.role_name);
+        entry.days.add(dayLetter);
+        let roleDaySet = entry.roleDays.get(row.role_name);
         if (!roleDaySet) {
           roleDaySet = new Set<DayLetter>();
-          roleDayMap.set(row.role_name, roleDaySet);
+          entry.roleDays.set(row.role_name, roleDaySet);
         }
         roleDaySet.add(dayLetter);
       }
+      for (const weekNum of weeks) {
+        entry.weeks.add(weekNum);
+      }
       
-      const entry: LunchBucketEntry = {
-        days: daySet,
-        roles: new Set<string>([row.role_name]),
-        roleDays: roleDayMap,
-        weeks: weeks
-      };
-      
-      personEntries.push(entry);
       groupBucket[row.person] = personEntries;
     }
   }
@@ -847,27 +866,32 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
     const personEntries = groupBucket[row.person] || (groupBucket[row.person] = []);
     
-    // Create a new entry for this default assignment
-    const roleDayMap = new Map<string, Set<DayLetter>>();
-    const daySet = new Set<DayLetter>();
+    // Find existing entry for this role, or create a new one
+    let entry = personEntries.find(e => e.roles.has(row.role_name));
+    if (!entry) {
+      entry = {
+        days: new Set<DayLetter>(),
+        roles: new Set<string>([row.role_name]),
+        roleDays: new Map<string, Set<DayLetter>>(),
+        weeks: new Set<number>()
+      };
+      personEntries.push(entry);
+    }
+    
+    // Add days and weeks to the entry
     for (const d of keepLetters) {
-      daySet.add(d);
-      let roleDaySet = roleDayMap.get(row.role_name);
+      entry.days.add(d);
+      let roleDaySet = entry.roleDays.get(row.role_name);
       if (!roleDaySet) {
         roleDaySet = new Set<DayLetter>();
-        roleDayMap.set(row.role_name, roleDaySet);
+        entry.roleDays.set(row.role_name, roleDaySet);
       }
       roleDaySet.add(d);
     }
+    for (const weekNum of keepWeeks) {
+      entry.weeks.add(weekNum);
+    }
     
-    const entry: LunchBucketEntry = {
-      days: daySet,
-      roles: new Set<string>([row.role_name]),
-      roleDays: roleDayMap,
-      weeks: keepWeeks
-    };
-    
-    personEntries.push(entry);
     groupBucket[row.person] = personEntries;
   }
 
