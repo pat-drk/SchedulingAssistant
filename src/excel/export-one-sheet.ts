@@ -209,6 +209,37 @@ function isAllowedForLunch(day: DayLetter, row: WithAvail & { person_id: number;
   return ac === 'AM' || ac === 'PM' || ac === 'B';
 }
 
+/** Format week numbers as a readable range string */
+function formatWeekRange(weeks: Set<number>): string {
+  if (weeks.size === 0) return '';
+  const weekArray = Array.from(weeks).sort((a, b) => a - b);
+  if (weekArray.length === 1) return `Week ${weekArray[0]}`;
+  
+  // Check for contiguous weeks
+  let ranges: string[] = [];
+  let rangeStart = weekArray[0];
+  let rangeEnd = weekArray[0];
+  
+  for (let i = 1; i < weekArray.length; i++) {
+    if (weekArray[i] === rangeEnd + 1) {
+      rangeEnd = weekArray[i];
+    } else {
+      ranges.push(rangeStart === rangeEnd ? `Week ${rangeStart}` : `Weeks ${rangeStart}-${rangeEnd}`);
+      rangeStart = rangeEnd = weekArray[i];
+    }
+  }
+  ranges.push(rangeStart === rangeEnd ? `Week ${rangeStart}` : `Weeks ${rangeStart}-${rangeEnd}`);
+  
+  return ranges.join(', ');
+}
+
+/** Check if week numbers are non-contiguous */
+function hasNonContiguousWeeks(weeks: Set<number>): boolean {
+  const weekArray = Array.from(weeks).sort((a, b) => a - b);
+  return weekArray.length > 1 && 
+    !weekArray.every((w, i) => i === 0 || w === weekArray[i - 1] + 1);
+}
+
 export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   requireDb();
 
@@ -526,29 +557,6 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       return role;
     }
 
-    function formatWeekRange(weeks: Set<number>): string {
-      if (weeks.size === 0) return '';
-      const weekArray = Array.from(weeks).sort((a, b) => a - b);
-      if (weekArray.length === 1) return `Week ${weekArray[0]}`;
-      
-      // Check for contiguous weeks
-      let ranges: string[] = [];
-      let rangeStart = weekArray[0];
-      let rangeEnd = weekArray[0];
-      
-      for (let i = 1; i < weekArray.length; i++) {
-        if (weekArray[i] === rangeEnd + 1) {
-          rangeEnd = weekArray[i];
-        } else {
-          ranges.push(rangeStart === rangeEnd ? `Week ${rangeStart}` : `Weeks ${rangeStart}-${rangeEnd}`);
-          rangeStart = rangeEnd = weekArray[i];
-        }
-      }
-      ranges.push(rangeStart === rangeEnd ? `Week ${rangeStart}` : `Weeks ${rangeStart}-${rangeEnd}`);
-      
-      return ranges.join(', ');
-    }
-
     let r = rowIndex + 1;
     const names = Object.keys(people).sort((a,b)=>a.localeCompare(b));
     for (const name of names) {
@@ -570,13 +578,8 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
         let days: string;
         const weekRange = formatWeekRange(entry.weeks);
         
-        // Check if weeks are contiguous
-        const weekArray = Array.from(entry.weeks).sort((a, b) => a - b);
-        const hasNonContiguousWeeks = weekArray.length > 1 && 
-          !weekArray.every((w, i) => i === 0 || w === weekArray[i - 1] + 1);
-        
         // Show week ranges if: multiple entries for this person OR non-contiguous weeks
-        const shouldShowWeekRange = entries.length > 1 || hasNonContiguousWeeks;
+        const shouldShowWeekRange = entries.length > 1 || hasNonContiguousWeeks(entry.weeks);
         
         if (shouldShowWeekRange && weekRange) {
           // Show week range along with days
@@ -932,29 +935,6 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       return role;
     }
 
-    function formatWeekRange(weeks: Set<number>): string {
-      if (weeks.size === 0) return '';
-      const weekArray = Array.from(weeks).sort((a, b) => a - b);
-      if (weekArray.length === 1) return `Week ${weekArray[0]}`;
-      
-      // Check for contiguous weeks
-      let ranges: string[] = [];
-      let rangeStart = weekArray[0];
-      let rangeEnd = weekArray[0];
-      
-      for (let i = 1; i < weekArray.length; i++) {
-        if (weekArray[i] === rangeEnd + 1) {
-          rangeEnd = weekArray[i];
-        } else {
-          ranges.push(rangeStart === rangeEnd ? `Week ${rangeStart}` : `Weeks ${rangeStart}-${rangeEnd}`);
-          rangeStart = rangeEnd = weekArray[i];
-        }
-      }
-      ranges.push(rangeStart === rangeEnd ? `Week ${rangeStart}` : `Weeks ${rangeStart}-${rangeEnd}`);
-      
-      return ranges.join(', ');
-    }
-
     let r = lunchRow + 1;
     const names = Object.keys(people).sort((a, b) => a.localeCompare(b));
     for (const name of names) {
@@ -992,13 +972,8 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
         let days: string;
         const weekRange = formatWeekRange(entry.weeks);
         
-        // Check if weeks are contiguous
-        const weekArray = Array.from(entry.weeks).sort((a, b) => a - b);
-        const hasNonContiguousWeeks = weekArray.length > 1 && 
-          !weekArray.every((w, i) => i === 0 || w === weekArray[i - 1] + 1);
-        
         // Show week ranges if: multiple entries for this person OR non-contiguous weeks
-        const shouldShowWeekRange = entries.length > 1 || hasNonContiguousWeeks;
+        const shouldShowWeekRange = entries.length > 1 || hasNonContiguousWeeks(entry.weeks);
         
         if (shouldShowWeekRange && weekRange) {
           // Show week range along with days
