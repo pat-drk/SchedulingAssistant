@@ -19,8 +19,27 @@ export interface PendingAdjustment {
 }
 
 export function listSegmentAdjustments(db: Database): SegmentAdjustmentRow[] {
-  const res = db.exec(`SELECT id, condition_segment, condition_role_id, target_segment, target_field, baseline, offset_minutes, priority, exclusive_group FROM segment_adjustment`);
+  // Check if priority and exclusive_group columns exist (for backward compatibility)
+  let hasPriority = false;
+  let hasExclusiveGroup = false;
+  
+  try {
+    const info = db.exec(`PRAGMA table_info(segment_adjustment);`);
+    const columns = info[0]?.values?.map((r: any[]) => String(r[1])) || [];
+    hasPriority = columns.includes('priority');
+    hasExclusiveGroup = columns.includes('exclusive_group');
+  } catch {
+    // If we can't check columns, assume they don't exist
+  }
+
+  // Build SELECT statement based on available columns
+  const selectCols = hasPriority && hasExclusiveGroup
+    ? 'id, condition_segment, condition_role_id, target_segment, target_field, baseline, offset_minutes, priority, exclusive_group'
+    : 'id, condition_segment, condition_role_id, target_segment, target_field, baseline, offset_minutes';
+
+  const res = db.exec(`SELECT ${selectCols} FROM segment_adjustment`);
   const values = res[0]?.values || [];
+  
   return values.map(row => ({
     id: Number(row[0]),
     condition_segment: String(row[1]),
@@ -29,7 +48,7 @@ export function listSegmentAdjustments(db: Database): SegmentAdjustmentRow[] {
     target_field: row[4] as 'start' | 'end',
     baseline: row[5] as SegmentAdjustmentRow['baseline'],
     offset_minutes: Number(row[6]),
-    priority: row[7] != null ? Number(row[7]) : 0,
-    exclusive_group: row[8] != null ? String(row[8]) : null
+    priority: hasPriority && row[7] != null ? Number(row[7]) : 0,
+    exclusive_group: hasExclusiveGroup && row[8] != null ? String(row[8]) : null
   }));
 }
