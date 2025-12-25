@@ -1187,12 +1187,17 @@ export default function DailyRunBoard({
                     </Button>
                   )}
                   <Button size="small" appearance="secondary" onClick={async () => {
-                    const confirmed = await dialogs.showConfirm(
-                      `Remove ${a.last_name}, ${a.first_name} from ${role.name}?`,
-                      "Confirm Removal"
-                    );
-                    if (confirmed) {
-                      deleteAssignment(a.id);
+                    try {
+                      const confirmed = await dialogs.showConfirm(
+                        `Remove ${a.last_name}, ${a.first_name} from ${role.name}?`,
+                        "Confirm Removal"
+                      );
+                      if (confirmed) {
+                        deleteAssignment(a.id);
+                      }
+                    } catch (error) {
+                      // Handle any errors from the confirmation dialog
+                      console.error('Error during removal confirmation:', error);
                     }
                   }}>
                     Remove

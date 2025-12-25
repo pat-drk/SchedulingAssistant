@@ -1599,10 +1599,12 @@ async function exportShifts() {
     const formatTimeForNotes = (d: Date) => {
       let hour = d.getHours();
       const minutes = d.getMinutes();
+      // Convert 24-hour to 12-hour format
+      const hour12 = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
       if (minutes === 0) {
-        return String(hour > 12 ? hour - 12 : hour || 12);
+        return String(hour12);
       }
-      return `${hour > 12 ? hour - 12 : hour || 12}:${pad2(minutes)}`;
+      return `${hour12}:${pad2(minutes)}`;
     };
     const notes = `${formatTimeForNotes(start)}-${formatTimeForNotes(end)}`;
     const shared = "2. Not Shared"; // per user
