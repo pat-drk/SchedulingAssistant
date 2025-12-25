@@ -649,6 +649,13 @@ export default function App() {
     setCopyFromMonth(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
   }, [sqlDb, selectedMonth]);
 
+  // Defensive: ensure migrations are applied even if a database is set from an unexpected code path
+  useEffect(() => {
+    if (sqlDb) {
+      applyMigrations(sqlDb);
+    }
+  }, [sqlDb]);
+
   // Load sql.js
   useEffect(() => {
     (async () => {
