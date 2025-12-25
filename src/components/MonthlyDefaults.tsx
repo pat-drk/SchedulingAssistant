@@ -1422,7 +1422,7 @@ export default function MonthlyDefaults({
             checked={showOnlyTrainees}
             onChange={(_, data) => setShowOnlyTrainees(!!data.checked)}
           />
-          <PeopleFiltersBar state={filters} onChange={(next) => setFilters((s) => ({ ...s, ...next }))} />
+          <PeopleFiltersBar state={filters} onChange={setFilters} />
         </div>
         
         {/* Action row */}
