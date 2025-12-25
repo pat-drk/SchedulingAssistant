@@ -1053,6 +1053,56 @@ export default function App() {
     return out;
   }
 
+  /**
+   * Calculate segment times for a specific person based only on their assignments.
+   * This ensures segment adjustments are applied per-person rather than globally.
+   * Used for Teams export to correctly apply adjustments only when the person has
+   * assignments in the condition segment (e.g., Lunch adjusting AM end time).
+   */
+  function segmentTimesForPersonDate(date: Date, personAssigns: Array<{ segment: string; role_id: number }>): Record<string, { start: Date; end: Date }> {
+    const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const mk = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m, 0, 0);
+    };
+    const out: Record<string, { start: Date; end: Date }> = {};
+    for (const s of segments) {
+      out[s.name] = { start: mk(s.start_time), end: mk(s.end_time) };
+    }
+
+    // Build segment-role map only for this person's assignments
+    const segRoleMap = new Map<string, Set<number>>();
+    for (const a of personAssigns) {
+      let set = segRoleMap.get(a.segment);
+      if (!set) {
+        set = new Set<number>();
+        segRoleMap.set(a.segment, set);
+      }
+      set.add(a.role_id);
+    }
+
+    // Apply segment adjustments only if this person has assignments in the condition segment
+    for (const adj of segmentAdjustments) {
+      const roles = segRoleMap.get(adj.condition_segment);
+      if (!roles) continue;
+      if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) continue;
+      const target = out[adj.target_segment];
+      if (!target) continue;
+      const cond = out[adj.condition_segment];
+      let base: Date | undefined;
+      switch (adj.baseline) {
+        case 'condition.start': base = cond?.start; break;
+        case 'condition.end': base = cond?.end; break;
+        case 'target.start': base = target.start; break;
+        case 'target.end': base = target.end; break;
+      }
+      if (!base) continue;
+      target[adj.target_field] = addMinutes(base, adj.offset_minutes);
+    }
+
+    return out;
+  }
+
   function isSegmentBlockedByTimeOff(personId: number, date: Date, segment: Segment): boolean {
     // For UI adding, any overlap => return true (spec Q34 = Block)
     const intervals = listTimeOffIntervals(personId, date);
@@ -1455,8 +1505,20 @@ async function exportShifts() {
                              JOIN grp g  ON g.id=r.group_id
                              WHERE a.date=?`, [dYMD]);
 
-        const segMap = segmentTimesForDate(d);
+        // For Teams export, use per-person segment times to correctly apply adjustments
+        // Group assignments by person to determine which adjustments apply to each person
+        const assignsByPerson = new Map<number, typeof assigns>();
         for (const a of assigns) {
+          const list = assignsByPerson.get(a.person_id) || [];
+          list.push(a);
+          assignsByPerson.set(a.person_id, list);
+        }
+
+        for (const a of assigns) {
+          // Calculate segment times specifically for this person's assignments
+          const personAssigns = assignsByPerson.get(a.person_id) || [];
+          const segMap = segmentTimesForPersonDate(d, personAssigns);
+          
           const seg = segMap[a.segment];
           if (!seg) continue;
           const windows: Array<{ start: Date; end: Date; label: string; group: string }> = [
@@ -1532,7 +1594,17 @@ async function exportShifts() {
     const themeColor = groups.find((g) => g.name === group)?.theme || "";
     const customLabel = a.role_name; // per user: Plain Name
     const unpaidBreak = 0; // per user
-    const notes = ""; // per user
+    
+    // Format time for notes (e.g., "8-12" or "1-5")
+    const formatTimeForNotes = (d: Date) => {
+      let hour = d.getHours();
+      const minutes = d.getMinutes();
+      if (minutes === 0) {
+        return String(hour > 12 ? hour - 12 : hour || 12);
+      }
+      return `${hour > 12 ? hour - 12 : hour || 12}:${pad2(minutes)}`;
+    };
+    const notes = `${formatTimeForNotes(start)}-${formatTimeForNotes(end)}`;
     const shared = "2. Not Shared"; // per user
 
     return {

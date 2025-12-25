@@ -137,7 +137,7 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     boxShadow: tokens.shadow2,
-    overflow: "hidden",
+    overflow: "visible",
     borderRadius: tokens.borderRadiusLarge,
   },
   groupHeader: {
@@ -151,11 +151,16 @@ const useStyles = makeStyles({
     display: "grid",
     gap: tokens.spacingHorizontalXS,
     paddingTop: tokens.spacingVerticalS,
+    paddingLeft: tokens.spacingHorizontalS,
+    paddingRight: tokens.spacingHorizontalS,
+    paddingBottom: tokens.spacingHorizontalS,
     overflow: "auto",
     minHeight: 0,
     // Better mobile scrolling
     "@media (max-width: 767px)": {
       gap: tokens.spacingHorizontalXXS,
+      paddingLeft: tokens.spacingHorizontalXS,
+      paddingRight: tokens.spacingHorizontalXS,
     },
   },
   roleCard: {
@@ -310,7 +315,7 @@ export default function DailyRunBoard({
   const [layoutLoaded, setLayoutLoaded] = useState(false);
   const [moveContext, setMoveContext] = useState<{
     assignment: any;
-    targets: Array<{ role: any; group: any; need: number }>;
+    targets: Array<{ role: any; group: any; need: number; trained: boolean }>;
   } | null>(null);
   const [moveTargetId, setMoveTargetId] = useState<number | null>(null);
   const [autoFillOpen, setAutoFillOpen] = useState(false);
@@ -323,7 +328,8 @@ export default function DailyRunBoard({
     const target = moveContext.targets.find((t) => t.role.id === moveTargetId);
     if (!target) return "";
     const needSuffix = target.need > 0 ? ` (need ${target.need})` : "";
-    return `${target.group.name} - ${target.role.name}${needSuffix}`;
+    const untrainedSuffix = !target.trained ? " (Untrained)" : "";
+    return `${target.group.name} - ${target.role.name}${needSuffix}${untrainedSuffix}`;
   }, [moveContext, moveTargetId]);
 
   const roles = useMemo(() => roleListForSegment(seg), [roleListForSegment, seg]);
@@ -756,6 +762,17 @@ export default function DailyRunBoard({
 
   const GroupCard = React.memo(function GroupCard({ group, isDraggable }: { group: any; isDraggable: boolean }) {
     const rolesForGroup = roles.filter((r) => r.group_id === group.id);
+    
+    // Calculate total filled and total required for the group
+    let totalFilled = 0;
+    let totalRequired = 0;
+    for (const r of rolesForGroup) {
+      const assignedCount = assignedCountMap.get(r.id) || 0;
+      const req = getRequiredFor(selectedDateObj, group.id, r.id, seg);
+      totalFilled += assignedCount;
+      totalRequired += req;
+    }
+    
     const groupNeedsMet = rolesForGroup.every((r: any) => {
       const assignedCount = assignedCountMap.get(r.id) || 0;
       const req = getRequiredFor(selectedDateObj, group.id, r.id, seg);
@@ -780,21 +797,30 @@ export default function DailyRunBoard({
         <CardHeader
           className={isDraggable ? "drag-handle" : ""}
           header={
-            <div style={{ display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS }}>
-              {isDraggable && (
-                <div 
-                  style={{ 
-                    cursor: "grab",
-                    color: tokens.colorNeutralForeground3,
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                  aria-label="Drag to reposition group"
-                >
-                  <Navigation20Regular />
-                </div>
-              )}
-              <Title3>{group.name}</Title3>
+            <div style={{ display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS, width: "100%", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS }}>
+                {isDraggable && (
+                  <div 
+                    style={{ 
+                      cursor: "grab",
+                      color: tokens.colorNeutralForeground3,
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                    aria-label="Drag to reposition group"
+                  >
+                    <Navigation20Regular />
+                  </div>
+                )}
+                <Title3>{group.name}</Title3>
+              </div>
+              <Badge
+                appearance="tint"
+                color={groupNeedsMet ? "success" : "danger"}
+                style={{ marginLeft: "auto", flexShrink: 0 }}
+              >
+                {totalFilled}/{totalRequired}
+              </Badge>
             </div>
           }
         />
@@ -979,7 +1005,24 @@ export default function DailyRunBoard({
     const handleMove = useCallback(
       (a: any) => {
         // Build full target list across all roles in this segment; prioritize deficits
-        const allTargets: Array<{ role: any; group: any; need: number }> = [];
+        // Also track training status for the person being moved
+        const trainedForRole = (roleId: number) => {
+          const qualified = all(
+            `SELECT person_id FROM training WHERE role_id=? AND status='Qualified' AND person_id=?`,
+            [roleId, a.person_id]
+          );
+          if (qualified.length > 0) return true;
+          // Also check monthly defaults as implicit qualification
+          const monthly = all(
+            `SELECT DISTINCT person_id FROM monthly_default WHERE role_id=? AND person_id=?
+             UNION
+             SELECT DISTINCT person_id FROM monthly_default_day WHERE role_id=? AND person_id=?`,
+            [roleId, a.person_id, roleId, a.person_id]
+          );
+          return monthly.length > 0;
+        };
+        
+        const allTargets: Array<{ role: any; group: any; need: number; trained: boolean }> = [];
         for (const r of roles) {
           const candidateOpts = peopleOptionsForSegment(selectedDateObj, seg, r);
           const eligible = candidateOpts.some((o) => o.id === a.person_id && !o.blocked);
@@ -988,7 +1031,8 @@ export default function DailyRunBoard({
           const req = getRequiredFor(selectedDateObj, r.group_id, r.id, seg);
           const eff = assignedEffectiveCountMap.get(r.id) || 0;
           const need = Math.max(0, req - eff);
-          allTargets.push({ role: r, group: grp, need });
+          const trained = trainedForRole(r.id);
+          allTargets.push({ role: r, group: grp, need, trained });
         }
         if (!allTargets.length) {
           dialogs.showAlert("No eligible destinations found for this person. They may not be qualified or available for any open roles.", "No Eligible Destinations");
@@ -1007,7 +1051,7 @@ export default function DailyRunBoard({
         setMoveContext({ assignment: a, targets: allTargets });
         setMoveTargetId(null);
       },
-      [roles, groupMap, peopleOptionsForSegment, selectedDateObj, seg, getRequiredFor, assignedEffectiveCountMap]
+      [roles, groupMap, peopleOptionsForSegment, selectedDateObj, seg, getRequiredFor, assignedEffectiveCountMap, all]
     );
 
     const [addSel, setAddSel] = useState<string[]>([]);
@@ -1022,6 +1066,7 @@ export default function DailyRunBoard({
         const curRoleId = personAssignedRoleMap.get(candidate.id);
         const curStatus = curRoleId != null ? roleStatusById.get(curRoleId) : undefined;
         if (curStatus === "under" || curStatus === "exact") parts.push("(Assigned)");
+        else if (curStatus === "over") parts.push("(Overstaffed)");
         const suffix = parts.length ? ` ${parts.join(' ')}` : "";
         return `${candidate.label}${suffix}`;
       },
@@ -1089,14 +1134,6 @@ export default function DailyRunBoard({
               sortedOpts.map((o) => {
                 const info = overlapByPerson.get(o.id);
                 const isHeavy = Boolean(info?.heavy);
-                const isPartial = Boolean(info?.partial);
-                const parts: string[] = [];
-                if (isHeavy) parts.push("(Time-off)"); else if (isPartial) parts.push("(Partial Time-off)");
-                // Warning if already assigned to a role that is at or below required (under/exact)
-                const curRoleId = personAssignedRoleMap.get(o.id);
-                const curStatus = curRoleId != null ? roleStatusById.get(curRoleId) : undefined;
-                if (curStatus === "under" || curStatus === "exact") parts.push("(Assigned)");
-                const suffix = parts.length ? ` ${parts.join(' ')}` : "";
                 const text = formatCandidateLabel(o);
                 return (
                   <Option
@@ -1149,7 +1186,15 @@ export default function DailyRunBoard({
                       Move
                     </Button>
                   )}
-                  <Button size="small" appearance="secondary" onClick={() => deleteAssignment(a.id)}>
+                  <Button size="small" appearance="secondary" onClick={async () => {
+                    const confirmed = await dialogs.showConfirm(
+                      `Remove ${a.last_name}, ${a.first_name} from ${role.name}?`,
+                      "Confirm Removal"
+                    );
+                    if (confirmed) {
+                      deleteAssignment(a.id);
+                    }
+                  }}>
                     Remove
                   </Button>
                 </div>
@@ -1264,7 +1309,9 @@ export default function DailyRunBoard({
                   style={{ width: "100%" }}
                 >
                   {moveContext.targets.map((t) => {
-                    const label = `${t.group.name} - ${t.role.name}${t.need>0?` (need ${t.need})`:''}`;
+                    const needPart = t.need > 0 ? ` (need ${t.need})` : '';
+                    const untrainedPart = !t.trained ? ' (Untrained)' : '';
+                    const label = `${t.group.name} - ${t.role.name}${needPart}${untrainedPart}`;
                     return (
                       <Option key={t.role.id} value={String(t.role.id)} text={label}>
                         {label}
