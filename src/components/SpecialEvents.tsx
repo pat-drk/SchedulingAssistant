@@ -31,6 +31,7 @@ import {
   ArrowUp20Regular,
   ArrowDown20Regular,
   MoreHorizontal20Regular,
+  Print20Regular,
 } from "@fluentui/react-icons";
 import PersonName from "./PersonName";
 import ConfirmDialog from "./ConfirmDialog";
@@ -541,6 +542,95 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
     }
   };
 
+  // Print-friendly XLSX export (user-readable layout)
+  const handlePrintExport = async () => {
+    if (!selectedEvent) return;
+    
+    try {
+      // Load XLSX library
+      const XLSX_URL = "https://cdn.sheetjs.com/xlsx-latest/package/xlsx.mjs";
+      // @ts-ignore
+      const XLSX = await import(/* @vite-ignore */ XLSX_URL);
+      
+      // Helper functions
+      const formatDate = (dateStr: string) => {
+        const date = new Date(dateStr + 'T00:00:00');
+        return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      };
+      const formatTime = (time: string) => {
+        const [hours, minutes] = time.split(':').map(Number);
+        const h = hours % 12 || 12;
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        return `${h}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+      };
+      
+      // Build rows for printer-friendly layout
+      const rows: any[] = [];
+      
+      // Event header row
+      rows.push(['Event:', selectedEvent.name]);
+      rows.push(['Date:', formatDate(selectedEvent.event_date)]);
+      rows.push(['Time:', `${formatTime(selectedEvent.start_time)} - ${formatTime(selectedEvent.end_time)}`]);
+      if (selectedEvent.description) {
+        rows.push(['Description:', selectedEvent.description]);
+      }
+      rows.push([]); // empty row
+      
+      // Table header
+      rows.push(['Menu Item', 'Kitchen Staff', 'Waiters']);
+      
+      for (const item of menuItems) {
+        if (item.is_header) {
+          // Section header row with background color
+          rows.push([item.name, '', '']);
+        } else {
+          const kitchenAssignments = getAssignments(item.id, 'kitchen');
+          const waiterAssignments = getAssignments(item.id, 'waiter');
+          
+          const kitchenNames = kitchenAssignments.map((a: Assignment) => {
+            const person = people.find(p => p.id === a.person_id);
+            return person ? `${person.first_name} ${person.last_name}` : '';
+          }).filter(Boolean).join(', ');
+          
+          const waiterNames = waiterAssignments.map((a: Assignment) => {
+            const person = people.find(p => p.id === a.person_id);
+            return person ? `${person.first_name} ${person.last_name}` : '';
+          }).filter(Boolean).join(', ');
+          
+          rows.push([item.name, kitchenNames || '(none)', waiterNames || '(none)']);
+        }
+      }
+      
+      // Build XLSX with a more readable layout
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      
+      // Apply some styling (column widths)
+      const colWidths = [
+        { wch: 40 }, // Menu Item
+        { wch: 30 }, // Kitchen Staff
+        { wch: 30 }, // Waiters
+      ];
+      ws['!cols'] = colWidths;
+      
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Event Schedule");
+      
+      const blob = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+      const fileHandle = await (window as any).showSaveFilePicker({
+        suggestedName: `special-event-${selectedEvent.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-print.xlsx`,
+        types: [{ description: "Excel", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } }],
+      });
+      const writable = await (fileHandle as any).createWritable();
+      await writable.write(blob);
+      await writable.close();
+      
+      setAlertDialog({ title: 'Success', message: `Exported printer-friendly schedule to XLSX file.` });
+    } catch (error: any) {
+      console.error('Print export failed:', error);
+      setAlertDialog({ title: 'Export Failed', message: error.message || 'Failed to export printer-friendly XLSX file.' });
+    }
+  };
+
   // Render event list
   if (!selectedEventId) {
     return (
@@ -712,7 +802,10 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
               Add Menu Item
             </Button>
             <Button appearance="primary" onClick={handleExport}>
-              Export to XLSX
+              Export to Teams
+            </Button>
+            <Button icon={<Print20Regular />} onClick={handlePrintExport}>
+              Print
             </Button>
           </div>
         </div>
