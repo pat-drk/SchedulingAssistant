@@ -1112,14 +1112,6 @@
                             </thead>
                             <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
                                 <tr>
-                                    <td class="p-3 font-semibold">Target Segment</td>
-                                    <td class="p-3">Which segment's time to adjust.</td>
-                                </tr>
-                                <tr>
-                                    <td class="p-3 font-semibold">Adjust Start/End</td>
-                                    <td class="p-3">Whether to modify the segment's start or end time.</td>
-                                </tr>
-                                <tr>
                                     <td class="p-3 font-semibold">Condition Segment</td>
                                     <td class="p-3">The segment that triggers the adjustment (must be assigned on that date).</td>
                                 </tr>
@@ -1128,8 +1120,28 @@
                                     <td class="p-3">Optional: Require a specific role in the condition segment.</td>
                                 </tr>
                                 <tr>
+                                    <td class="p-3 font-semibold">Target Segment</td>
+                                    <td class="p-3">Which segment's time to adjust.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Field</td>
+                                    <td class="p-3">Whether to modify the segment's start or end time.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Baseline</td>
+                                    <td class="p-3">The reference time point (condition.start, condition.end, target.start, or target.end).</td>
+                                </tr>
+                                <tr>
                                     <td class="p-3 font-semibold">Offset Minutes</td>
-                                    <td class="p-3">Number of minutes to add/subtract (positive or negative).</td>
+                                    <td class="p-3">Number of minutes to add/subtract from the baseline (positive or negative).</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Priority</td>
+                                    <td class="p-3">Controls the order adjustments are evaluated. Higher priority rules are applied first. Default is 0.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Exclusive Group</td>
+                                    <td class="p-3">Optional: Rules in the same exclusive group are mutually exclusive. Only the first matching rule in a group will fire.</td>
                                 </tr>
                                 <tr>
                                     <td class="p-3 font-semibold">Preview</td>
@@ -1139,15 +1151,69 @@
                         </table>
                     </div>
 
-                    <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd] mb-12">
-                        <h5 class="font-bold text-sm text-[#242424] mb-3">Example: Link AM to Lunch</h5>
+                    <div class="p-5 border border-[#0078d4] rounded-lg bg-[#f0f7ff] mb-6">
+                        <h5 class="font-bold text-sm text-[#242424] mb-3 flex items-center gap-2">
+                            <i class="fas fa-info-circle text-[#0078d4]"></i>
+                            How Adjustments Are Applied
+                        </h5>
                         <ul class="text-xs text-[#616161] space-y-2">
-                            <li><strong>Target Segment:</strong> AM</li>
-                            <li><strong>Adjust:</strong> End Time</li>
+                            <li><strong>Original Baselines:</strong> All adjustments calculate from the original segment times defined in the Segments table, not from already-modified times.</li>
+                            <li><strong>Priority Order:</strong> Rules with higher priority values are evaluated first. This allows you to control which adjustments take precedence.</li>
+                            <li><strong>Exclusive Groups:</strong> When multiple rules share an exclusive group name, only the first matching rule (highest priority) will be applied. Others in the same group are skipped.</li>
+                            <li><strong>Per-Person Application:</strong> Adjustments are applied individually for each person based on their assignments, ensuring accurate time calculations.</li>
+                        </ul>
+                    </div>
+
+                    <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd] mb-6">
+                        <h5 class="font-bold text-sm text-[#242424] mb-3">Example 1: Link AM to Lunch</h5>
+                        <ul class="text-xs text-[#616161] space-y-2">
                             <li><strong>Condition Segment:</strong> Lunch</li>
+                            <li><strong>Target Segment:</strong> AM</li>
+                            <li><strong>Field:</strong> End Time</li>
                             <li><strong>Baseline:</strong> condition.start (Lunch's start time)</li>
                             <li><strong>Offset:</strong> 0 minutes</li>
+                            <li><strong>Priority:</strong> 0</li>
                             <li><strong>Result:</strong> AM's end time dynamically matches Lunch's start time on days when Lunch is assigned.</li>
+                        </ul>
+                    </div>
+
+                    <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd] mb-12">
+                        <h5 class="font-bold text-sm text-[#242424] mb-3">Example 2: Conditional Adjustments with Priority</h5>
+                        <p class="text-xs text-[#616161] mb-3">Scenario: You want different AM end times based on whether someone has a Lunch shift in a specific role.</p>
+                        <ul class="text-xs text-[#616161] space-y-3">
+                            <li>
+                                <strong>Rule 1 (Higher Priority):</strong><br/>
+                                - Condition: Lunch with Dining Room role<br/>
+                                - Target: AM End<br/>
+                                - Baseline: condition.start<br/>
+                                - Offset: +50 minutes<br/>
+                                - Priority: 10<br/>
+                                - Exclusive Group: "lunch-am-adjust"
+                            </li>
+                            <li>
+                                <strong>Rule 2 (Lower Priority):</strong><br/>
+                                - Condition: Lunch (any role)<br/>
+                                - Target: AM End<br/>
+                                - Baseline: condition.start<br/>
+                                - Offset: 0 minutes<br/>
+                                - Priority: 5<br/>
+                                - Exclusive Group: "lunch-am-adjust"
+                            </li>
+                            <li><strong>Result:</strong> If someone has Lunch with Dining Room role, Rule 1 fires and AM end extends 50 minutes past Lunch start. Rule 2 is skipped because they're in the same exclusive group. If they have Lunch with a different role, Rule 1 doesn't match, so Rule 2 fires instead.</li>
+                        </ul>
+                    </div>
+
+                    <div class="p-5 border border-[#ffa500] rounded-lg bg-[#fff8e1] mb-12">
+                        <h5 class="font-bold text-sm text-[#242424] mb-3 flex items-center gap-2">
+                            <i class="fas fa-exclamation-triangle text-[#ffa500]"></i>
+                            Best Practices
+                        </h5>
+                        <ul class="text-xs text-[#616161] space-y-2">
+                            <li><strong>Use Priority:</strong> When you have multiple rules that might affect the same segment, set priorities to control which rule takes precedence.</li>
+                            <li><strong>Use Exclusive Groups:</strong> When you have mutually exclusive conditions (like "if X then do A, otherwise if Y then do B"), put them in the same exclusive group with different priorities.</li>
+                            <li><strong>Test Your Rules:</strong> Use the preview feature in the editor to verify adjustments work as expected before saving.</li>
+                            <li><strong>Keep It Simple:</strong> Start with basic rules and add complexity only when needed. Complex adjustment chains can be difficult to debug.</li>
+                            <li><strong>Document Your Rules:</strong> Consider using descriptive exclusive group names that explain the rule's purpose (e.g., "lunch-am-adjust" or "early-shift-buffer").</li>
                         </ul>
                     </div>
 
