@@ -296,6 +296,196 @@ export const migrate29ExpandSpecialEventCustomization: Migration = (db) => {
   addColumn('special_event_menu_item', 'details TEXT');
 };
 
+// 30. Refactor special events to use flexible grid structure
+export const migrate30AddSpecialEventGrid: Migration = (db) => {
+  console.log('Starting migration 30 - Add special event grid structure');
+  
+  // 1. Create new tables for grid structure
+  db.run(`CREATE TABLE IF NOT EXISTS special_event_column (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES special_event(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    column_type TEXT NOT NULL DEFAULT 'label',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    start_time TEXT,
+    end_time TEXT,
+    teams_group TEXT,
+    teams_theme TEXT,
+    width INTEGER DEFAULT 150,
+    CHECK(column_type IN ('label', 'assignment', 'time_slot'))
+  );`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS special_event_row (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES special_event(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_header INTEGER NOT NULL DEFAULT 0,
+    header_color TEXT DEFAULT '#0070C0'
+  );`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS special_event_cell (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    row_id INTEGER NOT NULL REFERENCES special_event_row(id) ON DELETE CASCADE,
+    column_id INTEGER NOT NULL REFERENCES special_event_column(id) ON DELETE CASCADE,
+    text_value TEXT,
+    quota INTEGER DEFAULT 1,
+    UNIQUE(row_id, column_id)
+  );`);
+
+  // 2. Add cell_id column to special_event_assignment
+  try {
+    db.run(`ALTER TABLE special_event_assignment ADD COLUMN cell_id INTEGER REFERENCES special_event_cell(id) ON DELETE CASCADE;`);
+  } catch (e) {
+    // Column may already exist
+  }
+
+  // 3. Migrate existing data
+  // Get all events - use defensive query that checks for column existence
+  let eventsResult;
+  let events: any[] = [];
+  
+  try {
+    // Try to get events with the new columns from migration 29
+    eventsResult = db.exec(`SELECT id, item_label, role_a_label, role_b_label, role_a_group, role_b_group, role_a_theme, role_b_theme FROM special_event;`);
+    events = (eventsResult[0]?.values || []).map((row: any[]) => ({
+      id: row[0],
+      item_label: row[1] || 'Menu Item',
+      role_a_label: row[2] || 'Kitchen Staff',
+      role_b_label: row[3] || 'Waiters',
+      role_a_group: row[4] || 'Kitchen',
+      role_b_group: row[5] || 'Dining Room',
+      role_a_theme: row[6] || '1. DarkPink',
+      role_b_theme: row[7] || '1. DarkYellow',
+    }));
+  } catch (e) {
+    // Columns don't exist yet (migration 29 not run), get just the id and use defaults
+    console.log('Legacy special_event table detected, using default labels');
+    eventsResult = db.exec(`SELECT id FROM special_event;`);
+    events = (eventsResult[0]?.values || []).map((row: any[]) => ({
+      id: row[0],
+      item_label: 'Menu Item',
+      role_a_label: 'Kitchen Staff',
+      role_b_label: 'Waiters',
+      role_a_group: 'Kitchen',
+      role_b_group: 'Dining Room',
+      role_a_theme: '1. DarkPink',
+      role_b_theme: '1. DarkYellow',
+    }));
+  }
+
+  for (const event of events) {
+    console.log(`Migrating event ${event.id}...`);
+    
+    // Check if this event already has columns (migration already run)
+    const existingCols = db.exec(`SELECT COUNT(*) FROM special_event_column WHERE event_id = ?`, [event.id]);
+    if (existingCols[0]?.values?.[0]?.[0] > 0) {
+      console.log(`Event ${event.id} already migrated, skipping`);
+      continue;
+    }
+
+    // Create default columns for this event
+    db.run(
+      `INSERT INTO special_event_column (event_id, name, column_type, sort_order, teams_group, teams_theme) VALUES (?, ?, ?, ?, ?, ?)`,
+      [event.id, event.item_label, 'label', 0, null, null]
+    );
+    const itemColId = db.exec(`SELECT last_insert_rowid() as id`)[0]?.values?.[0]?.[0];
+
+    db.run(
+      `INSERT INTO special_event_column (event_id, name, column_type, sort_order, teams_group, teams_theme) VALUES (?, ?, ?, ?, ?, ?)`,
+      [event.id, event.role_a_label, 'assignment', 1, event.role_a_group, event.role_a_theme]
+    );
+    const roleAColId = db.exec(`SELECT last_insert_rowid() as id`)[0]?.values?.[0]?.[0];
+
+    db.run(
+      `INSERT INTO special_event_column (event_id, name, column_type, sort_order, teams_group, teams_theme) VALUES (?, ?, ?, ?, ?, ?)`,
+      [event.id, event.role_b_label, 'assignment', 2, event.role_b_group, event.role_b_theme]
+    );
+    const roleBColId = db.exec(`SELECT last_insert_rowid() as id`)[0]?.values?.[0]?.[0];
+
+    // Get all menu items for this event
+    const menuItemsResult = db.exec(
+      `SELECT id, name, kitchen_quota, waiter_quota, sort_order, is_header, header_color, details FROM special_event_menu_item WHERE event_id = ? ORDER BY sort_order`,
+      [event.id]
+    );
+    const menuItems = (menuItemsResult[0]?.values || []).map((row: any[]) => ({
+      id: row[0],
+      name: row[1],
+      kitchen_quota: row[2],
+      waiter_quota: row[3],
+      sort_order: row[4],
+      is_header: row[5],
+      header_color: row[6],
+      details: row[7],
+    }));
+
+    // Convert each menu item to a row + cells
+    for (const menuItem of menuItems) {
+      // Create row
+      db.run(
+        `INSERT INTO special_event_row (event_id, sort_order, is_header, header_color) VALUES (?, ?, ?, ?)`,
+        [event.id, menuItem.sort_order, menuItem.is_header, menuItem.header_color]
+      );
+      const rowId = db.exec(`SELECT last_insert_rowid() as id`)[0]?.values?.[0]?.[0];
+
+      if (menuItem.is_header) {
+        // For header rows, create a cell in the first column with the name
+        db.run(
+          `INSERT INTO special_event_cell (row_id, column_id, text_value, quota) VALUES (?, ?, ?, ?)`,
+          [rowId, itemColId, menuItem.name, 1]
+        );
+      } else {
+        // Create cells for each column
+        // Item column (label)
+        const itemText = menuItem.details ? `${menuItem.name}\n${menuItem.details}` : menuItem.name;
+        db.run(
+          `INSERT INTO special_event_cell (row_id, column_id, text_value, quota) VALUES (?, ?, ?, ?)`,
+          [rowId, itemColId, itemText, 1]
+        );
+        const itemCellId = db.exec(`SELECT last_insert_rowid() as id`)[0]?.values?.[0]?.[0];
+
+        // Role A column (assignment)
+        db.run(
+          `INSERT INTO special_event_cell (row_id, column_id, text_value, quota) VALUES (?, ?, ?, ?)`,
+          [rowId, roleAColId, null, menuItem.kitchen_quota]
+        );
+        const roleACellId = db.exec(`SELECT last_insert_rowid() as id`)[0]?.values?.[0]?.[0];
+
+        // Role B column (assignment)
+        db.run(
+          `INSERT INTO special_event_cell (row_id, column_id, text_value, quota) VALUES (?, ?, ?, ?)`,
+          [rowId, roleBColId, null, menuItem.waiter_quota]
+        );
+        const roleBCellId = db.exec(`SELECT last_insert_rowid() as id`)[0]?.values?.[0]?.[0];
+
+        // Migrate assignments
+        // Get kitchen assignments for this menu item
+        const kitchenAssignments = db.exec(
+          `SELECT id, person_id FROM special_event_assignment WHERE event_id = ? AND menu_item_id = ? AND role_type = 'kitchen'`,
+          [event.id, menuItem.id]
+        );
+        for (const assignRow of (kitchenAssignments[0]?.values || [])) {
+          const assignId = assignRow[0];
+          db.run(`UPDATE special_event_assignment SET cell_id = ? WHERE id = ?`, [roleACellId, assignId]);
+        }
+
+        // Get waiter assignments for this menu item
+        const waiterAssignments = db.exec(
+          `SELECT id, person_id FROM special_event_assignment WHERE event_id = ? AND menu_item_id = ? AND role_type = 'waiter'`,
+          [event.id, menuItem.id]
+        );
+        for (const assignRow of (waiterAssignments[0]?.values || [])) {
+          const assignId = assignRow[0];
+          db.run(`UPDATE special_event_assignment SET cell_id = ? WHERE id = ?`, [roleBCellId, assignId]);
+        }
+      }
+    }
+
+    console.log(`Event ${event.id} migrated successfully`);
+  }
+
+  console.log('Migration 30 complete');
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -814,6 +1004,7 @@ const migrations: Record<number, Migration> = {
   27: migrate27AddSpecialEventMenuItem,
   28: migrate28AddSpecialEventAssignment,
   29: migrate29ExpandSpecialEventCustomization,
+  30: migrate30AddSpecialEventGrid,
 };
 
 export function addMigration(version: number, fn: Migration) {
