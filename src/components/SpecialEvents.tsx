@@ -770,9 +770,14 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
     setEditingMenuItem(null);
   };
 
-  const getSectionBounds = (index: number) => {
+  // Legacy: handleMoveMenuItem for old menu system
+  const handleMoveMenuItem = (item: MenuItem, direction: 'up' | 'down') => {
+    const currentIndex = menuItems.findIndex((m: MenuItem) => m.id === item.id);
+    if (currentIndex === -1) return;
+
+    // Find section bounds for legacy menu items
     let sectionStart = 0;
-    for (let i = index; i >= 0; i--) {
+    for (let i = currentIndex; i >= 0; i--) {
       if (menuItems[i]?.is_header) {
         sectionStart = i + 1;
         break;
@@ -780,21 +785,12 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
     }
 
     let sectionEnd = menuItems.length - 1;
-    for (let i = index + 1; i < menuItems.length; i++) {
+    for (let i = currentIndex + 1; i < menuItems.length; i++) {
       if (menuItems[i]?.is_header) {
         sectionEnd = i - 1;
         break;
       }
     }
-
-    return { sectionStart, sectionEnd };
-  };
-
-  const handleMoveMenuItem = (item: MenuItem, direction: 'up' | 'down') => {
-    const currentIndex = menuItems.findIndex((m: MenuItem) => m.id === item.id);
-    if (currentIndex === -1) return;
-
-    const { sectionStart, sectionEnd } = getSectionBounds(currentIndex);
 
     if (direction === 'up' && currentIndex <= sectionStart) return;
     if (direction === 'down' && currentIndex >= sectionEnd) return;
@@ -809,7 +805,7 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
     refreshCaches();
   };
 
-  // Assignment management
+  // Legacy: Assignment management
   const handleAssignPerson = (menuItemId: number, personId: number, roleType: 'kitchen' | 'waiter') => {
     // Check if already assigned
     const roleAssignments = assignmentsByMenuId.get(menuItemId)?.[roleType] || [];
@@ -819,25 +815,6 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
     run(
       `INSERT INTO special_event_assignment (event_id, menu_item_id, person_id, role_type) VALUES (?, ?, ?, ?)`,
       [selectedEventId, menuItemId, personId, roleType]
-    );
-    refreshCaches();
-  };
-
-  const handleRemoveAssignment = (assignmentId: number) => {
-    run(`DELETE FROM special_event_assignment WHERE id=?`, [assignmentId]);
-    refreshCaches();
-  };
-
-  // New: Cell-based assignment management
-  const handleAssignPersonToCell = (cellId: number, personId: number) => {
-    // Check if already assigned
-    const cellAssignments = getCellAssignments(cellId);
-    const exists = cellAssignments.some((a) => a.person_id === personId);
-    if (exists) return;
-
-    run(
-      `INSERT INTO special_event_assignment (event_id, cell_id, person_id) VALUES (?, ?, ?)`,
-      [selectedEventId, cellId, personId]
     );
     refreshCaches();
   };
@@ -1428,31 +1405,118 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
   const roleBLabel = resolvedEvent?.role_b_label || defaultEventConfig.role_b_label;
   const itemLabelLower = itemLabel.toLowerCase();
 
+  // Check if this event uses the new grid structure
+  const hasGridData = columns.length > 0;
+
+  // Render cell content based on column type
+  const renderCellContent = (row: EventRow, column: EventColumn) => {
+    const cell = getCell(row.id, column.id);
+    if (!cell) return null;
+
+    if (column.column_type === 'label') {
+      return (
+        <div 
+          style={{ cursor: 'pointer', minHeight: '32px' }}
+          onClick={() => {
+            const newValue = prompt('Enter value:', cell.text_value || '');
+            if (newValue !== null) {
+              handleUpdateCell(row.id, column.id, { text_value: newValue });
+            }
+          }}
+        >
+          {cell.text_value || <span style={{ color: tokens.colorNeutralForeground3 }}>(empty)</span>}
+        </div>
+      );
+    } else if (column.column_type === 'assignment' || column.column_type === 'time_slot') {
+      const cellAssignments = getCellAssignments(cell.id);
+      const canAddMore = cellAssignments.length < (cell.quota || 1);
+
+      return (
+        <div>
+          <div className={s.quotaIndicator}>
+            {cellAssignments.length} / {cell.quota || 1}
+          </div>
+          <div className={s.assignmentArea}>
+            {cellAssignments.map((a: Assignment) => {
+              const person = peopleById.get(a.person_id);
+              if (!person) return null;
+              return (
+                <Tooltip key={a.id} content="Click to remove" relationship="label">
+                  <Badge
+                    className={s.personBadge}
+                    color="brand"
+                    onClick={() => handleRemoveAssignment(a.id)}
+                  >
+                    {person.first_name} {person.last_name}
+                  </Badge>
+                </Tooltip>
+              );
+            })}
+            {canAddMore && (
+              <Dropdown
+                placeholder="+ Assign"
+                size="small"
+                onOptionSelect={(_, data) => {
+                  const personId = parseInt(data.optionValue || '0');
+                  if (personId) handleAssignPersonToCell(cell.id, personId);
+                }}
+              >
+                {people
+                  .filter(p => p.active)
+                  .filter(p => !cellAssignments.some((a: Assignment) => a.person_id === p.id))
+                  .map(p => (
+                    <Option key={p.id} value={String(p.id)}>
+                      {p.last_name}, {p.first_name}
+                    </Option>
+                  ))}
+              </Dropdown>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className={s.root}>
       <div className={s.detailView}>
-          <div className={s.detailHeader}>
-            <div>
-              <Button appearance="subtle" onClick={() => setSelectedEventId(null)}>
-                ← Back to Events
-              </Button>
-              <div className={s.detailTitle}>{resolvedEvent?.name}</div>
-              <div className={s.detailMeta}>
-                {resolvedEvent && new Date(resolvedEvent.event_date).toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })} • {resolvedEvent?.start_time} - {resolvedEvent?.end_time}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: tokens.spacingHorizontalS }}>
-              <Button icon={<Edit20Regular />} onClick={() => resolvedEvent && handleEditEvent(resolvedEvent)}>
-                Edit Event
-              </Button>
-            <Button icon={<Add20Regular />} onClick={handleCreateMenuItem}>
-              Add {itemLabel}
+        <div className={s.detailHeader}>
+          <div>
+            <Button appearance="subtle" onClick={() => setSelectedEventId(null)}>
+              ← Back to Events
             </Button>
+            <div className={s.detailTitle}>{resolvedEvent?.name}</div>
+            <div className={s.detailMeta}>
+              {resolvedEvent && new Date(resolvedEvent.event_date).toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })} • {resolvedEvent?.start_time} - {resolvedEvent?.end_time}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: tokens.spacingHorizontalS, flexWrap: 'wrap' }}>
+            <Button icon={<Edit20Regular />} onClick={() => resolvedEvent && handleEditEvent(resolvedEvent)}>
+              Edit Event
+            </Button>
+            {hasGridData ? (
+              <>
+                <Button icon={<Add20Regular />} onClick={handleCreateColumn}>
+                  Add Column
+                </Button>
+                <Button icon={<Add20Regular />} onClick={handleCreateRow}>
+                  Add Row
+                </Button>
+                <Button onClick={handleCreateSectionHeader}>
+                  Add Section Header
+                </Button>
+              </>
+            ) : (
+              <Button icon={<Add20Regular />} onClick={handleCreateMenuItem}>
+                Add {itemLabel}
+              </Button>
+            )}
             <Button appearance="primary" onClick={handleExport}>
               Export to Teams
             </Button>
@@ -1462,155 +1526,293 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
           </div>
         </div>
 
-        {menuItems.length === 0 ? (
-          <div className={s.emptyState}>
-            <div style={{ fontSize: tokens.fontSizeBase400, marginBottom: tokens.spacingVerticalM }}>
-              No {itemLabelLower} yet
+        {hasGridData ? (
+          // New grid-based view
+          rows.length === 0 ? (
+            <div className={s.emptyState}>
+              <div style={{ fontSize: tokens.fontSizeBase400, marginBottom: tokens.spacingVerticalM }}>
+                No rows yet
+              </div>
+              <div>Add rows and columns to start building your event schedule.</div>
             </div>
-            <div>Add {itemLabelLower} to start building your event schedule.</div>
-          </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className={s.menuTable}>
+                <thead>
+                  <tr className={`${s.menuRow} ${s.tableHeader}`}>
+                    {columns.map((column: EventColumn) => (
+                      <th key={column.id} className={s.tableHeaderCell} style={{ width: `${column.width || 150}px` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>{column.name}</span>
+                          <Menu>
+                            <MenuTrigger disableButtonEnhancement>
+                              <Button size="small" appearance="subtle" icon={<MoreHorizontal20Regular />} />
+                            </MenuTrigger>
+                            <MenuPopover>
+                              <MenuList>
+                                <MenuItem icon={<Edit20Regular />} onClick={() => handleEditColumn(column)}>
+                                  Edit
+                                </MenuItem>
+                                <MenuItem
+                                  icon={<ArrowUp20Regular />}
+                                  onClick={() => handleMoveColumn(column, 'up')}
+                                  disabled={columns.findIndex((c: EventColumn) => c.id === column.id) === 0}
+                                >
+                                  Move Left
+                                </MenuItem>
+                                <MenuItem
+                                  icon={<ArrowDown20Regular />}
+                                  onClick={() => handleMoveColumn(column, 'down')}
+                                  disabled={columns.findIndex((c: EventColumn) => c.id === column.id) === columns.length - 1}
+                                >
+                                  Move Right
+                                </MenuItem>
+                                <MenuItem
+                                  icon={<Delete20Regular />}
+                                  onClick={() => handleDeleteColumn(column.id)}
+                                >
+                                  Delete
+                                </MenuItem>
+                              </MenuList>
+                            </MenuPopover>
+                          </Menu>
+                        </div>
+                      </th>
+                    ))}
+                    <th className={s.tableHeaderCell} style={{ width: '100px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row: EventRow, index: number) => {
+                    if (row.is_header) {
+                      // Header row spans all columns
+                      const firstCell = getCell(row.id, columns[0]?.id);
+                      return (
+                        <tr key={row.id} className={s.menuRow}>
+                          <td
+                            colSpan={columns.length + 1}
+                            className={s.menuRowHeader}
+                            style={{ backgroundColor: row.header_color || '#0070C0', color: '#FFFFFF' }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span 
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => {
+                                  const newValue = prompt('Enter header text:', firstCell?.text_value || '');
+                                  if (newValue !== null && columns[0]) {
+                                    handleUpdateCell(row.id, columns[0].id, { text_value: newValue });
+                                  }
+                                }}
+                              >
+                                {firstCell?.text_value || '(click to edit)'}
+                              </span>
+                              <div>
+                                <Button
+                                  size="small"
+                                  appearance="subtle"
+                                  icon={<Delete20Regular />}
+                                  onClick={() => handleDeleteRow(row.id)}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    const { sectionStart, sectionEnd } = getSectionBounds(index);
+                    const disableUp = index <= sectionStart;
+                    const disableDown = index >= sectionEnd;
+
+                    return (
+                      <tr key={row.id} className={s.menuRow}>
+                        {columns.map((column: EventColumn) => (
+                          <td key={column.id} className={s.menuCell}>
+                            {renderCellContent(row, column)}
+                          </td>
+                        ))}
+                        <td className={s.menuCell}>
+                          <div className={s.controlButtons}>
+                            <Button
+                              size="small"
+                              appearance="subtle"
+                              icon={<ArrowUp20Regular />}
+                              onClick={() => handleMoveRow(row, 'up')}
+                              disabled={disableUp}
+                            />
+                            <Button
+                              size="small"
+                              appearance="subtle"
+                              icon={<ArrowDown20Regular />}
+                              onClick={() => handleMoveRow(row, 'down')}
+                              disabled={disableDown}
+                            />
+                            <Button
+                              size="small"
+                              appearance="subtle"
+                              icon={<Delete20Regular />}
+                              onClick={() => handleDeleteRow(row.id)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
         ) : (
-          <table className={s.menuTable}>
-            <thead>
-              <tr className={`${s.menuRow} ${s.tableHeader}`}>
-                <th className={s.tableHeaderCell} style={{ width: '30%' }}>{itemLabel}</th>
-                <th className={s.tableHeaderCell} style={{ width: '30%' }}>{roleALabel}</th>
-                <th className={s.tableHeaderCell} style={{ width: '30%' }}>{roleBLabel}</th>
-                <th className={s.tableHeaderCell} style={{ width: '10%' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {menuItems.map((item: MenuItem, index: number) => {
-                if (item.is_header) {
+          // Legacy menu-item based view
+          menuItems.length === 0 ? (
+            <div className={s.emptyState}>
+              <div style={{ fontSize: tokens.fontSizeBase400, marginBottom: tokens.spacingVerticalM }}>
+                No {itemLabelLower} yet
+              </div>
+              <div>Add {itemLabelLower} to start building your event schedule.</div>
+            </div>
+          ) : (
+            <table className={s.menuTable}>
+              <thead>
+                <tr className={`${s.menuRow} ${s.tableHeader}`}>
+                  <th className={s.tableHeaderCell} style={{ width: '30%' }}>{itemLabel}</th>
+                  <th className={s.tableHeaderCell} style={{ width: '30%' }}>{roleALabel}</th>
+                  <th className={s.tableHeaderCell} style={{ width: '30%' }}>{roleBLabel}</th>
+                  <th className={s.tableHeaderCell} style={{ width: '10%' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {menuItems.map((item: MenuItem, index: number) => {
+                  if (item.is_header) {
+                    return (
+                      <tr key={item.id} className={s.menuRow}>
+                        <td
+                          colSpan={4}
+                          className={s.menuRowHeader}
+                          style={{ backgroundColor: item.header_color || '#0070C0', color: '#FFFFFF' }}
+                        >
+                          {item.name}
+                          <div style={{ float: 'right' }}>
+                            <Button
+                              size="small"
+                              appearance="subtle"
+                              icon={<Edit20Regular />}
+                              onClick={() => handleEditMenuItem(item)}
+                            />
+                            <Button
+                              size="small"
+                              appearance="subtle"
+                              icon={<Delete20Regular />}
+                              onClick={() => setConfirmDelete({ type: 'menuItem', id: item.id })}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const kitchenAssignments = getAssignments(item.id, 'kitchen');
+                  const waiterAssignments = getAssignments(item.id, 'waiter');
+                  const { sectionStart, sectionEnd } = getSectionBounds(index);
+                  const disableUp = index <= sectionStart;
+                  const disableDown = index >= sectionEnd;
+
                   return (
                     <tr key={item.id} className={s.menuRow}>
-                      <td
-                        colSpan={4}
-                        className={s.menuRowHeader}
-                        style={{ backgroundColor: item.header_color || '#0070C0', color: '#FFFFFF' }}
-                      >
-                        {item.name}
-                        <div style={{ float: 'right' }}>
-                          <Button
-                            size="small"
-                            appearance="subtle"
-                            icon={<Edit20Regular />}
-                            onClick={() => handleEditMenuItem(item)}
-                          />
-                          <Button
-                            size="small"
-                            appearance="subtle"
-                            icon={<Delete20Regular />}
-                            onClick={() => setConfirmDelete({ type: 'menuItem', id: item.id })}
-                          />
+                      <td className={s.menuCell}>
+                        <div className={s.menuItemName}>{item.name}</div>
+                        {item.details && (
+                          <div style={{ color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 }}>
+                            {item.details}
+                          </div>
+                        )}
+                      </td>
+                      <td className={s.menuCell}>
+                        <div className={s.quotaIndicator}>
+                          {kitchenAssignments.length} / {item.kitchen_quota}
+                        </div>
+                        <div className={s.assignmentArea}>
+                          {kitchenAssignments.map((a: Assignment) => {
+                            const person = people.find(p => p.id === a.person_id);
+                            if (!person) return null;
+                            const isCoordinator = isCoordinatorRole(item.name);
+                            return (
+                              <Tooltip key={a.id} content="Click to remove" relationship="label">
+                                <Badge
+                                  className={s.personBadge}
+                                  color={getBadgeColor('kitchen', isCoordinator)}
+                                  onClick={() => handleRemoveAssignment(a.id)}
+                                >
+                                  {person.first_name} {person.last_name}
+                                </Badge>
+                              </Tooltip>
+                            );
+                          })}
+                          {kitchenAssignments.length < item.kitchen_quota && (
+                            <Dropdown
+                              placeholder={`+ Assign ${roleALabel}`}
+                              size="small"
+                              onOptionSelect={(_, data) => {
+                                const personId = parseInt(data.optionValue || '0');
+                                if (personId) handleAssignPerson(item.id, personId, 'kitchen');
+                              }}
+                            >
+                              {people
+                                .filter(p => p.active)
+                                .filter(p => !kitchenAssignments.some((a: Assignment) => a.person_id === p.id))
+                                .map(p => (
+                                  <Option key={p.id} value={String(p.id)}>
+                                    {p.last_name}, {p.first_name}
+                                  </Option>
+                                ))}
+                            </Dropdown>
+                          )}
                         </div>
                       </td>
-                    </tr>
-                  );
-                }
-
-                const kitchenAssignments = getAssignments(item.id, 'kitchen');
-                const waiterAssignments = getAssignments(item.id, 'waiter');
-                const { sectionStart, sectionEnd } = getSectionBounds(index);
-                const disableUp = index <= sectionStart;
-                const disableDown = index >= sectionEnd;
-
-                return (
-                  <tr key={item.id} className={s.menuRow}>
-                    <td className={s.menuCell}>
-                      <div className={s.menuItemName}>{item.name}</div>
-                      {item.details && (
-                        <div style={{ color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 }}>
-                          {item.details}
+                      <td className={s.menuCell}>
+                        <div className={s.quotaIndicator}>
+                          {waiterAssignments.length} / {item.waiter_quota}
                         </div>
-                      )}
-                    </td>
-                    <td className={s.menuCell}>
-                      <div className={s.quotaIndicator}>
-                        {kitchenAssignments.length} / {item.kitchen_quota}
-                      </div>
-                      <div className={s.assignmentArea}>
-                        {kitchenAssignments.map((a: Assignment) => {
-                          const person = people.find(p => p.id === a.person_id);
-                          if (!person) return null;
-                          const isCoordinator = isCoordinatorRole(item.name);
-                          return (
-                            <Tooltip key={a.id} content="Click to remove" relationship="label">
-                              <Badge
-                                className={s.personBadge}
-                                color={getBadgeColor('kitchen', isCoordinator)}
-                                onClick={() => handleRemoveAssignment(a.id)}
-                              >
-                                {person.first_name} {person.last_name}
-                              </Badge>
-                            </Tooltip>
-                          );
-                        })}
-                        {kitchenAssignments.length < item.kitchen_quota && (
-                          <Dropdown
-                            placeholder={`+ Assign ${roleALabel}`}
-                            size="small"
-                            onOptionSelect={(_, data) => {
-                              const personId = parseInt(data.optionValue || '0');
-                              if (personId) handleAssignPerson(item.id, personId, 'kitchen');
-                            }}
-                          >
-                            {people
-                              .filter(p => p.active)
-                              .filter(p => !kitchenAssignments.some((a: Assignment) => a.person_id === p.id))
-                              .map(p => (
-                                <Option key={p.id} value={String(p.id)}>
-                                  {p.last_name}, {p.first_name}
-                                </Option>
-                              ))}
-                          </Dropdown>
-                        )}
-                      </div>
-                    </td>
-                    <td className={s.menuCell}>
-                      <div className={s.quotaIndicator}>
-                        {waiterAssignments.length} / {item.waiter_quota}
-                      </div>
-                      <div className={s.assignmentArea}>
-                        {waiterAssignments.map((a: Assignment) => {
-                          const person = people.find(p => p.id === a.person_id);
-                          if (!person) return null;
-                          const isCoordinator = isCoordinatorRole(item.name);
-                          return (
-                            <Tooltip key={a.id} content="Click to remove" relationship="label">
-                              <Badge
-                                className={s.personBadge}
-                                color={getBadgeColor('waiter', isCoordinator)}
-                                onClick={() => handleRemoveAssignment(a.id)}
-                              >
-                                {person.first_name} {person.last_name}
-                              </Badge>
-                            </Tooltip>
-                          );
-                        })}
-                        {waiterAssignments.length < item.waiter_quota && (
-                          <Dropdown
-                            placeholder={`+ Assign ${roleBLabel}`}
-                            size="small"
-                            onOptionSelect={(_, data) => {
-                              const personId = parseInt(data.optionValue || '0');
-                              if (personId) handleAssignPerson(item.id, personId, 'waiter');
-                            }}
-                          >
-                            {people
-                              .filter(p => p.active)
-                              .filter(p => !waiterAssignments.some((a: Assignment) => a.person_id === p.id))
-                              .map(p => (
-                                <Option key={p.id} value={String(p.id)}>
-                                  {p.last_name}, {p.first_name}
-                                </Option>
-                              ))}
-                          </Dropdown>
-                        )}
-                      </div>
-                    </td>
-                    <td className={s.menuCell}>
-                      <div className={s.controlButtons}>
+                        <div className={s.assignmentArea}>
+                          {waiterAssignments.map((a: Assignment) => {
+                            const person = people.find(p => p.id === a.person_id);
+                            if (!person) return null;
+                            const isCoordinator = isCoordinatorRole(item.name);
+                            return (
+                              <Tooltip key={a.id} content="Click to remove" relationship="label">
+                                <Badge
+                                  className={s.personBadge}
+                                  color={getBadgeColor('waiter', isCoordinator)}
+                                  onClick={() => handleRemoveAssignment(a.id)}
+                                >
+                                  {person.first_name} {person.last_name}
+                                </Badge>
+                              </Tooltip>
+                            );
+                          })}
+                          {waiterAssignments.length < item.waiter_quota && (
+                            <Dropdown
+                              placeholder={`+ Assign ${roleBLabel}`}
+                              size="small"
+                              onOptionSelect={(_, data) => {
+                                const personId = parseInt(data.optionValue || '0');
+                                if (personId) handleAssignPerson(item.id, personId, 'waiter');
+                              }}
+                            >
+                              {people
+                                .filter(p => p.active)
+                                .filter(p => !waiterAssignments.some((a: Assignment) => a.person_id === p.id))
+                                .map(p => (
+                                  <Option key={p.id} value={String(p.id)}>
+                                    {p.last_name}, {p.first_name}
+                                  </Option>
+                                ))}
+                            </Dropdown>
+                          )}
+                        </div>
+                      </td>
+                      <td className={s.menuCell}>
+                        <div className={s.controlButtons}>
                           <Button
                             size="small"
                             appearance="subtle"
@@ -1625,33 +1827,121 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
                             onClick={() => handleMoveMenuItem(item, 'down')}
                             disabled={disableDown}
                           />
-                        <Menu>
-                          <MenuTrigger disableButtonEnhancement>
-                            <Button size="small" appearance="subtle" icon={<MoreHorizontal20Regular />} />
-                          </MenuTrigger>
-                          <MenuPopover>
-                            <MenuList>
-                              <MenuItem icon={<Edit20Regular />} onClick={() => handleEditMenuItem(item)}>
-                                Edit
-                              </MenuItem>
-                              <MenuItem
-                                icon={<Delete20Regular />}
-                                onClick={() => setConfirmDelete({ type: 'menuItem', id: item.id })}
-                              >
-                                Delete
-                              </MenuItem>
-                            </MenuList>
-                          </MenuPopover>
-                        </Menu>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          <Menu>
+                            <MenuTrigger disableButtonEnhancement>
+                              <Button size="small" appearance="subtle" icon={<MoreHorizontal20Regular />} />
+                            </MenuTrigger>
+                            <MenuPopover>
+                              <MenuList>
+                                <MenuItem icon={<Edit20Regular />} onClick={() => handleEditMenuItem(item)}>
+                                  Edit
+                                </MenuItem>
+                                <MenuItem
+                                  icon={<Delete20Regular />}
+                                  onClick={() => setConfirmDelete({ type: 'menuItem', id: item.id })}
+                                >
+                                  Delete
+                                </MenuItem>
+                              </MenuList>
+                            </MenuPopover>
+                          </Menu>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )
         )}
       </div>
+
+      {/* Column Editor Dialog */}
+      <Dialog open={showColumnDialog} onOpenChange={(_, data) => setShowColumnDialog(data.open)}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>{editingColumn?.id ? 'Edit Column' : 'New Column'}</DialogTitle>
+            <DialogContent>
+              <div className={s.formFieldFull}>
+                <label className={s.label}>Column Name *</label>
+                <Input
+                  value={editingColumn?.name || ''}
+                  onChange={(_, data) => setEditingColumn({ ...editingColumn, name: data.value })}
+                  placeholder="Column name"
+                />
+              </div>
+              <div className={s.formFieldFull}>
+                <label className={s.label}>Column Type *</label>
+                <Dropdown
+                  value={editingColumn?.column_type || 'label'}
+                  selectedOptions={[editingColumn?.column_type || 'label']}
+                  onOptionSelect={(_, data) => setEditingColumn({ ...editingColumn, column_type: data.optionValue as any })}
+                >
+                  <Option value="label">Label (text only)</Option>
+                  <Option value="assignment">Assignment (people picker)</Option>
+                  <Option value="time_slot">Time Slot (assignment with specific time)</Option>
+                </Dropdown>
+              </div>
+              {(editingColumn?.column_type === 'assignment' || editingColumn?.column_type === 'time_slot') && (
+                <>
+                  <div className={s.formRow}>
+                    <div className={s.formField}>
+                      <label className={s.label}>Teams Group</label>
+                      <Input
+                        value={editingColumn?.teams_group || ''}
+                        onChange={(_, data) => setEditingColumn({ ...editingColumn, teams_group: data.value })}
+                        placeholder="General"
+                      />
+                    </div>
+                    <div className={s.formField}>
+                      <label className={s.label}>Teams Theme</label>
+                      <Input
+                        value={editingColumn?.teams_theme || ''}
+                        onChange={(_, data) => setEditingColumn({ ...editingColumn, teams_theme: data.value })}
+                        placeholder="1. DarkBlue"
+                      />
+                    </div>
+                  </div>
+                  {editingColumn?.column_type === 'time_slot' && (
+                    <div className={s.formRow}>
+                      <div className={s.formField}>
+                        <label className={s.label}>Start Time</label>
+                        <Input
+                          type="time"
+                          value={editingColumn?.start_time || ''}
+                          onChange={(_, data) => setEditingColumn({ ...editingColumn, start_time: data.value })}
+                        />
+                      </div>
+                      <div className={s.formField}>
+                        <label className={s.label}>End Time</label>
+                        <Input
+                          type="time"
+                          value={editingColumn?.end_time || ''}
+                          onChange={(_, data) => setEditingColumn({ ...editingColumn, end_time: data.value })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className={s.formFieldFull}>
+                <label className={s.label}>Width (pixels)</label>
+                <Input
+                  type="number"
+                  value={String(editingColumn?.width || 150)}
+                  onChange={(_, data) => setEditingColumn({ ...editingColumn, width: parseInt(data.value || '150') })}
+                />
+              </div>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setShowColumnDialog(false)}>Cancel</Button>
+              <Button appearance="primary" onClick={handleSaveColumn}>
+                {editingColumn?.id ? 'Save' : 'Add'}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
 
       {/* Menu Item Dialog */}
           <Dialog open={showMenuDialog} onOpenChange={(_, data) => setShowMenuDialog(data.open)}>
