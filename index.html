@@ -230,8 +230,10 @@
 
       /* Brand buttons are created via bg-* classes above */
 
-      /* Inputs */
-      input, select, textarea {
+      /* Inputs - exclude Fluent UI components */
+      input:not([class*="fui-"]):not([data-fui]):not(.fui-Input__input):not(.fui-Checkbox__input),
+      select:not([class*="fui-"]):not([data-fui]),
+      textarea:not([class*="fui-"]):not([data-fui]) {
         width: 100%;
         padding: .5rem .625rem;
         border-radius: var(--radius-sm);
@@ -241,8 +243,8 @@
         font-size: .875rem;
         transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
       }
-      input::placeholder, textarea::placeholder { color: var(--colorNeutralForeground3); }
-      input:focus, select:focus, textarea:focus {
+      input:not([class*="fui-"])::placeholder, textarea:not([class*="fui-"])::placeholder { color: var(--colorNeutralForeground3); }
+      input:not([class*="fui-"]):focus, select:not([class*="fui-"]):focus, textarea:not([class*="fui-"]):focus {
         outline: none;
         border-color: var(--focusStroke);
         box-shadow: 0 0 0 3px rgba(15,108,189,.2);

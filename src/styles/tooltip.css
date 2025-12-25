@@ -1,3 +1,8 @@
-.fui-Tooltip__content {
+/* 
+ * Tooltip content styling - prevents tooltips from blocking interactions with elements below.
+ * This only affects the actual tooltip popover content, not any form controls.
+ */
+[data-popper-placement] .fui-Tooltip__content,
+.fui-Portal .fui-Tooltip__content {
   pointer-events: none;
 }
