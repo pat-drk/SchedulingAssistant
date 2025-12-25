@@ -250,6 +250,12 @@ function dayOfWeekToDayLetter(dayOfWeek: number): DayLetter | undefined {
   return undefined; // Weekend
 }
 
+/** Parse month string to year and month numbers */
+function parseMonth(monthStr: string): {year: number, month: number} {
+  const [y, m] = monthStr.split('-').map((n) => parseInt(n, 10));
+  return {year: y, month: m};
+}
+
 export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   requireDb();
 
@@ -349,7 +355,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       
       // Calculate which weeks this day letter appears in for this override
       const weeks = new Set<number>();
-      const [y, m] = row.month.split('-').map((n) => parseInt(n, 10));
+      const {year: y, month: m} = parseMonth(row.month);
       const lastDayOfMonth = new Date(y, m, 0).getDate();
       for (let dayOfMonth = 1; dayOfMonth <= lastDayOfMonth; dayOfMonth++) {
         const date = new Date(y, m - 1, dayOfMonth);
@@ -374,7 +380,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     for (const s of segs) {
       // Determine which day letters are in this week by checking all days in the month
       const daysInWeek: DayLetter[] = [];
-      const [y, m] = row.month.split('-').map((n) => parseInt(n, 10));
+      const {year: y, month: m} = parseMonth(row.month);
       const lastDayOfMonth = new Date(y, m, 0).getDate(); // Day 0 of next month = last day of this month
       
       for (let dayOfMonth = 1; dayOfMonth <= lastDayOfMonth; dayOfMonth++) {
@@ -491,7 +497,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       // to see if there's an override to a DIFFERENT role for that specific week
       const keepDaysPerWeek = new Map<number, Set<DayLetter>>();
       
-      const [y, m] = row.month.split('-').map((n) => parseInt(n, 10));
+      const {year: y, month: m} = parseMonth(row.month);
       const lastDayOfMonth = new Date(y, m, 0).getDate();
       
       // Iterate through all days in the month
@@ -829,7 +835,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   for (const row of lunchPerWeeks) {
     // Determine which day letters are in this week by checking all days in the month
     const daysInWeek: DayLetter[] = [];
-    const [y, m] = row.month.split('-').map((n) => parseInt(n, 10));
+    const {year: y, month: m} = parseMonth(row.month);
     const lastDayOfMonth = new Date(y, m, 0).getDate(); // Day 0 of next month = last day of this month
     
     for (let dayOfMonth = 1; dayOfMonth <= lastDayOfMonth; dayOfMonth++) {
