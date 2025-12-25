@@ -1900,7 +1900,7 @@ function PeopleEditor(){
         </div>
 
         <div style={{ marginBottom: tokens.spacingVerticalS }}>
-          <PeopleFiltersBar state={filters} onChange={(next) => setFilters((s) => ({ ...s, ...next }))} />
+          <PeopleFiltersBar state={filters} onChange={setFilters} />
         </div>
 
         <div className={s.tableWrap}>

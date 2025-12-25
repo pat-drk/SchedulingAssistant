@@ -614,7 +614,7 @@ export default function CrewHistoryView({
         
         {/* Secondary controls: Filters and sorting */}
         <div className={styles.secondaryControls}>
-          <PeopleFiltersBar state={filters} onChange={(next) => setFilters((s) => ({ ...s, ...next }))} />
+          <PeopleFiltersBar state={filters} onChange={setFilters} />
           <div className={styles.controlGroup}>
             <span className={styles.label}>Sort</span>
             <Dropdown
