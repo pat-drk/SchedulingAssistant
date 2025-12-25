@@ -710,6 +710,25 @@ export default function SpecialEvents({ sqlDb, all, run, people, refreshCaches }
     refreshCaches();
   };
 
+  // Assignment management (works for both grid and legacy)
+  const handleAssignPersonToCell = (cellId: number, personId: number) => {
+    // Check if already assigned
+    const cellAssignments = getCellAssignments(cellId);
+    const exists = cellAssignments.some((a) => a.person_id === personId);
+    if (exists) return;
+
+    run(
+      `INSERT INTO special_event_assignment (event_id, cell_id, person_id) VALUES (?, ?, ?)`,
+      [selectedEventId, cellId, personId]
+    );
+    refreshCaches();
+  };
+
+  const handleRemoveAssignment = (assignmentId: number) => {
+    run(`DELETE FROM special_event_assignment WHERE id=?`, [assignmentId]);
+    refreshCaches();
+  };
+
   // Menu item CRUD
   const handleCreateMenuItem = () => {
     setEditingMenuItem({
