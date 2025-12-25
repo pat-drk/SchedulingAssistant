@@ -231,9 +231,10 @@
       /* Brand buttons are created via bg-* classes above */
 
       /* Inputs - exclude Fluent UI components */
-      input:not([class*="fui-"]):not([data-fui]):not(.fui-Input__input):not(.fui-Checkbox__input),
-      select:not([class*="fui-"]):not([data-fui]),
-      textarea:not([class*="fui-"]):not([data-fui]) {
+      /* Use :not(:where()) to exclude any input inside or part of Fluent UI components */
+      input:not(:where([class*="fui-"], [class*="fui-"] *, [data-fui], [data-fui] *)),
+      select:not(:where([class*="fui-"], [class*="fui-"] *, [data-fui], [data-fui] *)),
+      textarea:not(:where([class*="fui-"], [class*="fui-"] *, [data-fui], [data-fui] *)) {
         width: 100%;
         padding: .5rem .625rem;
         border-radius: var(--radius-sm);
@@ -243,13 +244,13 @@
         font-size: .875rem;
         transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
       }
-      input:not([class*="fui-"]):not([data-fui]):not(.fui-Input__input):not(.fui-Checkbox__input)::placeholder,
-      textarea:not([class*="fui-"]):not([data-fui])::placeholder {
+      input:not(:where([class*="fui-"], [class*="fui-"] *, [data-fui], [data-fui] *))::placeholder,
+      textarea:not(:where([class*="fui-"], [class*="fui-"] *, [data-fui], [data-fui] *))::placeholder {
         color: var(--colorNeutralForeground3);
       }
-      input:not([class*="fui-"]):not([data-fui]):not(.fui-Input__input):not(.fui-Checkbox__input):focus,
-      select:not([class*="fui-"]):not([data-fui]):focus,
-      textarea:not([class*="fui-"]):not([data-fui]):focus {
+      input:not(:where([class*="fui-"], [class*="fui-"] *, [data-fui], [data-fui] *)):focus,
+      select:not(:where([class*="fui-"], [class*="fui-"] *, [data-fui], [data-fui] *)):focus,
+      textarea:not(:where([class*="fui-"], [class*="fui-"] *, [data-fui], [data-fui] *)):focus {
         outline: none;
         border-color: var(--focusStroke);
         box-shadow: 0 0 0 3px rgba(15,108,189,.2);
