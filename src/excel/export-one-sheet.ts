@@ -273,7 +273,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   const psKey = (pid:number, seg:Seg) => `${pid}|${seg}`;
   const perDayMap = new Map<string, Map<DayLetter, number>>();
 
-  // 1) Add explicit per-day assignments (respect AVAILABILITY) and build the perDayMap (by DAY LETTER)
+  // 1) Build perDayMap from weekday overrides (just the map, respecting AVAILABILITY)
   for (const row of perDays) {
     const dayLetter = weekdayToLetter(row.weekday);
     if (!dayLetter) continue;
@@ -284,17 +284,6 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     for (const s of segs) {
       if (!isAllowedByAvail(dayLetter, s, row)) continue; // skip days not allowed by availability
 
-      const code = GROUP_INFO[row.group_name]?.code;
-      if (!code) continue;
-
-      const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
-      const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
-      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>() });
-      personBucket.roles.add(row.role_name);
-
-      if (s === 'AM') personBucket.AM.add(dayLetter);
-      else personBucket.PM.add(dayLetter);
-
       let dayMap = perDayMap.get(psKey(row.person_id, s));
       if (!dayMap) {
         dayMap = new Map<DayLetter, number>();
@@ -304,17 +293,13 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     }
   }
 
-  // 2) Add week-based assignments (higher priority than per-day)
-  // Week overrides apply to all days within that week number
+  // 2) Update perDayMap with week overrides (higher priority - overwrites weekday entries)
   for (const row of perWeeks) {
     const segNorm = (row.segment || '').toString().trim().toUpperCase();
     if (segNorm === 'LUNCH') continue;
 
     const segs = expandSegments(segNorm);
     for (const s of segs) {
-      const code = GROUP_INFO[row.group_name]?.code;
-      if (!code) continue;
-
       // Determine which day letters are in this week
       const daysInWeek: DayLetter[] = [];
       for (const dayLetter of DAY_ORDER) {
@@ -330,29 +315,59 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
       if (daysInWeek.length === 0) continue;
 
-      const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
-      const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
-      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>() });
-      personBucket.roles.add(row.role_name);
-
       let dayMap = perDayMap.get(psKey(row.person_id, s));
       if (!dayMap) {
         dayMap = new Map<DayLetter, number>();
         perDayMap.set(psKey(row.person_id, s), dayMap);
       }
 
-      // Apply week override to all applicable days
+      // Apply week override to all applicable days (overwrites any weekday overrides)
       for (const dayLetter of daysInWeek) {
-        if (s === 'AM') personBucket.AM.add(dayLetter);
-        else personBucket.PM.add(dayLetter);
         dayMap.set(dayLetter, row.role_id);
       }
     }
   }
 
-  // 3) Apply defaults, but:
+  // 3) Build buckets from perDayMap (all overrides are now final)
+  for (const [key, dayMap] of perDayMap.entries()) {
+    const [personIdStr, segStr] = key.split('|');
+    const personId = parseInt(personIdStr, 10);
+    const seg = segStr as Seg;
+
+    // Group entries by role_id to minimize lookups
+    const roleIdToDays = new Map<number, DayLetter[]>();
+    for (const [dayLetter, roleId] of dayMap.entries()) {
+      const days = roleIdToDays.get(roleId) || [];
+      days.push(dayLetter);
+      roleIdToDays.set(roleId, days);
+    }
+
+    // For each role, add to buckets
+    for (const [roleId, days] of roleIdToDays.entries()) {
+      // Find the row with this person_id, segment, and role_id from either perDays or perWeeks
+      let row = perDays.find(r => r.person_id === personId && r.role_id === roleId) ||
+                perWeeks.find(r => r.person_id === personId && r.role_id === roleId);
+      
+      if (!row) continue; // Skip if we can't find the row (shouldn't happen)
+
+      const code = GROUP_INFO[row.group_name]?.code;
+      if (!code) continue;
+
+      const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
+      const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
+      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>() });
+      personBucket.roles.add(row.role_name);
+
+      for (const dayLetter of days) {
+        if (seg === 'AM') personBucket.AM.add(dayLetter);
+        else personBucket.PM.add(dayLetter);
+      }
+    }
+  }
+
+  // 4) Apply defaults, but:
   //    - Respect AVAILABILITY
-  //    - SUBTRACT days that have per-day rows with a DIFFERENT role (by DAY LETTER)
+  //    - SUBTRACT days that have overrides with a DIFFERENT role (by DAY LETTER)
   for (const row of defaults) {
     const code = GROUP_INFO[row.group_name]?.code;
     if (!code) continue;
@@ -609,27 +624,12 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   const lunchBuckets: LunchBuckets = { regular: {}, commuter: {} };
   const lunchPerDayMap = new Map<number, Map<DayLetter, number>>();
 
+  // Build lunchPerDayMap from weekday overrides
   for (const row of lunchPerDays) {
     const dayLetter = weekdayToLetter(row.weekday);
     if (!dayLetter) continue;
     if (!isAllowedForLunch(dayLetter, row)) continue;
-    const code = GROUP_INFO[row.group_name]?.code;
-    if (!code) continue;
-    const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
-    const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
-    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = {
-      days: new Set<DayLetter>(),
-      roles: new Set<string>(),
-      roleDays: new Map<string, Set<DayLetter>>()
-    });
-    personBucket.roles.add(row.role_name);
-    let roleDaySet = personBucket.roleDays.get(row.role_name);
-    if (!roleDaySet) {
-      roleDaySet = new Set<DayLetter>();
-      personBucket.roleDays.set(row.role_name, roleDaySet);
-    }
-    roleDaySet.add(dayLetter);
-    personBucket.days.add(dayLetter);
+
     let dayMap = lunchPerDayMap.get(row.person_id);
     if (!dayMap) {
       dayMap = new Map<DayLetter, number>();
@@ -638,11 +638,8 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     dayMap.set(dayLetter, row.role_id);
   }
 
-  // Process lunch week overrides (higher priority than per-day)
+  // Update lunchPerDayMap with week overrides (higher priority)
   for (const row of lunchPerWeeks) {
-    const code = GROUP_INFO[row.group_name]?.code;
-    if (!code) continue;
-
     // Determine which day letters are in this week
     const daysInWeek: DayLetter[] = [];
     for (const dayLetter of DAY_ORDER) {
@@ -658,32 +655,58 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
     if (daysInWeek.length === 0) continue;
 
-    const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
-    const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
-    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = {
-      days: new Set<DayLetter>(),
-      roles: new Set<string>(),
-      roleDays: new Map<string, Set<DayLetter>>()
-    });
-    personBucket.roles.add(row.role_name);
-
-    let roleDaySet = personBucket.roleDays.get(row.role_name);
-    if (!roleDaySet) {
-      roleDaySet = new Set<DayLetter>();
-      personBucket.roleDays.set(row.role_name, roleDaySet);
-    }
-
     let dayMap = lunchPerDayMap.get(row.person_id);
     if (!dayMap) {
       dayMap = new Map<DayLetter, number>();
       lunchPerDayMap.set(row.person_id, dayMap);
     }
 
-    // Apply week override to all applicable days
+    // Apply week override to all applicable days (overwrites weekday overrides)
     for (const dayLetter of daysInWeek) {
-      roleDaySet.add(dayLetter);
-      personBucket.days.add(dayLetter);
       dayMap.set(dayLetter, row.role_id);
+    }
+  }
+
+  // Build lunch buckets from lunchPerDayMap (all overrides are now final)
+  for (const [personId, dayMap] of lunchPerDayMap.entries()) {
+    // Group entries by role_id
+    const roleIdToDays = new Map<number, DayLetter[]>();
+    for (const [dayLetter, roleId] of dayMap.entries()) {
+      const days = roleIdToDays.get(roleId) || [];
+      days.push(dayLetter);
+      roleIdToDays.set(roleId, days);
+    }
+
+    // For each role, add to buckets
+    for (const [roleId, days] of roleIdToDays.entries()) {
+      // Find the row with this person_id and role_id from either lunchPerDays or lunchPerWeeks
+      let row = lunchPerDays.find(r => r.person_id === personId && r.role_id === roleId) ||
+                lunchPerWeeks.find(r => r.person_id === personId && r.role_id === roleId);
+      
+      if (!row) continue;
+
+      const code = GROUP_INFO[row.group_name]?.code;
+      if (!code) continue;
+
+      const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
+      const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
+      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = {
+        days: new Set<DayLetter>(),
+        roles: new Set<string>(),
+        roleDays: new Map<string, Set<DayLetter>>()
+      });
+      personBucket.roles.add(row.role_name);
+
+      let roleDaySet = personBucket.roleDays.get(row.role_name);
+      if (!roleDaySet) {
+        roleDaySet = new Set<DayLetter>();
+        personBucket.roleDays.set(row.role_name, roleDaySet);
+      }
+
+      for (const dayLetter of days) {
+        roleDaySet.add(dayLetter);
+        personBucket.days.add(dayLetter);
+      }
     }
   }
 
