@@ -240,6 +240,16 @@ function hasNonContiguousWeeks(weeks: Set<number>): boolean {
     !weekArray.every((w, i) => i === 0 || w === weekArray[i - 1] + 1);
 }
 
+/** Convert JavaScript day-of-week (0=Sunday) to DayLetter, or undefined for weekends */
+function dayOfWeekToDayLetter(dayOfWeek: number): DayLetter | undefined {
+  if (dayOfWeek === 1) return 'M';
+  if (dayOfWeek === 2) return 'T';
+  if (dayOfWeek === 3) return 'W';
+  if (dayOfWeek === 4) return 'TH';
+  if (dayOfWeek === 5) return 'F';
+  return undefined; // Weekend
+}
+
 export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   requireDb();
 
@@ -357,13 +367,8 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
         const dayOfWeek = date.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
         
         // Convert dayOfWeek to DayLetter (skip weekends)
-        let dayLetter: DayLetter | undefined;
-        if (dayOfWeek === 1) dayLetter = 'M';
-        else if (dayOfWeek === 2) dayLetter = 'T';
-        else if (dayOfWeek === 3) dayLetter = 'W';
-        else if (dayOfWeek === 4) dayLetter = 'TH';
-        else if (dayOfWeek === 5) dayLetter = 'F';
-        else continue; // Skip weekends
+        const dayLetter = dayOfWeekToDayLetter(dayOfWeek);
+        if (!dayLetter) continue; // Skip weekends
         
         // Check if this date is in the target week
         const weekNum = getWeekOfMonth(date, weekStartMode);
@@ -786,13 +791,8 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       const dayOfWeek = date.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
       
       // Convert dayOfWeek to DayLetter (skip weekends)
-      let dayLetter: DayLetter | undefined;
-      if (dayOfWeek === 1) dayLetter = 'M';
-      else if (dayOfWeek === 2) dayLetter = 'T';
-      else if (dayOfWeek === 3) dayLetter = 'W';
-      else if (dayOfWeek === 4) dayLetter = 'TH';
-      else if (dayOfWeek === 5) dayLetter = 'F';
-      else continue; // Skip weekends
+      const dayLetter = dayOfWeekToDayLetter(dayOfWeek);
+      if (!dayLetter) continue; // Skip weekends
       
       // Check if this date is in the target week
       const weekNum = getWeekOfMonth(date, weekStartMode);
