@@ -1,5 +1,6 @@
 import { loadExcelJS } from './exceljs-loader';
 import { availabilityFor } from '../services/availability';
+import { getWeekOfMonth, type WeekStartMode } from '../utils/weekCalculation';
 
 type ExportGroupRow = {
   group_name: string;
@@ -9,6 +10,36 @@ type ExportGroupRow = {
 };
 
 type GroupInfo = Record<string, { code: string; color: string; column_group: string }>;
+
+/** Format a list of week numbers into a readable label like "Weeks 1 & 2" or "Week 3" */
+function formatWeekLabel(weeks: number[]): string {
+  if (weeks.length === 0) return '';
+  const sorted = [...new Set(weeks)].sort((a, b) => a - b);
+  if (sorted.length === 1) return `Week ${sorted[0]}`;
+  // Check for consecutive ranges
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let end = sorted[0];
+  for (let i = 1; i <= sorted.length; i++) {
+    if (i < sorted.length && sorted[i] === end + 1) {
+      end = sorted[i];
+    } else {
+      if (start === end) {
+        ranges.push(String(start));
+      } else if (end === start + 1) {
+        ranges.push(`${start} & ${end}`);
+      } else {
+        ranges.push(`${start}-${end}`);
+      }
+      if (i < sorted.length) {
+        start = sorted[i];
+        end = sorted[i];
+      }
+    }
+  }
+  const label = ranges.join(', ');
+  return sorted.length === 1 ? `Week ${label}` : `Weeks ${label}`;
+}
 
 function loadExportGroups(): { info: GroupInfo; col1: string[]; col2: string[]; dining: string[] } {
   const rows = all<ExportGroupRow>(
@@ -73,14 +104,26 @@ type DayRow = WithAvail & {
   month: string;
 };
 
-// Buckets: regular/commuter -> groupCode -> personName -> { AM days, PM days, roles list (for display) }
+// Buckets: regular/commuter -> groupCode -> personName -> { AM days, PM days, roles, weekLabel }
 type Buckets = Record<'regular'|'commuter',
-  Record<string, Record<string, { AM: Set<DayLetter>; PM: Set<DayLetter>; roles: Set<string> }>>
+  Record<string, Record<string, { AM: Set<DayLetter>; PM: Set<DayLetter>; roles: Set<string>; weekLabel: string }>>
 >;
 
 type LunchBuckets = Record<'regular'|'commuter',
-  Record<string, Record<string, { days: Set<DayLetter>; roles: Set<string>; roleDays: Map<string, Set<DayLetter>> }>>
+  Record<string, Record<string, { days: Set<DayLetter>; roles: Set<string>; roleDays: Map<string, Set<DayLetter>>; weekLabel: string }>>
 >;
+
+type WeekRow = WithAvail & {
+  person_id: number;
+  week_number: number; // 1-5
+  segment: string | null;
+  group_name: string;
+  role_id: number;
+  role_name: string;
+  person: string;
+  commuter: number;
+  month: string;
+};
 
 // ---------- DB helpers ----------
 function requireDb() {
@@ -224,6 +267,67 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     mddMonth.params
   );
 
+  // Query week-by-week overrides
+  const mdwMonth = monthWhere('mdw.month', monthKey);
+  const perWeeks = all<WeekRow>(
+    `SELECT mdw.person_id, mdw.week_number, mdw.segment,
+            g.name AS group_name, r.id AS role_id, r.name AS role_name,
+            (p.last_name || ', ' || p.first_name) AS person,
+            p.commuter AS commuter,
+            p.avail_mon, p.avail_tue, p.avail_wed, p.avail_thu, p.avail_fri,
+            mdw.month as month
+       FROM monthly_default_week mdw
+      JOIN role r ON r.id = mdw.role_id
+      JOIN grp  g ON g.id = r.group_id
+      JOIN person p ON p.id = mdw.person_id
+      WHERE ${mdwMonth.where} AND p.active = 1`,
+    mdwMonth.params
+  );
+
+  // Load week_start_mode setting
+  let weekStartMode: WeekStartMode = 'first_monday';
+  try {
+    const modeRows = all<{ value: string }>(`SELECT value FROM meta WHERE key='week_start_mode'`);
+    if (modeRows.length > 0 && modeRows[0].value) {
+      const modeValue = modeRows[0].value;
+      if (modeValue === 'first_monday' || modeValue === 'first_day') {
+        weekStartMode = modeValue;
+      }
+    }
+  } catch {
+    // Use default
+  }
+
+  // Build a map of person/segment -> week_number -> role_id for week overrides
+  const weekOverrideMap = new Map<string, Map<number, { roleId: number; groupName: string; roleName: string }>>();
+  for (const row of perWeeks) {
+    const segNorm = (row.segment || '').toString().trim().toUpperCase();
+    if (segNorm === 'LUNCH') continue;
+    const segs = expandSegments(segNorm);
+    for (const s of segs) {
+      const key = `${row.person_id}|${s}`;
+      let weekMap = weekOverrideMap.get(key);
+      if (!weekMap) {
+        weekMap = new Map();
+        weekOverrideMap.set(key, weekMap);
+      }
+      weekMap.set(row.week_number, { roleId: row.role_id, groupName: row.group_name, roleName: row.role_name });
+    }
+  }
+
+  // Build a set of which weeks exist in the month (for calculating which weeks the default applies to)
+  const [yearNum, monthNum] = monthKey.split('-').map(n => parseInt(n, 10));
+  const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+  const weeksInMonth = new Set<number>();
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(yearNum, monthNum - 1, day);
+    const dow = date.getDay();
+    if (dow === 0 || dow === 6) continue; // skip weekends
+    const weekNum = getWeekOfMonth(date, weekStartMode);
+    if (weekNum > 0) weeksInMonth.add(weekNum);
+  }
+  const allWeeksArray = Array.from(weeksInMonth).sort((a, b) => a - b);
+
   const buckets: Buckets = { regular: {}, commuter: {} };
 
   // Map (person_id|segment) -> Map<DayLetter, role_id> for precise subtraction
@@ -246,7 +350,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
       const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
       const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
-      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>() });
+      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel: '' });
       personBucket.roles.add(row.role_name);
 
       if (s === 'AM') personBucket.AM.add(dayLetter);
@@ -261,9 +365,30 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     }
   }
 
-  // 2) Apply defaults, but:
+  // 2) Process week overrides FIRST to build a map of which weeks each person has overrides for
+  //    This allows us to determine which weeks the default applies to
+  // Key: person_id|segment|groupCode -> array of week numbers
+  const weekOverrideGroupMap = new Map<string, number[]>();
+  for (const row of perWeeks) {
+    const segNorm = (row.segment || '').toString().trim().toUpperCase();
+    if (segNorm === 'LUNCH') continue;
+    const code = GROUP_INFO[row.group_name]?.code;
+    if (!code) continue;
+    const segs = expandSegments(segNorm);
+    for (const s of segs) {
+      const key = `${row.person_id}|${s}|${code}`;
+      const existing = weekOverrideGroupMap.get(key) || [];
+      if (!existing.includes(row.week_number)) {
+        existing.push(row.week_number);
+      }
+      weekOverrideGroupMap.set(key, existing);
+    }
+  }
+
+  // 3) Apply defaults, considering week overrides:
   //    - Respect AVAILABILITY
   //    - SUBTRACT days that have per-day rows with a DIFFERENT role (by DAY LETTER)
+  //    - Check for week overrides to determine if person appears in multiple groups with week labels
   for (const row of defaults) {
     const code = GROUP_INFO[row.group_name]?.code;
     if (!code) continue;
@@ -273,6 +398,28 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     const segs = expandSegments(segNorm);
     for (const s of segs) {
       const dayMap = perDayMap.get(psKey(row.person_id, s));
+      const weekMap = weekOverrideMap.get(psKey(row.person_id, s));
+
+      // Determine which weeks have overrides to a DIFFERENT group
+      const overriddenWeeks: number[] = [];
+      const defaultWeeks: number[] = [];
+      
+      for (const weekNum of allWeeksArray) {
+        const weekOverride = weekMap?.get(weekNum);
+        if (weekOverride) {
+          const overrideCode = GROUP_INFO[weekOverride.groupName]?.code;
+          if (overrideCode && overrideCode !== code) {
+            // This week is overridden to a different group
+            overriddenWeeks.push(weekNum);
+          } else {
+            // Override is to the same group, treat as default
+            defaultWeeks.push(weekNum);
+          }
+        } else {
+          // No override, use default
+          defaultWeeks.push(weekNum);
+        }
+      }
 
       const keepLetters: DayLetter[] = [];
       for (const d of DAY_ORDER) {
@@ -288,10 +435,56 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
       const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
       const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
-      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>() });
+      
+      // Calculate week label for this default entry
+      let weekLabel = '';
+      if (overriddenWeeks.length > 0 && defaultWeeks.length > 0) {
+        // Person has some weeks overridden to different groups - show week label
+        weekLabel = formatWeekLabel(defaultWeeks);
+      }
+      
+      // Use a composite key for person entries when week labels differ
+      const personKey = weekLabel ? `${row.person}|${weekLabel}` : row.person;
+      const personBucket = groupBucket[personKey] || (groupBucket[personKey] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel });
       personBucket.roles.add(row.role_name);
 
       for (const d of keepLetters) {
+        if (s === 'AM') personBucket.AM.add(d);
+        else personBucket.PM.add(d);
+      }
+    }
+  }
+
+  // 4) Add week override entries to their respective groups with week labels
+  for (const row of perWeeks) {
+    const segNorm = (row.segment || '').toString().trim().toUpperCase();
+    if (segNorm === 'LUNCH') continue;
+    const code = GROUP_INFO[row.group_name]?.code;
+    if (!code) continue;
+
+    const segs = expandSegments(segNorm);
+    for (const s of segs) {
+      // Find which weeks this person has overrides for in this specific group
+      const key = `${row.person_id}|${s}|${code}`;
+      const weeksForThisGroup = weekOverrideGroupMap.get(key) || [];
+      
+      // Check if person also has a default that differs from this override group
+      const personDefault = defaults.find(d => d.person_id === row.person_id && expandSegments(d.segment).includes(s));
+      const defaultCode = personDefault ? GROUP_INFO[personDefault.group_name]?.code : null;
+      
+      // Only add week labels if the override is to a different group than the default
+      const needsWeekLabel = defaultCode && defaultCode !== code;
+      const weekLabel = needsWeekLabel ? formatWeekLabel(weeksForThisGroup) : '';
+      
+      const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
+      const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
+      const personKey = weekLabel ? `${row.person}|${weekLabel}` : row.person;
+      const personBucket = groupBucket[personKey] || (groupBucket[personKey] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel });
+      personBucket.roles.add(row.role_name);
+
+      // Add all available days for this segment (week overrides apply to all days of their weeks)
+      for (const d of DAY_ORDER) {
+        if (!isAllowedByAvail(d, s, row)) continue;
         if (s === 'AM') personBucket.AM.add(d);
         else personBucket.PM.add(d);
       }
@@ -332,7 +525,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   function renderBlock(
     pane: 'kitchen1'|'kitchen2'|'dining',
     group: string,
-    people: Record<string,{AM:Set<DayLetter>;PM:Set<DayLetter>;roles:Set<string>}>)
+    people: Record<string,{AM:Set<DayLetter>;PM:Set<DayLetter>;roles:Set<string>;weekLabel:string}>)
   {
     const startCol = pane==='kitchen1'?1:pane==='kitchen2'?6:11;
     if (!people || !Object.keys(people).length) return;
@@ -365,6 +558,9 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     const names = Object.keys(people).sort((a,b)=>a.localeCompare(b));
     for (const name of names) {
       const info = people[name];
+      
+      // Extract actual person name (strip composite key suffix if present)
+      const actualName = info.weekLabel ? name.replace(`|${info.weekLabel}`, '') : name;
 
       // Shift column: blank if both AM & PM somewhere in the week
       const hasAM = info.AM.size > 0;
@@ -393,7 +589,9 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
         days = dayList.length === DAY_ORDER.length ? 'Full-Time' : dayList.join('/');
       }
 
-      ws.getCell(r, startCol).value = name;
+      // Display name with week label if present
+      const displayName = info.weekLabel ? `${actualName} (${info.weekLabel})` : actualName;
+      ws.getCell(r, startCol).value = displayName;
       ws.getCell(r, startCol).alignment = { vertical: 'top', wrapText: true };
 
       const roleNames = Array.from(info.roles)
@@ -502,6 +700,46 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     mddMonth.params
   );
 
+  // Query lunch week overrides
+  const lunchPerWeeks = all<WeekRow>(
+    `SELECT mdw.person_id, mdw.week_number, mdw.segment,
+            g.name AS group_name, r.id AS role_id, r.name AS role_name,
+            (p.last_name || ', ' || p.first_name) AS person,
+            p.commuter AS commuter,
+            p.avail_mon, p.avail_tue, p.avail_wed, p.avail_thu, p.avail_fri,
+            mdw.month as month
+       FROM monthly_default_week mdw
+      JOIN role r ON r.id = mdw.role_id
+      JOIN grp  g ON g.id = r.group_id
+      JOIN person p ON p.id = mdw.person_id
+      WHERE ${mdwMonth.where} AND p.active = 1 AND TRIM(UPPER(mdw.segment)) = 'LUNCH'`,
+    mdwMonth.params
+  );
+
+  // Build lunch week override maps
+  const lunchWeekOverrideMap = new Map<number, Map<number, { roleId: number; groupName: string; roleName: string }>>();
+  for (const row of lunchPerWeeks) {
+    let weekMap = lunchWeekOverrideMap.get(row.person_id);
+    if (!weekMap) {
+      weekMap = new Map();
+      lunchWeekOverrideMap.set(row.person_id, weekMap);
+    }
+    weekMap.set(row.week_number, { roleId: row.role_id, groupName: row.group_name, roleName: row.role_name });
+  }
+
+  // Build lunch week override group map
+  const lunchWeekOverrideGroupMap = new Map<string, number[]>();
+  for (const row of lunchPerWeeks) {
+    const code = GROUP_INFO[row.group_name]?.code;
+    if (!code) continue;
+    const key = `${row.person_id}|${code}`;
+    const existing = lunchWeekOverrideGroupMap.get(key) || [];
+    if (!existing.includes(row.week_number)) {
+      existing.push(row.week_number);
+    }
+    lunchWeekOverrideGroupMap.set(key, existing);
+  }
+
   const lunchBuckets: LunchBuckets = { regular: {}, commuter: {} };
   const lunchPerDayMap = new Map<number, Map<DayLetter, number>>();
 
@@ -516,7 +754,8 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     const personBucket = groupBucket[row.person] || (groupBucket[row.person] = {
       days: new Set<DayLetter>(),
       roles: new Set<string>(),
-      roleDays: new Map<string, Set<DayLetter>>()
+      roleDays: new Map<string, Set<DayLetter>>(),
+      weekLabel: ''
     });
     personBucket.roles.add(row.role_name);
     let roleDaySet = personBucket.roleDays.get(row.role_name);
@@ -538,6 +777,26 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     const code = GROUP_INFO[row.group_name]?.code;
     if (!code) continue;
     const dayMap = lunchPerDayMap.get(row.person_id);
+    const weekMap = lunchWeekOverrideMap.get(row.person_id);
+    
+    // Determine which weeks have overrides to a DIFFERENT group
+    const overriddenWeeks: number[] = [];
+    const defaultWeeks: number[] = [];
+    
+    for (const weekNum of allWeeksArray) {
+      const weekOverride = weekMap?.get(weekNum);
+      if (weekOverride) {
+        const overrideCode = GROUP_INFO[weekOverride.groupName]?.code;
+        if (overrideCode && overrideCode !== code) {
+          overriddenWeeks.push(weekNum);
+        } else {
+          defaultWeeks.push(weekNum);
+        }
+      } else {
+        defaultWeeks.push(weekNum);
+      }
+    }
+    
     const keepLetters: DayLetter[] = [];
     for (const d of DAY_ORDER) {
       if (!isAllowedForLunch(d, row)) continue;
@@ -549,13 +808,59 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     if (keepLetters.length === 0) continue;
     const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
     const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
-    const personBucket = groupBucket[row.person] || (groupBucket[row.person] = {
+    
+    // Calculate week label for this default entry
+    let weekLabel = '';
+    if (overriddenWeeks.length > 0 && defaultWeeks.length > 0) {
+      weekLabel = formatWeekLabel(defaultWeeks);
+    }
+    
+    const personKey = weekLabel ? `${row.person}|${weekLabel}` : row.person;
+    const personBucket = groupBucket[personKey] || (groupBucket[personKey] = {
       days: new Set<DayLetter>(),
       roles: new Set<string>(),
-      roleDays: new Map<string, Set<DayLetter>>()
+      roleDays: new Map<string, Set<DayLetter>>(),
+      weekLabel
     });
     personBucket.roles.add(row.role_name);
     for (const d of keepLetters) {
+      personBucket.days.add(d);
+      let roleDaySet = personBucket.roleDays.get(row.role_name);
+      if (!roleDaySet) {
+        roleDaySet = new Set<DayLetter>();
+        personBucket.roleDays.set(row.role_name, roleDaySet);
+      }
+      roleDaySet.add(d);
+    }
+  }
+
+  // Add lunch week override entries
+  for (const row of lunchPerWeeks) {
+    const code = GROUP_INFO[row.group_name]?.code;
+    if (!code) continue;
+
+    const key = `${row.person_id}|${code}`;
+    const weeksForThisGroup = lunchWeekOverrideGroupMap.get(key) || [];
+    
+    const personDefault = lunchDefaults.find(d => d.person_id === row.person_id);
+    const defaultCode = personDefault ? GROUP_INFO[personDefault.group_name]?.code : null;
+    
+    const needsWeekLabel = defaultCode && defaultCode !== code;
+    const weekLabel = needsWeekLabel ? formatWeekLabel(weeksForThisGroup) : '';
+    
+    const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
+    const groupBucket = lunchBuckets[kind][code] || (lunchBuckets[kind][code] = {});
+    const personKey = weekLabel ? `${row.person}|${weekLabel}` : row.person;
+    const personBucket = groupBucket[personKey] || (groupBucket[personKey] = {
+      days: new Set<DayLetter>(),
+      roles: new Set<string>(),
+      roleDays: new Map<string, Set<DayLetter>>(),
+      weekLabel
+    });
+    personBucket.roles.add(row.role_name);
+    
+    for (const d of DAY_ORDER) {
+      if (!isAllowedForLunch(d, row)) continue;
       personBucket.days.add(d);
       let roleDaySet = personBucket.roleDays.get(row.role_name);
       if (!roleDaySet) {
@@ -581,7 +886,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
   let lunchRow = 2;
 
-  function renderLunchBlock(group: string, people: Record<string, { days: Set<DayLetter>; roles: Set<string>; roleDays: Map<string, Set<DayLetter>> }>) {
+  function renderLunchBlock(group: string, people: Record<string, { days: Set<DayLetter>; roles: Set<string>; roleDays: Map<string, Set<DayLetter>>; weekLabel: string }>) {
     if (!people || !Object.keys(people).length) return;
     wsL.mergeCells(lunchRow, 1, lunchRow, 4);
     const hcell = wsL.getCell(lunchRow, 1);
@@ -607,7 +912,11 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     const names = Object.keys(people).sort((a, b) => a.localeCompare(b));
     for (const name of names) {
       const info = people[name];
-      wsL.getCell(r, 1).value = name;
+      
+      // Extract actual person name and display with week label if present
+      const actualName = info.weekLabel ? name.replace(`|${info.weekLabel}`, '') : name;
+      const displayName = info.weekLabel ? `${actualName} (${info.weekLabel})` : actualName;
+      wsL.getCell(r, 1).value = displayName;
       wsL.getCell(r, 1).alignment = { vertical: 'top', wrapText: true };
       
       const roleNames = Array.from(info.roles)
