@@ -253,12 +253,16 @@ export const migrate26AddMultiConditionSegmentAdjustments: Migration = (db) => {
       FOREIGN KEY (condition_role_id) REFERENCES role(id)
     );`);
     
-    // 2. Add logic_operator column to segment_adjustment table (default to 'AND')
-    try {
-      db.run(`ALTER TABLE segment_adjustment ADD COLUMN logic_operator TEXT CHECK(logic_operator IN ('AND','OR')) NOT NULL DEFAULT 'AND';`);
-    } catch (e) {
-      // Column might already exist
-      console.log('logic_operator column may already exist:', e);
+    // 2. Check if logic_operator column already exists
+    const tableInfo = db.exec(`PRAGMA table_info(segment_adjustment);`);
+    const hasLogicOperator = tableInfo[0]?.values?.some((row: any[]) => row[1] === 'logic_operator');
+    
+    if (!hasLogicOperator) {
+      // Add logic_operator column without NOT NULL constraint initially
+      db.run(`ALTER TABLE segment_adjustment ADD COLUMN logic_operator TEXT DEFAULT 'AND';`);
+      
+      // Update existing rows to have 'AND' as the default
+      db.run(`UPDATE segment_adjustment SET logic_operator = 'AND' WHERE logic_operator IS NULL;`);
     }
     
     // 3. Migrate existing data from segment_adjustment to segment_adjustment_condition
