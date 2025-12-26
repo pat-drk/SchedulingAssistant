@@ -5,6 +5,7 @@ import "react-resizable/css/styles.css";
 import type { Segment, SegmentRow } from "../services/segments";
 import type { SegmentAdjustmentRow } from "../services/segmentAdjustments";
 import { listSegmentAdjustmentConditions } from "../services/segmentAdjustments";
+import { getEventsForDate, getAdjustedSegments, formatTime12h, type DepartmentEvent } from "../services/departmentEvents";
 import "../styles/scrollbar.css";
 import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
@@ -33,8 +34,11 @@ import {
   Title3,
   Subtitle2,
   Tooltip,
+  MessageBar,
+  MessageBarBody,
+  MessageBarTitle,
 } from "@fluentui/react-components";
-import { Navigation20Regular } from "@fluentui/react-icons";
+import { Navigation20Regular, CalendarMonth20Regular } from "@fluentui/react-icons";
 import AlertDialog from "./AlertDialog";
 import ConfirmDialog from "./ConfirmDialog";
 import { useDialogs } from "../hooks/useDialogs";
@@ -406,6 +410,17 @@ export default function DailyRunBoard({
       stmt.free();
     } catch {}
   }
+
+  // Department events for the selected date
+  const departmentEvents = useMemo((): DepartmentEvent[] => {
+    if (!sqlDb) return [];
+    return getEventsForDate(sqlDb, ymd(selectedDateObj));
+  }, [sqlDb, ymd, selectedDateObj]);
+
+  // Adjusted segments (accounts for department events carving out time)
+  const adjustedSegments = useMemo(() => {
+    return getAdjustedSegments(segments, departmentEvents);
+  }, [segments, departmentEvents]);
 
   const assignedCountMap = useMemo(() => {
     const rows = all(
@@ -1608,6 +1623,57 @@ export default function DailyRunBoard({
           </Button>
         </div>
       </div>
+
+      {/* Department Events Banner */}
+      {departmentEvents.length > 0 && (
+        <div style={{ marginBottom: tokens.spacingVerticalM }}>
+          {departmentEvents.map((event) => {
+            // Find affected segments for this event
+            const affectedSegs = adjustedSegments.filter(
+              (adjSeg) =>
+                !adjSeg.blocked &&
+                adjSeg.is_split &&
+                adjSeg.original_start !== adjSeg.adjusted_start ||
+                adjSeg.original_end !== adjSeg.adjusted_end
+            );
+            const blockedSegs = adjustedSegments.filter((adjSeg) => adjSeg.blocked);
+            
+            return (
+              <MessageBar
+                key={event.id}
+                intent="warning"
+                style={{ marginBottom: tokens.spacingVerticalS }}
+              >
+                <MessageBarBody>
+                  <MessageBarTitle>
+                    <CalendarMonth20Regular style={{ marginRight: tokens.spacingHorizontalXS, verticalAlign: 'middle' }} />
+                    {event.title}
+                  </MessageBarTitle>
+                  <div>
+                    {formatTime12h(event.start_time)} – {formatTime12h(event.end_time)}
+                    {event.description && <span> — {event.description}</span>}
+                  </div>
+                  {(affectedSegs.length > 0 || blockedSegs.length > 0) && (
+                    <div style={{ marginTop: tokens.spacingVerticalXS, fontSize: tokens.fontSizeBase200 }}>
+                      {blockedSegs.length > 0 && (
+                        <span style={{ color: tokens.colorPaletteRedForeground1 }}>
+                          Blocked segments: {blockedSegs.map((s) => s.name).join(', ')}
+                        </span>
+                      )}
+                      {affectedSegs.length > 0 && (
+                        <span>
+                          {blockedSegs.length > 0 ? ' • ' : ''}
+                          Adjusted segments: {affectedSegs.map((s) => `${s.name} (${formatTime12h(s.adjusted_start)}–${formatTime12h(s.adjusted_end)})`).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </MessageBarBody>
+              </MessageBar>
+            );
+          })}
+        </div>
+      )}
 
       {isMobile ? (
         <div style={{ display: "flex", flexDirection: "column", gap: tokens.spacingHorizontalL }}>
