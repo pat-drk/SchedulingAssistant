@@ -16,9 +16,11 @@ import {
 import {
   Settings20Regular,
   CalendarLtr20Regular,
+  CalendarMonth20Regular,
   DatabaseLightning20Regular,
 } from "@fluentui/react-icons";
 import SegmentEditor from "./SegmentEditor";
+import DepartmentEventManager from "./DepartmentEventManager";
 import SegmentAdjustmentEditor from "./SegmentAdjustmentEditor";
 import GroupEditor from "./GroupEditor";
 import RoleEditor from "./RoleEditor";
@@ -119,6 +121,17 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, onTimeOf
           </div>
         </Card>
         <TimeOffManager all={all} run={run} refresh={refresh} />
+      </div>
+
+      <Divider />
+
+      {/* Department Events Section */}
+      <div className={s.section}>
+        <div className={s.sectionHeader}>
+          <CalendarMonth20Regular />
+          <Text className={s.sectionTitle}>Department Events</Text>
+        </div>
+        <DepartmentEventManager all={all} run={run} refresh={refresh} />
       </div>
 
       <Divider />

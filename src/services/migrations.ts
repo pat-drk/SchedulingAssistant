@@ -308,6 +308,24 @@ export const migrate27AddTimeOffThreshold: Migration = (db) => {
   }
 };
 
+// 28. Add department_event table for crew-wide events (meetings, training, etc.)
+export const migrate28AddDepartmentEvent: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS department_event (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    date TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    group_id INTEGER,
+    role_id INTEGER,
+    description TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (group_id) REFERENCES grp(id),
+    FOREIGN KEY (role_id) REFERENCES role(id)
+  );`);
+  console.log('Migration 28 complete - added department_event table');
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -824,6 +842,7 @@ const migrations: Record<number, Migration> = {
   25: migrate25AddWeekStartMode,
   26: migrate26AddMultiConditionSegmentAdjustments,
   27: migrate27AddTimeOffThreshold,
+  28: migrate28AddDepartmentEvent,
 };
 
 export function addMigration(version: number, fn: Migration) {
