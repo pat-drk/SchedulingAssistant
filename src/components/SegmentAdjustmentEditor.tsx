@@ -195,7 +195,17 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments, d
   }
 
   function load() {
-    const adjRows = all(`SELECT id,condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,COALESCE(logic_operator,'AND') as logic_operator FROM segment_adjustment`);
+    let adjRows: any[];
+    try {
+      // Try query with logic_operator column
+      adjRows = all(`SELECT id,condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,COALESCE(logic_operator,'AND') as logic_operator FROM segment_adjustment`);
+    } catch (e) {
+      // Fall back to query without logic_operator for pre-migration databases
+      console.log('Querying segment_adjustment without logic_operator (pre-migration)');
+      adjRows = all(`SELECT id,condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes FROM segment_adjustment`);
+      // Add default logic_operator to each row
+      adjRows = adjRows.map(row => ({ ...row, logic_operator: 'AND' }));
+    }
     setRows(adjRows);
     setRoles(all(`SELECT id,name FROM role ORDER BY name`));
     
@@ -284,31 +294,59 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments, d
     let adjustmentId: number;
     
     if (editing) {
-      run(
-        `UPDATE segment_adjustment SET condition_segment=?, condition_role_id=?, target_segment=?, target_field=?, baseline=?, offset_minutes=?, logic_operator=? WHERE id=?`,
-        [...params, editing.id]
-      );
+      try {
+        // Try to update with logic_operator column
+        run(
+          `UPDATE segment_adjustment SET condition_segment=?, condition_role_id=?, target_segment=?, target_field=?, baseline=?, offset_minutes=?, logic_operator=? WHERE id=?`,
+          [...params, editing.id]
+        );
+      } catch (e) {
+        // Fall back to update without logic_operator for pre-migration databases
+        console.log('Updating segment_adjustment without logic_operator (pre-migration)');
+        run(
+          `UPDATE segment_adjustment SET condition_segment=?, condition_role_id=?, target_segment=?, target_field=?, baseline=?, offset_minutes=? WHERE id=?`,
+          [params[0], params[1], params[2], params[3], params[4], params[5], editing.id]
+        );
+      }
       adjustmentId = editing.id;
       
-      // Delete existing conditions
-      run(`DELETE FROM segment_adjustment_condition WHERE adjustment_id=?`, [adjustmentId]);
+      // Delete existing conditions (safe to fail if table doesn't exist)
+      try {
+        run(`DELETE FROM segment_adjustment_condition WHERE adjustment_id=?`, [adjustmentId]);
+      } catch (e) {
+        console.log('segment_adjustment_condition table does not exist (pre-migration)');
+      }
     } else {
-      run(
-        `INSERT INTO segment_adjustment (condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,logic_operator) VALUES (?,?,?,?,?,?,?)`,
-        params
-      );
+      try {
+        // Try to insert with logic_operator column
+        run(
+          `INSERT INTO segment_adjustment (condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes,logic_operator) VALUES (?,?,?,?,?,?,?)`,
+          params
+        );
+      } catch (e) {
+        // Fall back to insert without logic_operator for pre-migration databases
+        console.log('Inserting into segment_adjustment without logic_operator (pre-migration)');
+        run(
+          `INSERT INTO segment_adjustment (condition_segment,condition_role_id,target_segment,target_field,baseline,offset_minutes) VALUES (?,?,?,?,?,?)`,
+          [params[0], params[1], params[2], params[3], params[4], params[5]]
+        );
+      }
       
       // Get the last inserted ID
       const result = all(`SELECT last_insert_rowid() as id`);
       adjustmentId = result[0]?.id;
     }
     
-    // Insert all conditions into the condition table
-    for (const cond of validConditions) {
-      run(
-        `INSERT INTO segment_adjustment_condition (adjustment_id, condition_segment, condition_role_id) VALUES (?, ?, ?)`,
-        [adjustmentId, cond.condition_segment, cond.condition_role_id]
-      );
+    // Insert all conditions into the condition table (safe to fail if table doesn't exist)
+    try {
+      for (const cond of validConditions) {
+        run(
+          `INSERT INTO segment_adjustment_condition (adjustment_id, condition_segment, condition_role_id) VALUES (?, ?, ?)`,
+          [adjustmentId, cond.condition_segment, cond.condition_role_id]
+        );
+      }
+    } catch (e) {
+      console.log('segment_adjustment_condition table does not exist (pre-migration)');
     }
     
     load();
@@ -328,7 +366,12 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments, d
     const confirmed = await dialogs.showConfirm("Are you sure you want to delete this adjustment?", "Delete Adjustment");
     if (!confirmed) return;
     run(`DELETE FROM segment_adjustment WHERE id=?`, [id]);
-    run(`DELETE FROM segment_adjustment_condition WHERE adjustment_id=?`, [id]);
+    // Delete from condition table (safe to fail if table doesn't exist)
+    try {
+      run(`DELETE FROM segment_adjustment_condition WHERE adjustment_id=?`, [id]);
+    } catch (e) {
+      console.log('segment_adjustment_condition table does not exist (pre-migration)');
+    }
     load();
     refresh();
   }

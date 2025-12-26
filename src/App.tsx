@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { applyMigrations } from "./services/migrations";
 import { listSegments, type Segment, type SegmentRow } from "./services/segments";
-import { listSegmentAdjustments, type SegmentAdjustmentRow } from "./services/segmentAdjustments";
+import { listSegmentAdjustments, listSegmentAdjustmentConditions, type SegmentAdjustmentRow } from "./services/segmentAdjustments";
 import { availabilityFor } from "./services/availability";
 import SideRail, { TabKey } from "./components/SideRail";
 import TopBar from "./components/TopBar";
@@ -653,13 +653,37 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        // @ts-ignore
-        const initSqlJs = (await import("sql.js")).default;
-        // Configure to load WASM files from public directory
+        // Load sql.js via CDN script tag (npm import is broken by Vite bundling)
+        const cdnUrl = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js';
+        
+        // Check if already loaded
+        if (!(window as any).initSqlJs) {
+          await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = cdnUrl;
+            script.onload = () => {
+              logger.info("sql.js script loaded from CDN");
+              resolve();
+            };
+            script.onerror = (e) => {
+              logger.error("Failed to load sql.js script:", e);
+              reject(new Error('Failed to load sql.js from CDN'));
+            };
+            document.head.appendChild(script);
+          });
+        }
+        
+        const initSqlJs = (window as any).initSqlJs;
+        if (!initSqlJs) {
+          throw new Error('initSqlJs not found on window after script load');
+        }
+        
+        // Configure to load WASM files from CDN
         SQL = await initSqlJs({ 
-          locateFile: (file: string) => `${import.meta.env.BASE_URL}sql-wasm/${file}`
+          locateFile: (file: string) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
         });
         setReady(true);
+        logger.info("sql.js initialized successfully");
       } catch (error) {
         logger.error("Failed to initialize sql.js:", error);
         const errorMsg = "Failed to initialize database engine. Please refresh the page.";
@@ -698,6 +722,11 @@ export default function App() {
   }
 
   async function openDbFromFile() {
+    if (!SQL) {
+      setStatus("Database engine not initialized. Please wait and try again.");
+      setAlertDialog({ title: "Error Opening Database", message: "Database engine not ready. Please wait a moment and try again." });
+      return;
+    }
     try {
       // Ask user for SQLite DB
       const [handle] = await (window as any).showOpenFilePicker({
@@ -1081,11 +1110,50 @@ export default function App() {
       set.add(a.role_id);
     }
 
-    // Apply segment adjustments only if this person has assignments in the condition segment
+    // Helper function to check if adjustment conditions are met for this person
+    const checkAdjustmentConditions = (adj: SegmentAdjustmentRow): boolean => {
+      try {
+        const conditions = listSegmentAdjustmentConditions(sqlDb, adj.id);
+        
+        // If no conditions in new table, fall back to old format
+        if (conditions.length === 0) {
+          const roles = segRoleMap.get(adj.condition_segment);
+          if (!roles) return false;
+          if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) return false;
+          return true;
+        }
+        
+        // Check multiple conditions with AND/OR logic
+        const logicOp = adj.logic_operator || 'AND';
+        
+        if (logicOp === 'AND') {
+          return conditions.every(cond => {
+            const roles = segRoleMap.get(cond.condition_segment);
+            if (!roles) return false;
+            if (cond.condition_role_id != null && !roles.has(cond.condition_role_id)) return false;
+            return true;
+          });
+        } else {
+          return conditions.some(cond => {
+            const roles = segRoleMap.get(cond.condition_segment);
+            if (!roles) return false;
+            if (cond.condition_role_id != null && !roles.has(cond.condition_role_id)) return false;
+            return true;
+          });
+        }
+      } catch (e) {
+        // If table doesn't exist yet (old DB), fall back to old format
+        const roles = segRoleMap.get(adj.condition_segment);
+        if (!roles) return false;
+        if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) return false;
+        return true;
+      }
+    };
+
+    // Apply segment adjustments only if this person meets the conditions
     for (const adj of segmentAdjustments) {
-      const roles = segRoleMap.get(adj.condition_segment);
-      if (!roles) continue;
-      if (adj.condition_role_id != null && !roles.has(adj.condition_role_id)) continue;
+      if (!checkAdjustmentConditions(adj)) continue;
+      
       const target = out[adj.target_segment];
       if (!target) continue;
       const cond = out[adj.condition_segment];
@@ -2404,6 +2472,7 @@ function PeopleEditor(){
                 exportShifts={exportShifts}
                 all={all}
                 segmentTimesForDate={segmentTimesForDate}
+                segmentTimesForPersonDate={segmentTimesForPersonDate}
                 listTimeOffIntervals={listTimeOffIntervals}
                 subtractIntervals={subtractIntervals}
                 groups={groups}

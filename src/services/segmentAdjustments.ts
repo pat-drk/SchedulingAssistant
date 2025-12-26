@@ -53,14 +53,21 @@ export function listSegmentAdjustments(db: Database): SegmentAdjustmentRow[] {
 
 export function listSegmentAdjustmentConditions(db: Database, adjustmentId: number): SegmentAdjustmentCondition[] {
   try {
-    const res = db.exec(`SELECT id, adjustment_id, condition_segment, condition_role_id FROM segment_adjustment_condition WHERE adjustment_id = ?`, [adjustmentId]);
-    const values = res[0]?.values || [];
-    return values.map(row => ({
-      id: Number(row[0]),
-      adjustment_id: Number(row[1]),
-      condition_segment: String(row[2]),
-      condition_role_id: row[3] != null ? Number(row[3]) : null
-    }));
+    // Use prepared statement for proper parameter binding (db.exec doesn't bind params correctly)
+    const stmt = db.prepare(`SELECT id, adjustment_id, condition_segment, condition_role_id FROM segment_adjustment_condition WHERE adjustment_id = ?`);
+    stmt.bind([adjustmentId]);
+    const rows: SegmentAdjustmentCondition[] = [];
+    while (stmt.step()) {
+      const row = stmt.get();
+      rows.push({
+        id: Number(row[0]),
+        adjustment_id: Number(row[1]),
+        condition_segment: String(row[2]),
+        condition_role_id: row[3] != null ? Number(row[3]) : null
+      });
+    }
+    stmt.free();
+    return rows;
   } catch (e) {
     // Table doesn't exist yet (pre-migration), return empty array
     return [];

@@ -23,6 +23,7 @@ interface ExportPreviewProps {
   exportShifts: () => void;
   all: (sql: string, params?: any[]) => any[];
   segmentTimesForDate: (date: Date) => Record<string, { start: Date; end: Date }>;
+  segmentTimesForPersonDate: (date: Date, personAssigns: Array<{ segment: string; role_id: number }>) => Record<string, { start: Date; end: Date }>;
   listTimeOffIntervals: (personId: number, date: Date) => Array<{ start: Date; end: Date }>;
   subtractIntervals: (
     start: Date,
@@ -61,6 +62,7 @@ export default function ExportPreview({
   exportShifts,
   all,
   segmentTimesForDate,
+  segmentTimesForPersonDate,
   listTimeOffIntervals,
   subtractIntervals,
   groups,
@@ -131,8 +133,18 @@ export default function ExportPreview({
           [dYMD]
         );
 
-        const segMap = segmentTimesForDate(d);
+        // Group assignments by person to get per-person segment times
+        const assignsByPerson = new Map<number, typeof assigns>();
         for (const a of assigns) {
+          const list = assignsByPerson.get(a.person_id) || [];
+          list.push(a);
+          assignsByPerson.set(a.person_id, list);
+        }
+
+        for (const a of assigns) {
+          // Calculate segment times specifically for this person's assignments
+          const personAssigns = assignsByPerson.get(a.person_id) || [];
+          const segMap = segmentTimesForPersonDate(d, personAssigns);
           const seg = segMap[a.segment];
           if (!seg) continue;
           let windows: Array<{ start: Date; end: Date }> = [
