@@ -1117,6 +1117,54 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
     personBucket.roles.add(row.role_name);
   }
 
+  // Query department events for this date
+  type DepartmentEventRow = {
+    id: number;
+    title: string;
+    start_time: string;
+    end_time: string;
+    group_id: number | null;
+    group_name: string | null;
+    role_id: number | null;
+    role_name: string | null;
+    description: string | null;
+  };
+  
+  const departmentEvents = all<DepartmentEventRow>(
+    `SELECT de.id, de.title, de.start_time, de.end_time, 
+            de.group_id, g.name AS group_name,
+            de.role_id, r.name AS role_name,
+            de.description
+       FROM department_event de
+       LEFT JOIN grp g ON g.id = de.group_id
+       LEFT JOIN role r ON r.id = de.role_id
+       WHERE de.date = ?
+       ORDER BY de.start_time`,
+    [date]
+  );
+
+  // Query attendees for department events (assignments where segment matches event title)
+  type EventAssignmentRow = {
+    person: string;
+    segment: string;
+    commuter: number;
+  };
+
+  const eventAttendees = new Map<string, EventAssignmentRow[]>();
+  for (const event of departmentEvents) {
+    const attendees = all<EventAssignmentRow>(
+      `SELECT (p.last_name || ', ' || p.first_name) AS person,
+              a.segment,
+              p.commuter AS commuter
+         FROM assignment a
+        JOIN person p ON p.id = a.person_id
+        WHERE a.date = ? AND a.segment = ?
+        ORDER BY p.last_name, p.first_name`,
+      [date, event.title]
+    );
+    eventAttendees.set(event.title, attendees);
+  }
+
   // ---------- Sheet rendering ----------
   const dateObj = new Date(date);
   const dateText = dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -1350,6 +1398,118 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
       lunchRow += 1;
 
       renderLunchSection('commuter');
+    }
+  }
+
+  // ---------- Department Events sheet ----------
+  if (departmentEvents.length > 0) {
+    const wsE = wb.addWorksheet('Events');
+    wsE.columns = [
+      { width: 30 }, { width: 14 }, { width: 40 }
+    ];
+
+    wsE.mergeCells(1, 1, 1, 3);
+    const eventsTitleCell = wsE.getCell(1, 1);
+    eventsTitleCell.value = `Department Events — ${dateText}`;
+    eventsTitleCell.font = { bold: true, size: 18, name: 'Calibri' };
+    eventsTitleCell.alignment = { horizontal: 'center' };
+
+    let eventRow = 2;
+
+    // Helper to format time in 12-hour format
+    const formatTime12h = (time: string): string => {
+      const [h, m] = time.split(':').map(Number);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const hour = h % 12 || 12;
+      return `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
+    };
+
+    for (const event of departmentEvents) {
+      // Event header row
+      wsE.mergeCells(eventRow, 1, eventRow, 3);
+      const eventHeaderCell = wsE.getCell(eventRow, 1);
+      const timeRange = `${formatTime12h(event.start_time)} – ${formatTime12h(event.end_time)}`;
+      eventHeaderCell.value = `${event.title} (${timeRange})`;
+      eventHeaderCell.font = { bold: true, size: 16 };
+      eventHeaderCell.alignment = { horizontal: 'left' };
+      
+      // Use group color if available
+      const groupCode = event.group_name ? GROUP_INFO[event.group_name]?.code : null;
+      const fill = groupCode ? GROUP_INFO[event.group_name!]?.color || 'FFEFEFEF' : 'FFEFEFEF';
+      eventHeaderCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+      
+      for (let c = 1; c <= 3; c++) {
+        const cell = wsE.getCell(eventRow, c);
+        cell.border = { 
+          bottom: { style: 'thin' },
+          left: c === 1 ? { style: 'thin' } : undefined,
+          right: c === 3 ? { style: 'thin' } : undefined
+        };
+      }
+      eventRow++;
+
+      // Description row if present
+      if (event.description) {
+        wsE.mergeCells(eventRow, 1, eventRow, 3);
+        const descCell = wsE.getCell(eventRow, 1);
+        descCell.value = event.description;
+        descCell.font = { italic: true, size: 12 };
+        descCell.alignment = { horizontal: 'left', wrapText: true };
+        eventRow++;
+      }
+
+      // Attendees
+      const attendees = eventAttendees.get(event.title) || [];
+      if (attendees.length > 0) {
+        // Group into regular and commuters
+        const regularAttendees = attendees.filter(a => !a.commuter);
+        const commuterAttendees = attendees.filter(a => a.commuter);
+
+        for (const attendee of regularAttendees) {
+          wsE.getCell(eventRow, 1).value = attendee.person;
+          wsE.getCell(eventRow, 1).alignment = { vertical: 'top', wrapText: true };
+          wsE.getCell(eventRow, 1).font = { size: 14 };
+          for (let c = 1; c <= 3; c++) {
+            const cell = wsE.getCell(eventRow, c);
+            cell.border = { 
+              bottom: { style: 'thin' },
+              left: c === 1 ? { style: 'thin' } : undefined,
+              right: c === 3 ? { style: 'thin' } : undefined
+            };
+          }
+          eventRow++;
+        }
+
+        if (commuterAttendees.length > 0) {
+          wsE.mergeCells(eventRow, 1, eventRow, 3);
+          const commLabel = wsE.getCell(eventRow, 1);
+          commLabel.value = 'Commuters:';
+          commLabel.font = { italic: true, size: 12 };
+          eventRow++;
+
+          for (const attendee of commuterAttendees) {
+            wsE.getCell(eventRow, 1).value = attendee.person;
+            wsE.getCell(eventRow, 1).alignment = { vertical: 'top', wrapText: true };
+            wsE.getCell(eventRow, 1).font = { size: 14 };
+            for (let c = 1; c <= 3; c++) {
+              const cell = wsE.getCell(eventRow, c);
+              cell.border = { 
+                bottom: { style: 'thin' },
+                left: c === 1 ? { style: 'thin' } : undefined,
+                right: c === 3 ? { style: 'thin' } : undefined
+              };
+            }
+            eventRow++;
+          }
+        }
+      } else {
+        wsE.getCell(eventRow, 1).value = '(No attendees assigned)';
+        wsE.getCell(eventRow, 1).font = { italic: true, size: 12, color: { argb: 'FF888888' } };
+        eventRow++;
+      }
+
+      // Add spacing between events
+      eventRow++;
     }
   }
 

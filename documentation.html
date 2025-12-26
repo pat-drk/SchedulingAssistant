@@ -1153,6 +1153,80 @@
                     </div>
 
                     <h3 class="text-xl font-bold mb-6 text-[#0078d4] flex items-center gap-2">
+                        <i class="fas fa-calendar-alt"></i>
+                        Department Events
+                    </h3>
+                    <p class="text-sm text-[#616161] mb-6">Schedule department-wide events like meetings, training sessions, or gatherings that automatically assign all active crew members. Events display as banners on the Daily Run Board and are included in daily Excel exports.</p>
+                    
+                    <div class="table-container mb-8">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-[#fafafa] border-b text-[#616161]">
+                                <tr>
+                                    <th class="p-3 font-semibold">Field</th>
+                                    <th class="p-3 font-semibold">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
+                                <tr>
+                                    <td class="p-3 font-semibold">Title</td>
+                                    <td class="p-3">Event name (e.g., "Department Meeting", "Safety Training"). Used as the segment name for assignments.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Date</td>
+                                    <td class="p-3">The date the event takes place.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Start Time / End Time</td>
+                                    <td class="p-3">Event duration. Regular segments that overlap with this time will be automatically shortened or split.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Group</td>
+                                    <td class="p-3">Optional: Assign to a group for Excel export categorization. If not set, uses the event title as the group name.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Role</td>
+                                    <td class="p-3">Optional: Assign a specific role for the event. Defaults to the selected group name if not specified.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Description</td>
+                                    <td class="p-3">Optional notes about the event (e.g., location, agenda topics).</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-6 mb-12">
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                <i class="fas fa-users text-[#0078d4]"></i>
+                                Auto-Assignment
+                            </h5>
+                            <p class="text-xs text-[#616161]">When you create an event, all active crew members are automatically assigned. The event title becomes the segment name for these assignments.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                <i class="fas fa-clock text-[#0078d4]"></i>
+                                Segment Adjustment
+                            </h5>
+                            <p class="text-xs text-[#616161]">Events that overlap with regular segments (AM, PM, Lunch) automatically shorten or split those segments. A banner on the Daily Run Board shows affected segments.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                <i class="fas fa-file-excel text-[#107c10]"></i>
+                                Excel Export
+                            </h5>
+                            <p class="text-xs text-[#616161]">Daily schedule exports include an "Events" sheet listing all department events with their attendees, making it easy to track participation.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                <i class="fas fa-bell text-[#0078d4]"></i>
+                                Daily Run Board Banner
+                            </h5>
+                            <p class="text-xs text-[#616161]">Events display as informational banners at the top of the Daily Run Board, showing event time, title, and any affected segments.</p>
+                        </div>
+                    </div>
+
+                    <h3 class="text-xl font-bold mb-6 text-[#0078d4] flex items-center gap-2">
                         <i class="fas fa-cogs"></i>
                         Settings
                     </h3>

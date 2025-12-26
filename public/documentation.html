@@ -230,10 +230,12 @@
                                 </thead>
                                 <tbody class="text-[#424242]">
                                     <tr class="border-b"><td class="p-3 font-semibold">Local Data Storage</td><td class="p-3">All data saved to a local .db file on your machine.</td></tr>
-                                    <tr class="border-b"><td class="p-3 font-semibold">Single-Editor Model</td><td class="p-3">One person edits at a time to prevent data collision.</td></tr>
+                                    <tr class="border-b"><td class="p-3 font-semibold">Multi-User Sync</td><td class="p-3">Multiple users can edit simultaneously with automatic conflict resolution.</td></tr>
                                     <tr class="border-b"><td class="p-3 font-semibold">Availability Tracking</td><td class="p-3">Track AM, PM, or Full-Day availability per person.</td></tr>
                                     <tr class="border-b"><td class="p-3 font-semibold">Time-Off Integration</td><td class="p-3">Import vacation/sick leave from Teams CSV exports.</td></tr>
+                                    <tr class="border-b"><td class="p-3 font-semibold">Trainee Tracking</td><td class="p-3">6-month rotation management with progress tracking across training areas.</td></tr>
                                     <tr class="border-b"><td class="p-3 font-semibold">Training Matrix</td><td class="p-3">Ensures staff are qualified for assigned roles.</td></tr>
+                                    <tr class="border-b"><td class="p-3 font-semibold">AI Actions Menu</td><td class="p-3">Tutorial and troubleshooting prompts to help users navigate the app.</td></tr>
                                     <tr><td class="p-3 font-semibold">Excel Export</td><td class="p-3">Generate formatted schedules for bulk Teams import.</td></tr>
                                 </tbody>
                             </table>
@@ -257,11 +259,7 @@
                             <div class="step-number w-8 h-8 rounded flex items-center justify-center font-bold flex-shrink-0">2</div>
                             <div>
                                 <h4 class="font-bold text-[#242424] mb-1">Select File Location</h4>
-                                <p class="text-sm text-[#616161] mb-3">Click <strong>Save As</strong> to write the file to your disk.</p>
-                                <div class="message-bar message-bar-warning">
-                                    <i class="fas fa-warning mt-1"></i>
-                                    <p class="text-xs"><strong>IMPORTANT:</strong> Single-Editor Model. Only one person edits at a time.</p>
-                                </div>
+                                <p class="text-sm text-[#616161] mb-3">Click <strong>Save As</strong> to write the file to your disk. Multiple users can edit simultaneously with automatic sync.</p>
                             </div>
                         </div>
                         <div class="flex gap-6">
@@ -392,11 +390,6 @@
                                     <td class="p-3">Loads an existing <code>.db</code> file for editing.</td>
                                     <td class="p-3">Regular daily use to modify schedules.</td>
                                 </tr>
-                                <tr>
-                                    <td class="p-3 font-semibold">Open Read-Only</td>
-                                    <td class="p-3">Opens database without acquiring edit lock.</td>
-                                    <td class="p-3">Viewing schedules when someone else is editing.</td>
-                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -410,10 +403,10 @@
                     <div class="grid md:grid-cols-2 gap-6 mb-8">
                         <div class="p-6 bg-[#fdfdfd] border border-[#e0e0e0] rounded-lg shadow-sm">
                             <h4 class="font-bold text-[#242424] mb-2 text-sm">Save (Ctrl+S)</h4>
-                            <p class="text-xs text-[#616161] mb-3">Writes all changes back to the currently opened file.</p>
+                            <p class="text-xs text-[#616161] mb-3">Writes all changes back to the currently opened file and syncs with others.</p>
                             <ul class="text-xs text-[#616161] space-y-1">
                                 <li>• Requires write permission on the file</li>
-                                <li>• Only available if you hold the edit lock</li>
+                                <li>• Syncs changes to the shared changes folder</li>
                                 <li>• Use frequently to avoid data loss</li>
                             </ul>
                         </div>
@@ -422,38 +415,34 @@
                             <p class="text-xs text-[#005a9e] mb-3">Creates a new copy of the database at a different location.</p>
                             <ul class="text-xs text-[#005a9e] space-y-1">
                                 <li>• Use to create backups</li>
-                                <li>• Required if file is locked by another user</li>
                                 <li>• Prompts for new file location</li>
+                                <li>• Creates a separate sync environment</li>
                             </ul>
                         </div>
                     </div>
 
                     <h3 class="font-bold text-[#242424] mb-4 flex items-center gap-2">
-                        <i class="fas fa-lock text-[#0078d4]"></i>
-                        Single-Editor Model
+                        <i class="fas fa-sync text-[#0078d4]"></i>
+                        Multi-User Sync System
                     </h3>
-                    <p class="text-sm text-[#616161] mb-4">To prevent data conflicts, <strong>only one person should edit the database at a time</strong>. The app enforces this through a soft lock system stored in the <code>meta</code> table.</p>
+                    <p class="text-sm text-[#616161] mb-4">Multiple users can edit the database simultaneously. The app uses an operational log system with automatic conflict resolution to merge changes seamlessly.</p>
                     
-                    <div class="message-bar message-bar-warning mb-6">
-                        <i class="fas fa-exclamation-triangle mt-1"></i>
+                    <div class="p-4 bg-[#f0f7ff] border border-[#cce5ff] rounded-lg flex gap-3 items-start mb-6">
+                        <i class="fas fa-users text-[#0078d4] mt-1"></i>
                         <div>
-                            <p class="text-xs font-semibold mb-1">IMPORTANT: Collaborative Editing</p>
-                            <p class="text-xs">When opening a database, you'll be prompted to enter your Work Email to acquire the edit lock. If someone else already has the lock, you can:</p>
-                            <ul class="text-xs mt-2 space-y-1">
-                                <li>• Open in <strong>Read-Only mode</strong> to view without editing</li>
-                                <li>• Use <strong>Save As</strong> to create your own copy</li>
-                                <li>• Wait for the other person to finish and release the lock</li>
-                            </ul>
+                            <p class="text-xs text-[#005a9e] font-semibold mb-1">Collaborative Editing</p>
+                            <p class="text-xs text-[#005a9e]">When opening a database, you'll be prompted to enter your Work Email to identify your changes. All users can edit simultaneously—no more waiting for locks!</p>
                         </div>
                     </div>
 
                     <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd] mb-8">
-                        <h5 class="font-bold text-sm text-[#242424] mb-3">How the Lock System Works</h5>
+                        <h5 class="font-bold text-sm text-[#242424] mb-3">How the Sync System Works</h5>
                         <ol class="text-xs text-[#616161] space-y-2">
-                            <li><strong>1. Open Database:</strong> When you click "Open DB," the app checks the <code>meta</code> table for an active lock.</li>
-                            <li><strong>2. Lock Status:</strong> If unlocked, you're prompted to enter your email to claim the lock. If locked, you're shown who has it.</li>
-                            <li><strong>3. Read-Only Mode:</strong> If locked by someone else, the app opens in read-only mode (Save/Edit buttons disabled).</li>
-                            <li><strong>4. Releasing Lock:</strong> The lock persists in the file until manually changed. There's no automatic timeout.</li>
+                            <li><strong>1. User Identification:</strong> When you open a file, enter your email to identify your changes.</li>
+                            <li><strong>2. Change Tracking:</strong> All database operations are tracked with timestamps and user info.</li>
+                            <li><strong>3. Auto-Merge:</strong> Non-conflicting changes from other users are merged automatically in the background (every 30 seconds).</li>
+                            <li><strong>4. Conflict Resolution:</strong> If conflicts are detected (same field edited by multiple users), a dialog helps you resolve them.</li>
+                            <li><strong>5. Sync Status:</strong> The sync indicator in the top bar shows current sync state and active users.</li>
                         </ol>
                     </div>
 
@@ -556,7 +545,7 @@
                             </div>
                             <div class="p-6 bg-[#f0f7ff] rounded-lg border border-[#cce5ff]">
                                 <h4 class="font-bold text-[#005a9e] mb-2 text-sm">Auto-Fill Engine</h4>
-                                <p class="text-xs text-[#005a9e] leading-relaxed">System-generated suggestions based on training, availability patterns, and history weights. People with time-off conflicts are automatically excluded from suggestions.</p>
+                                <p class="text-xs text-[#005a9e] leading-relaxed">System-generated suggestions based on training, availability patterns, and history weights.</p>
                             </div>
                         </div>
 
@@ -608,29 +597,14 @@
                                             <td class="p-3">✅ Yes</td>
                                         </tr>
                                         <tr>
-                                            <td class="p-3 font-semibold">(Assigned)</td>
-                                            <td class="p-3">Person is assigned to another role that needs them.</td>
-                                            <td class="p-3">✅ Yes</td>
-                                        </tr>
-                                        <tr>
-                                            <td class="p-3 font-semibold">(Overstaffed)</td>
-                                            <td class="p-3">Person is assigned to a role with more staff than needed.</td>
-                                            <td class="p-3">✅ Yes</td>
-                                        </tr>
-                                        <tr>
                                             <td class="p-3 font-semibold">Partial Time Off</td>
-                                            <td class="p-3">Person has time-off overlap below the configured threshold (default 50%). Shows in italic text with yellow color in dropdowns. A confirmation dialog prompts you to confirm the assignment. Counts toward staffing needs.</td>
-                                            <td class="p-3">✅ Yes (with confirmation, counts toward needs)</td>
+                                            <td class="p-3">Person has time-off overlap below the configured threshold (default 50%). Shows in italic text with yellow color in dropdowns. A confirmation dialog prompts you to confirm the assignment.</td>
+                                            <td class="p-3">✅ Yes (with confirmation)</td>
                                         </tr>
                                         <tr>
                                             <td class="p-3 font-semibold">Time Off</td>
-                                            <td class="p-3">Person has time-off overlap at or above the configured threshold (default 50%). The threshold can be adjusted in Admin &gt; Time-Off Threshold Settings (range: 25-75%). Shows in italic text with orange color in dropdowns. Does <strong>not</strong> count toward staffing needs but can still be assigned if needed.</td>
-                                            <td class="p-3">✅ Yes (does not count toward needs)</td>
-                                        </tr>
-                                        <tr>
-                                            <td class="p-3 font-semibold">X/Y Badge</td>
-                                            <td class="p-3">Group header shows filled positions vs. total needed.</td>
-                                            <td class="p-3">N/A</td>
+                                            <td class="p-3">Person has time-off overlap at or above the configured threshold (default 50%). The threshold can be adjusted in Admin &gt; Time-Off Threshold Settings (range: 25-75%).</td>
+                                            <td class="p-3">❌ No (blocked)</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -668,6 +642,16 @@
                                         <td class="p-3 font-semibold">Work Email</td>
                                         <td class="p-3">Required for Teams Shifts export and user identification.</td>
                                         <td class="p-3">Email format</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Start Date</td>
+                                        <td class="p-3">Employment start date. Used for trainee tracking (first 6 months).</td>
+                                        <td class="p-3">Date picker</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">End Date</td>
+                                        <td class="p-3">Optional end date when a person leaves the organization.</td>
+                                        <td class="p-3">Date picker (optional)</td>
                                     </tr>
                                     <tr>
                                         <td class="p-3 font-semibold">Brother/Sister</td>
@@ -737,7 +721,52 @@
                     <!-- 6.3 Training & Qualifications -->
                     <div id="training" class="mb-24">
                         <h3 class="text-xl font-bold mb-6 text-[#0078d4]">Training & Qualifications</h3>
+                        <p class="text-sm text-[#616161] mb-8">The Training page has two main functions: tracking role qualifications for all staff, and managing trainees in their first 6 months with rotation tracking across key areas.</p>
                         
+                        <h4 class="font-bold text-[#242424] mb-4">Trainee Dashboard</h4>
+                        <p class="text-xs text-[#616161] mb-4">New employees in their first 6 months (based on their Start Date) are tracked as trainees. The dashboard helps ensure each trainee is exposed to all required training areas: Dining Room, Machine Room, Veggie Room, and Receiving.</p>
+                        
+                        <div class="grid md:grid-cols-2 gap-6 mb-8">
+                            <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                                <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                    <i class="fas fa-user-graduate text-[#0078d4]"></i>
+                                    Training Status Cards
+                                </h5>
+                                <p class="text-xs text-[#616161]">Each trainee has a status card showing their start date, time remaining, progress bar, and checklist of completed/pending training areas.</p>
+                            </div>
+                            <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                                <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                    <i class="fas fa-file-export text-[#0078d4]"></i>
+                                    Training Progress Report
+                                </h5>
+                                <p class="text-xs text-[#616161]">Export an HTML summary of all trainees with their completion status for each training area and overall progress percentage.</p>
+                            </div>
+                            <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                                <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                    <i class="fas fa-bell text-[#d13438]"></i>
+                                    Training Alerts
+                                </h5>
+                                <p class="text-xs text-[#616161]">Prominent warnings for at-risk trainees: those approaching their 6-month mark without completing all areas, or those who haven't rotated in 2+ months.</p>
+                            </div>
+                            <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                                <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                    <i class="fas fa-lightbulb text-[#107c10]"></i>
+                                    Suggested Assignments
+                                </h5>
+                                <p class="text-xs text-[#616161]">Intelligent recommendations for which area each trainee should be assigned to next, prioritizing areas they haven't experienced.</p>
+                            </div>
+                        </div>
+
+                        <h4 class="font-bold text-[#242424] mb-4">Manual Override for Training Areas</h4>
+                        <p class="text-xs text-[#616161] mb-4">Training area completion is automatically detected from monthly defaults and assignments. However, you can manually override the completion status when needed:</p>
+                        <ul class="text-xs text-[#616161] space-y-2 mb-6 ml-4">
+                            <li>• Click on any training area item to toggle its completion status</li>
+                            <li>• A confirmation dialog ensures you meant to change the status</li>
+                            <li>• Manually overridden areas show a "Manual" badge with an edit icon</li>
+                            <li>• Manual overrides take precedence over automatic detection</li>
+                        </ul>
+                        
+                        <h4 class="font-bold text-[#242424] mb-4">Role Qualifications Matrix</h4>
                         <div class="table-container mb-8">
                             <table class="w-full text-left text-sm">
                                 <thead class="bg-[#fafafa] text-[#616161] border-b">
@@ -860,7 +889,15 @@
                                     </tr>
                                     <tr>
                                         <td class="p-3 font-semibold">Weekday Overrides</td>
-                                        <td class="p-3">Specify different roles for specific weekdays (Mon-Fri).</td>
+                                        <td class="p-3">Specify different roles for specific weekdays (Mon-Fri). Click "Days" link next to a person.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Week-by-Week Overrides</td>
+                                        <td class="p-3">Set different assignments for each week of the month. Click "Weeks" link next to a person. An asterisk (*) indicates week overrides exist.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Trainees Filter</td>
+                                        <td class="p-3">Toggle "Trainees only" to show only people in their first 6 months. Trainee rows show a badge and tooltip with incomplete training areas.</td>
                                     </tr>
                                     <tr>
                                         <td class="p-3 font-semibold">Notes per Person</td>
@@ -935,6 +972,10 @@
                                     <tr>
                                         <td class="p-3 font-semibold">Group Filter</td>
                                         <td class="p-3">Narrow to a single work group (Dining Room, Kitchen, Prepack).</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Trainees Only</td>
+                                        <td class="p-3">Show only people in their first 6 months. Trainee rows are highlighted with a badge and show incomplete training areas.</td>
                                     </tr>
                                     <tr>
                                         <td class="p-3 font-semibold">Sort Options</td>
@@ -1064,7 +1105,7 @@
                         </div>
 
                         <h4 class="font-bold text-[#242424] mb-4">Exporting to XLSX</h4>
-                        <p class="text-xs text-[#616161] mb-4">Click the "Export to XLSX" button to download a formatted spreadsheet compatible with Microsoft Teams Shifts bulk import. Each shift automatically includes the time range (e.g., "8-12" or "1-5") in the Notes field for quick reference.</p>
+                        <p class="text-xs text-[#616161] mb-4">Click the "Export to XLSX" button to download a formatted spreadsheet compatible with Microsoft Teams Shifts bulk import.</p>
                         
                         <div class="p-4 bg-[#f0f7ff] border border-[#cce5ff] rounded-lg flex gap-3 items-start">
                             <i class="fas fa-lightbulb text-[#0078d4] mt-1"></i>
@@ -1108,6 +1149,80 @@
                                 View/Delete Entries
                             </h5>
                             <p class="text-xs text-[#616161]">Browse all time-off records. Delete entries that are no longer relevant or were imported in error.</p>
+                        </div>
+                    </div>
+
+                    <h3 class="text-xl font-bold mb-6 text-[#0078d4] flex items-center gap-2">
+                        <i class="fas fa-calendar-alt"></i>
+                        Department Events
+                    </h3>
+                    <p class="text-sm text-[#616161] mb-6">Schedule department-wide events like meetings, training sessions, or gatherings that automatically assign all active crew members. Events display as banners on the Daily Run Board and are included in daily Excel exports.</p>
+                    
+                    <div class="table-container mb-8">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-[#fafafa] border-b text-[#616161]">
+                                <tr>
+                                    <th class="p-3 font-semibold">Field</th>
+                                    <th class="p-3 font-semibold">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
+                                <tr>
+                                    <td class="p-3 font-semibold">Title</td>
+                                    <td class="p-3">Event name (e.g., "Department Meeting", "Safety Training"). Used as the segment name for assignments.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Date</td>
+                                    <td class="p-3">The date the event takes place.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Start Time / End Time</td>
+                                    <td class="p-3">Event duration. Regular segments that overlap with this time will be automatically shortened or split.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Group</td>
+                                    <td class="p-3">Optional: Assign to a group for Excel export categorization. If not set, uses the event title as the group name.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Role</td>
+                                    <td class="p-3">Optional: Assign a specific role for the event. Defaults to the selected group name if not specified.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Description</td>
+                                    <td class="p-3">Optional notes about the event (e.g., location, agenda topics).</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-6 mb-12">
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                <i class="fas fa-users text-[#0078d4]"></i>
+                                Auto-Assignment
+                            </h5>
+                            <p class="text-xs text-[#616161]">When you create an event, all active crew members are automatically assigned. The event title becomes the segment name for these assignments.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                <i class="fas fa-clock text-[#0078d4]"></i>
+                                Segment Adjustment
+                            </h5>
+                            <p class="text-xs text-[#616161]">Events that overlap with regular segments (AM, PM, Lunch) automatically shorten or split those segments. A banner on the Daily Run Board shows affected segments.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                <i class="fas fa-file-excel text-[#107c10]"></i>
+                                Excel Export
+                            </h5>
+                            <p class="text-xs text-[#616161]">Daily schedule exports include an "Events" sheet listing all department events with their attendees, making it easy to track participation.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2 flex items-center gap-2">
+                                <i class="fas fa-bell text-[#0078d4]"></i>
+                                Daily Run Board Banner
+                            </h5>
+                            <p class="text-xs text-[#616161]">Events display as informational banners at the top of the Daily Run Board, showing event time, title, and any affected segments.</p>
                         </div>
                     </div>
 
@@ -1582,8 +1697,20 @@
                         </div>
 
                         <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
-                            <h5 class="font-bold text-sm text-[#242424] mb-2">Status Bar</h5>
-                            <p class="text-xs text-[#616161]">The status message at the top right shows current database state, save status, and lock information. Watch for "Saved" confirmations after Ctrl+S.</p>
+                            <h5 class="font-bold text-sm text-[#242424] mb-2">Status Bar & Sync Indicator</h5>
+                            <p class="text-xs text-[#616161]">The status message at the top right shows current database state, save status, and sync information. The sync indicator shows when changes from other users are being merged.</p>
+                        </div>
+                        
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-2">AI Actions Menu</h5>
+                            <p class="text-xs text-[#616161] mb-3">The AI Actions button (sparkle icon) provides helpful prompts to guide you through the application:</p>
+                            <ul class="text-xs text-[#616161] space-y-1 ml-4">
+                                <li>• <strong>Help me understand this view:</strong> Explains the current page and its features</li>
+                                <li>• <strong>How do I make an assignment?:</strong> Step-by-step guidance for assigning roles</li>
+                                <li>• <strong>How do I navigate the app?:</strong> Navigation help between sections</li>
+                                <li>• <strong>Something isn't working:</strong> Troubleshooting assistance</li>
+                                <li>• <strong>What can I do here?:</strong> Lists available features on the current page</li>
+                            </ul>
                         </div>
                     </div>
 
@@ -1606,13 +1733,25 @@
                         </div>
                         <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
                             <h5 class="font-bold text-sm text-[#242424] mb-1">Changes not saving</h5>
-                            <p class="text-xs text-[#616161]">Verify write permissions for your <code>.db</code> file and ensure no other user has it locked.</p>
+                            <p class="text-xs text-[#616161]">Verify write permissions for your <code>.db</code> file and the changes folder. Ensure the file location is accessible.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">Sync conflicts appearing</h5>
+                            <p class="text-xs text-[#616161]">When multiple users edit the same field, a conflict dialog will appear. Choose "Keep Yours" to keep your changes, "Keep Theirs" to accept the other user's changes, or "Keep Both" where applicable.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">Trainee not appearing in training dashboard</h5>
+                            <p class="text-xs text-[#616161]">Ensure the person has a <strong>Start Date</strong> set in their profile. Only people within their first 6 months from their start date appear as trainees.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">Email prompt keeps appearing</h5>
+                            <p class="text-xs text-[#616161]">The app prompts for your email each time you open a file. This identifies your changes in the sync system and is expected behavior for multi-user collaboration.</p>
                         </div>
                     </div>
                 </section>
                 
                 <footer class="pt-24 border-t border-[#f0f0f0] text-center">
-                    <p class="text-[10px] text-[#94a3b8] font-bold uppercase tracking-widest italic">User Manual Rev 2.0 | Fluent 2 System</p>
+                    <p class="text-[10px] text-[#94a3b8] font-bold uppercase tracking-widest italic">User Manual Rev 3.0 | Fluent 2 System</p>
                 </footer>
 
             </div>
