@@ -814,15 +814,24 @@ export default function App() {
       // Check for stale merge lock (indicates previous merge may have crashed)
       if (result.staleMergeLock) {
         const lockInfo = result.staleMergeLock;
-        const lockAge = Date.now() - new Date(lockInfo.timestamp).getTime();
-        const lockAgeMinutes = Math.round(lockAge / 60000);
+        const lockStartedAt = new Date(lockInfo.startedAt);
+        const lockStartedMs = lockStartedAt.getTime();
+        const lockAgeMinutes = Number.isNaN(lockStartedMs)
+          ? null
+          : Math.round((Date.now() - lockStartedMs) / 60000);
+        const lockAgeLabel = lockAgeMinutes === null
+          ? "unknown age"
+          : `${lockAgeMinutes} minutes old`;
+        const workingFiles = lockInfo.workingFiles?.length
+          ? lockInfo.workingFiles.join(", ")
+          : "None";
         
         setAlertDialog({
           title: "Previous Merge Interrupted",
-          message: `A merge lock from ${lockInfo.startedBy} was found (${lockAgeMinutes} minutes old). ` +
+          message: `A merge lock from ${lockInfo.email} was found (${lockAgeLabel}). ` +
             `This typically means a previous merge was interrupted. ` +
-            `The lock will be cleared so you can continue. ` +
-            `Files involved: ${lockInfo.files.join(', ')}`,
+            `Select OK to clear the lock and continue. ` +
+            `Files involved: ${workingFiles}`,
           onClose: async () => {
             setAlertDialog(null);
             await folderSyncActions.clearStaleLock();

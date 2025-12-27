@@ -193,6 +193,11 @@ export function useFolderSync(): [FolderSyncState, FolderSyncActions] {
       // Case 1: No base file - create new database
       if (!scanResult.baseFile) {
         db = new SQL.Database();
+        // Initialize meta table with system user before migrations (triggers need user_email)
+        try {
+          db.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+          db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+        } catch { /* meta table may not exist yet */ }
         applyMigrations(db);
         
         // Set sync_uuid for this database instance
@@ -277,6 +282,11 @@ export function useFolderSync(): [FolderSyncState, FolderSyncActions] {
         // User has existing working file
         const data = await readDatabaseFile(scanResult.myWorkingFile);
         db = new SQL.Database(new Uint8Array(data));
+        // Initialize meta table with system user before migrations (triggers need user_email)
+        try {
+          db.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+          db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+        } catch { /* meta table may not exist yet */ }
         applyMigrations(db);
         workingHandle = scanResult.myWorkingFile;
       } else {
@@ -284,6 +294,11 @@ export function useFolderSync(): [FolderSyncState, FolderSyncActions] {
         workingHandle = await createWorkingFileFromBase(folderHandle, scanResult.baseFile, email);
         const data = await readDatabaseFile(workingHandle);
         db = new SQL.Database(new Uint8Array(data));
+        // Initialize meta table with system user before migrations (triggers need user_email)
+        try {
+          db.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+          db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+        } catch { /* meta table may not exist yet */ }
         applyMigrations(db);
       }
 
@@ -490,10 +505,20 @@ async function performMerge(
   // Load base database
   const baseData = await readDatabaseFile(baseHandle);
   const baseDb = new SQL.Database(new Uint8Array(baseData));
+  // Initialize meta table with system user before migrations (triggers need user_email)
+  try {
+    baseDb.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+    baseDb.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+  } catch { /* meta table may not exist yet */ }
   applyMigrations(baseDb);
 
   // Create target database (copy of base to accumulate changes)
   const targetDb = new SQL.Database(new Uint8Array(baseData));
+  // Initialize meta table with system user before migrations (triggers need user_email)
+  try {
+    targetDb.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+    targetDb.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+  } catch { /* meta table may not exist yet */ }
   applyMigrations(targetDb);
 
   let result: MergeResult;
@@ -503,6 +528,11 @@ async function performMerge(
     const wf = workingFiles[0];
     const wfData = await readDatabaseFile(wf.handle);
     const wfDb = new SQL.Database(new Uint8Array(wfData));
+    // Initialize meta table with system user before migrations (triggers need user_email)
+    try {
+      wfDb.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+      wfDb.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+    } catch { /* meta table may not exist yet */ }
     applyMigrations(wfDb);
 
     result = performTwoWayMerge(baseDb, wfDb, targetDb);
@@ -515,6 +545,15 @@ async function performMerge(
     const wfBData = await readDatabaseFile(wfB.handle);
     const dbA = new SQL.Database(new Uint8Array(wfAData));
     const dbB = new SQL.Database(new Uint8Array(wfBData));
+    // Initialize meta table with system user before migrations (triggers need user_email)
+    try {
+      dbA.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+      dbA.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+    } catch { /* meta table may not exist yet */ }
+    try {
+      dbB.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+      dbB.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+    } catch { /* meta table may not exist yet */ }
     applyMigrations(dbA);
     applyMigrations(dbB);
 
@@ -530,6 +569,11 @@ async function performMerge(
     for (const wf of workingFiles) {
       const wfData = await readDatabaseFile(wf.handle);
       const wfDb = new SQL.Database(new Uint8Array(wfData));
+      // Initialize meta table with system user before migrations (triggers need user_email)
+      try {
+        wfDb.run(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);`);
+        wfDb.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+      } catch { /* meta table may not exist yet */ }
       applyMigrations(wfDb);
       workingDbs.push({ db: wfDb, email: wf.email });
     }

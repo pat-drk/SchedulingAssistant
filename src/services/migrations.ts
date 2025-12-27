@@ -892,6 +892,15 @@ export const migrate30SoftDeleteAndViews: Migration = (db) => {
     person_skill: 'person_id, skill_id, rating, sync_id, modified_at, modified_by',
     department_event: 'id, title, date, start_time, end_time, group_id, role_id, description, created_at, sync_id, modified_at, modified_by',
   };
+  // Pass-through _active views for non-synced tables referenced in UI queries
+  const passthroughViewColumns: Record<string, string> = {
+    grp: 'id, name, theme, custom_color',
+    role: 'id, code, name, group_id, segments',
+    segment: 'id, name, start_time, end_time, ordering',
+    export_group: 'group_id, code, color, column_group',
+    segment_adjustment: 'id, condition_segment, target_segment, target_field, baseline, offset_minutes, condition_role_id, logic_operator',
+    segment_adjustment_condition: 'id, adjustment_id, condition_segment, condition_role_id',
+  };
 
   // ========================================
   // PART A: Disable FK checks during rebuild
@@ -1033,6 +1042,7 @@ export const migrate30SoftDeleteAndViews: Migration = (db) => {
         BEGIN
           UPDATE ${table} SET 
             deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
+            modified_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
             modified_by = COALESCE((SELECT value FROM meta WHERE key = 'user_email'), 'system')
           WHERE rowid = OLD.rowid;
           SELECT RAISE(IGNORE);
@@ -1072,6 +1082,19 @@ export const migrate30SoftDeleteAndViews: Migration = (db) => {
       console.log(`[migrate30] Created ${table}_active view`);
     } catch (e) {
       console.warn(`[migrate30] Could not create ${table}_active view:`, e);
+    }
+  }
+
+  // ========================================
+  // PART I: Create pass-through _active views for non-synced tables
+  // ========================================
+  for (const [table, columns] of Object.entries(passthroughViewColumns)) {
+    try {
+      db.run(`DROP VIEW IF EXISTS ${table}_active;`);
+      db.run(`CREATE VIEW ${table}_active AS SELECT ${columns} FROM ${table};`);
+      console.log(`[migrate30] Created ${table}_active pass-through view`);
+    } catch (e) {
+      console.warn(`[migrate30] Could not create ${table}_active pass-through view:`, e);
     }
   }
 
