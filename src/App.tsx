@@ -756,38 +756,16 @@ export default function App() {
       setStatus(`Opened ${file.name}`);
       refreshCaches(db);
 
-      // Prompt for user email (needed for sync system and personalization)
+      // Prompt for user email (for identification in future sync features)
       setEmailDialog({
-        onSubmit: async (email: string) => {
+        onSubmit: (email: string) => {
           setUserEmail(email);
           setEmailDialog(null);
           toast.showSuccess("Database opened successfully");
-
-          // Initialize sync system - request access to parent directory for changes folder
-          try {
-            // Ask user to select the folder containing the database (for sync access)
-            const parentDirHandle = await (window as any).showDirectoryPicker({
-              mode: 'readwrite',
-              startIn: 'documents',
-            });
-            
-            // Create or get the changes subfolder
-            const changesFolderHandle = await parentDirHandle.getDirectoryHandle('changes', { create: true });
-            changesFolderHandleRef.current = changesFolderHandle;
-            
-            // Initialize the sync engine
-            await sync.initializeSync(changesFolderHandle, email, handle);
-            toast.showInfo("Multi-user sync enabled");
-            logger.info("Sync system initialized for", email);
-          } catch (syncErr: any) {
-            // User may have cancelled directory picker or sync init failed - continue without sync
-            logger.warn("Sync initialization skipped:", syncErr?.message || syncErr);
-            toast.showInfo("Sync not enabled - save will overwrite file directly");
-          }
         },
         onCancel: () => {
           setEmailDialog(null);
-          toast.showInfo("Database opened (sync not enabled)");
+          toast.showSuccess("Database opened successfully");
         }
       });
     } catch (e:any) {
