@@ -1,12 +1,19 @@
 /**
  * SyncEngine - Main orchestrator for multi-user sync
- * Coordinates change tracking, merging, and background sync
+ * Coordinates change tracking, merging, background sync, and offline queue.
+ * 
+ * Features:
+ * - Background file-change detection (polls for external changes)
+ * - Heartbeat/presence for active users
+ * - Offline queue persistence via IndexedDB
+ * - Retry logic for OneDrive/SharePoint sync latency
  */
 
 import { ChangeTracker } from './ChangeTracker';
 import { ChangeFileManager } from './ChangeFileManager';
 import { MergeEngine } from './MergeEngine';
 import { FileSystemUtils } from './FileSystemUtils';
+import { OfflineQueue, getOfflineQueue } from './OfflineQueue';
 import { 
   ChangeOperation, 
   Conflict, 
@@ -20,16 +27,25 @@ export class SyncEngine {
   private changeTracker: ChangeTracker;
   private changeFileManager: ChangeFileManager;
   private mergeEngine: MergeEngine;
+  private offlineQueue: OfflineQueue;
   private syncState: SyncState;
-  private syncIntervalId: NodeJS.Timeout | null = null;
+  private syncIntervalId: ReturnType<typeof setInterval> | null = null;
+  private heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
+  private fileWatchIntervalId: ReturnType<typeof setInterval> | null = null;
   private syncStatusCallbacks: Array<(status: SyncStatus) => void> = [];
   private currentStatus: SyncStatus;
+  private userEmail: string = '';
+  private changesFolderHandle: FileSystemDirectoryHandle | null = null;
+  private dbFileHandle: FileSystemFileHandle | null = null;
+  private dbOpenedAt: number = 0;
+  private lastKnownDbModified: number = 0;
 
   constructor(db: any) {
     this.db = db;
     this.changeTracker = new ChangeTracker();
     this.changeFileManager = new ChangeFileManager();
     this.mergeEngine = new MergeEngine(db);
+    this.offlineQueue = getOfflineQueue();
     this.syncState = {
       version: 0,
       appliedChanges: [],
@@ -38,24 +54,70 @@ export class SyncEngine {
     this.currentStatus = {
       isSyncing: false,
       pendingChanges: 0,
+      offlineQueueCount: 0,
       otherUsers: [],
+      activeUsers: [],
+      externalChangeDetected: false,
+      isOnline: navigator.onLine,
     };
+
+    // Listen for online/offline events
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleOnline);
+      window.addEventListener('offline', this.handleOffline);
+    }
   }
+
+  private handleOnline = () => {
+    this.updateStatus({ isOnline: true });
+    // Trigger sync when coming back online
+    this.pullChanges();
+  };
+
+  private handleOffline = () => {
+    this.updateStatus({ isOnline: false });
+  };
 
   /**
    * Initialize the sync engine with a directory handle and user email
    */
   async initialize(
     changesFolderHandle: FileSystemDirectoryHandle,
-    userEmail: string
+    userEmail: string,
+    dbFileHandle?: FileSystemFileHandle
   ): Promise<void> {
+    this.changesFolderHandle = changesFolderHandle;
+    this.userEmail = userEmail;
+    this.dbFileHandle = dbFileHandle || null;
+
+    // Record when we opened the DB for file-change detection
+    if (dbFileHandle) {
+      try {
+        const file = await dbFileHandle.getFile();
+        this.dbOpenedAt = file.lastModified;
+        this.lastKnownDbModified = file.lastModified;
+      } catch (e) {
+        console.warn('Could not get initial DB file timestamp:', e);
+      }
+    }
+
     await this.changeFileManager.initialize(changesFolderHandle, userEmail);
+    
+    // Initialize offline queue
+    await this.offlineQueue.initialize(userEmail);
+    
+    // Check for pending offline changes
+    const offlineCount = await this.offlineQueue.getUnsyncedCount();
+    this.updateStatus({ offlineQueueCount: offlineCount });
     
     // Load sync state
     this.syncState = await this.changeFileManager.readSyncState();
     
-    // Start tracking changes
-    this.changeTracker.start();
+    // Start tracking changes with offline persistence
+    this.changeTracker.start(true);
+    
+    // Write initial heartbeat
+    await this.writeHeartbeat();
     
     // Update status
     this.updateStatus({ isSyncing: false });
@@ -76,9 +138,23 @@ export class SyncEngine {
       this.stopBackgroundSync();
     }
 
+    // Background sync polling
     this.syncIntervalId = setInterval(async () => {
       await this.pullChanges();
     }, intervalSeconds * 1000);
+
+    // Heartbeat every 60 seconds
+    this.heartbeatIntervalId = setInterval(async () => {
+      await this.writeHeartbeat();
+      await this.checkActiveUsers();
+    }, 60 * 1000);
+
+    // File-change detection every 30 seconds
+    if (this.dbFileHandle) {
+      this.fileWatchIntervalId = setInterval(async () => {
+        await this.checkForExternalChanges();
+      }, 30 * 1000);
+    }
   }
 
   /**
@@ -88,6 +164,107 @@ export class SyncEngine {
     if (this.syncIntervalId) {
       clearInterval(this.syncIntervalId);
       this.syncIntervalId = null;
+    }
+    if (this.heartbeatIntervalId) {
+      clearInterval(this.heartbeatIntervalId);
+      this.heartbeatIntervalId = null;
+    }
+    if (this.fileWatchIntervalId) {
+      clearInterval(this.fileWatchIntervalId);
+      this.fileWatchIntervalId = null;
+    }
+  }
+
+  /**
+   * Write heartbeat for presence detection
+   */
+  private async writeHeartbeat(): Promise<void> {
+    if (!this.changesFolderHandle || !this.userEmail) return;
+    
+    try {
+      await FileSystemUtils.writeHeartbeat(this.changesFolderHandle, this.userEmail);
+    } catch (error) {
+      console.warn('Failed to write heartbeat:', error);
+    }
+  }
+
+  /**
+   * Check for active users based on heartbeats
+   */
+  private async checkActiveUsers(): Promise<void> {
+    if (!this.changesFolderHandle) return;
+
+    try {
+      const heartbeats = await FileSystemUtils.readHeartbeats(this.changesFolderHandle);
+      const activeUsers = heartbeats
+        .filter(h => h.user !== this.userEmail)
+        .map(h => ({
+          user: h.user,
+          lastSeen: new Date(h.timestamp),
+          stale: h.stale,
+        }));
+      
+      this.updateStatus({ 
+        activeUsers,
+        otherUsers: activeUsers.filter(u => !u.stale).map(u => u.user),
+      });
+
+      // Clean up old heartbeats occasionally
+      await FileSystemUtils.cleanupStaleHeartbeats(this.changesFolderHandle);
+    } catch (error) {
+      console.warn('Failed to check active users:', error);
+    }
+  }
+
+  /**
+   * Check if the database file was modified externally
+   */
+  private async checkForExternalChanges(): Promise<void> {
+    if (!this.dbFileHandle) return;
+
+    try {
+      const file = await this.dbFileHandle.getFile();
+      const currentModified = file.lastModified;
+
+      if (currentModified > this.lastKnownDbModified) {
+        // File was modified externally
+        this.updateStatus({ 
+          externalChangeDetected: true,
+          fileLastModified: currentModified,
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to check for external changes:', error);
+    }
+  }
+
+  /**
+   * Acknowledge external changes (called after user reloads)
+   */
+  acknowledgeExternalChanges(newLastModified?: number): void {
+    if (newLastModified) {
+      this.lastKnownDbModified = newLastModified;
+    }
+    this.updateStatus({ externalChangeDetected: false });
+  }
+
+  /**
+   * Check if the database file has changed since we opened it
+   */
+  async hasFileChangedSinceOpen(): Promise<{ changed: boolean; lastModified: number }> {
+    if (!this.dbFileHandle) {
+      return { changed: false, lastModified: 0 };
+    }
+
+    try {
+      const file = await this.dbFileHandle.getFile();
+      return {
+        changed: file.lastModified > this.dbOpenedAt,
+        lastModified: file.lastModified,
+      };
+    } catch (error) {
+      console.warn('Failed to check file timestamp:', error);
+      return { changed: false, lastModified: 0 };
     }
   }
 
@@ -109,11 +286,21 @@ export class SyncEngine {
       // Write change file
       await this.changeFileManager.writeChangeSet(operations, this.syncState.version);
       
+      // Mark offline queue items as synced
+      const offlineChanges = await this.offlineQueue.getUnsyncedChanges();
+      if (offlineChanges.length > 0) {
+        await this.offlineQueue.markAsSynced(offlineChanges.map(c => c.id));
+      }
+      
       // Clear tracked changes
       this.changeTracker.clear();
       
+      // Update offline queue count
+      const offlineCount = await this.offlineQueue.getUnsyncedCount();
+      
       this.updateStatus({
         pendingChanges: 0,
+        offlineQueueCount: offlineCount,
       });
 
       return { success: true };
@@ -133,6 +320,11 @@ export class SyncEngine {
   }> {
     if (!this.changeFileManager.isInitialized()) {
       return { success: false, error: 'Sync engine not initialized' };
+    }
+
+    // Don't sync if offline
+    if (!navigator.onLine) {
+      return { success: true, autoMergedCount: 0 };
     }
 
     this.updateStatus({ isSyncing: true });
@@ -268,6 +460,20 @@ export class SyncEngine {
   }
 
   /**
+   * Manually trigger sync (for "Check for updates" button)
+   */
+  async manualSync(): Promise<{
+    success: boolean;
+    conflicts?: Conflict[];
+    autoMergedCount?: number;
+    error?: string;
+  }> {
+    await this.writeHeartbeat();
+    await this.checkActiveUsers();
+    return this.pullChanges();
+  }
+
+  /**
    * Get current sync status
    */
   getStatus(): SyncStatus {
@@ -312,11 +518,23 @@ export class SyncEngine {
   }
 
   /**
+   * Get the offline queue
+   */
+  getOfflineQueue(): OfflineQueue {
+    return this.offlineQueue;
+  }
+
+  /**
    * Clean up resources
    */
   destroy(): void {
     this.stopBackgroundSync();
     this.changeTracker.stop();
     this.syncStatusCallbacks = [];
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleOnline);
+      window.removeEventListener('offline', this.handleOffline);
+    }
   }
 }

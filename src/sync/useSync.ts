@@ -1,9 +1,15 @@
 /**
  * React hook for managing sync state
- * Provides a clean interface to the SyncEngine from React components
+ * Provides a clean interface to the SyncEngine from React components.
+ * 
+ * Features:
+ * - Background sync with configurable interval
+ * - File-change detection
+ * - Heartbeat/presence for active users
+ * - Offline queue support
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { SyncEngine } from '../sync/SyncEngine';
 import { SyncStatus, Conflict, ConflictResolution } from '../sync/types';
 
@@ -19,10 +25,17 @@ export interface UseSyncResult {
   isInitialized: boolean;
   initializeSync: (
     changesFolderHandle: FileSystemDirectoryHandle,
-    userEmail: string
+    userEmail: string,
+    dbFileHandle?: FileSystemFileHandle
   ) => Promise<void>;
   pushChanges: () => Promise<{ success: boolean; error?: string }>;
   pullChanges: () => Promise<{
+    success: boolean;
+    conflicts?: Conflict[];
+    autoMergedCount?: number;
+    error?: string;
+  }>;
+  manualSync: () => Promise<{
     success: boolean;
     conflicts?: Conflict[];
     autoMergedCount?: number;
@@ -32,19 +45,41 @@ export interface UseSyncResult {
     conflicts: Conflict[],
     resolutions: Map<Conflict, ConflictResolution>
   ) => Promise<{ success: boolean; error?: string }>;
+  acknowledgeExternalChanges: () => void;
+  checkForExternalChanges: () => Promise<{ changed: boolean; lastModified: number }>;
 }
 
+const DEFAULT_STATUS: SyncStatus = {
+  isSyncing: false,
+  pendingChanges: 0,
+  offlineQueueCount: 0,
+  otherUsers: [],
+  activeUsers: [],
+  externalChangeDetected: false,
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+};
+
 export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOptions): UseSyncResult {
-  const [syncEngine] = useState<SyncEngine | null>(() => 
-    db && enabled ? new SyncEngine(db) : null
-  );
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>({
-    isSyncing: false,
-    pendingChanges: 0,
-    otherUsers: [],
-  });
+  const [syncEngine, setSyncEngine] = useState<SyncEngine | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(DEFAULT_STATUS);
   const [isInitialized, setIsInitialized] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Create sync engine when db becomes available
+  useEffect(() => {
+    if (db && enabled) {
+      const engine = new SyncEngine(db);
+      setSyncEngine(engine);
+      
+      return () => {
+        engine.destroy();
+      };
+    } else {
+      setSyncEngine(null);
+      setIsInitialized(false);
+      setSyncStatus(DEFAULT_STATUS);
+    }
+  }, [db, enabled]);
 
   // Subscribe to sync status updates
   useEffect(() => {
@@ -62,47 +97,46 @@ export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOpt
     }
   }, [syncEngine]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (syncEngine) {
-        syncEngine.destroy();
-      }
-    };
-  }, [syncEngine]);
-
-  const initializeSync = async (
+  const initializeSync = useCallback(async (
     changesFolderHandle: FileSystemDirectoryHandle,
-    userEmail: string
+    userEmail: string,
+    dbFileHandle?: FileSystemFileHandle
   ): Promise<void> => {
     if (!syncEngine) {
       throw new Error('Sync engine not available');
     }
 
-    await syncEngine.initialize(changesFolderHandle, userEmail);
+    await syncEngine.initialize(changesFolderHandle, userEmail, dbFileHandle);
     setIsInitialized(true);
 
     // Start background sync
     if (backgroundSyncInterval > 0) {
       syncEngine.startBackgroundSync(backgroundSyncInterval);
     }
-  };
+  }, [syncEngine, backgroundSyncInterval]);
 
-  const pushChanges = async () => {
+  const pushChanges = useCallback(async () => {
     if (!syncEngine) {
       return { success: false, error: 'Sync engine not available' };
     }
     return await syncEngine.pushChanges();
-  };
+  }, [syncEngine]);
 
-  const pullChanges = async () => {
+  const pullChanges = useCallback(async () => {
     if (!syncEngine) {
       return { success: false, error: 'Sync engine not available' };
     }
     return await syncEngine.pullChanges();
-  };
+  }, [syncEngine]);
 
-  const resolveConflicts = async (
+  const manualSync = useCallback(async () => {
+    if (!syncEngine) {
+      return { success: false, error: 'Sync engine not available' };
+    }
+    return await syncEngine.manualSync();
+  }, [syncEngine]);
+
+  const resolveConflicts = useCallback(async (
     conflicts: Conflict[],
     resolutions: Map<Conflict, ConflictResolution>
   ) => {
@@ -110,7 +144,20 @@ export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOpt
       return { success: false, error: 'Sync engine not available' };
     }
     return await syncEngine.resolveConflicts(conflicts, resolutions);
-  };
+  }, [syncEngine]);
+
+  const acknowledgeExternalChanges = useCallback(() => {
+    if (syncEngine) {
+      syncEngine.acknowledgeExternalChanges();
+    }
+  }, [syncEngine]);
+
+  const checkForExternalChanges = useCallback(async () => {
+    if (!syncEngine) {
+      return { changed: false, lastModified: 0 };
+    }
+    return await syncEngine.hasFileChangedSinceOpen();
+  }, [syncEngine]);
 
   return {
     syncEngine,
@@ -119,6 +166,9 @@ export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOpt
     initializeSync,
     pushChanges,
     pullChanges,
+    manualSync,
     resolveConflicts,
+    acknowledgeExternalChanges,
+    checkForExternalChanges,
   };
 }

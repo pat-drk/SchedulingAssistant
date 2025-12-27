@@ -32,6 +32,7 @@ import EmailInputDialog from "./components/EmailInputDialog";
 import { ToastContainer, useToast } from "./components/Toast";
 import { logger } from "./utils/logger";
 import { MOBILE_NAV_HEIGHT, BREAKPOINTS } from "./styles/breakpoints";
+import DatabaseFallback from "./components/DatabaseFallback";
 
 /*
 MVP: Pure-browser scheduler for Microsoft Teams Shifts
@@ -772,6 +773,42 @@ export default function App() {
     });
     await writeDbToHandle(handle);
     fileHandleRef.current = handle;
+  }
+
+  // Fallback handlers for browsers without File System Access API
+  function handleFallbackImport(arrayBuffer: ArrayBuffer) {
+    if (!SQL) {
+      toast.showError("Database engine not ready. Please wait and try again.");
+      return;
+    }
+    try {
+      const db = new SQL.Database(new Uint8Array(arrayBuffer));
+      applyMigrations(db);
+      setSqlDb(db);
+      fileHandleRef.current = null; // No file handle in fallback mode
+      setStatus("Database loaded (manual import mode)");
+      refreshCaches(db);
+      toast.showSuccess("Database imported successfully");
+      
+      // Prompt for user email
+      setEmailDialog({
+        onSubmit: (email: string) => {
+          setUserEmail(email);
+          setEmailDialog(null);
+        },
+        onCancel: () => {
+          setEmailDialog(null);
+        }
+      });
+    } catch (e: any) {
+      logger.error("Failed to import database:", e);
+      toast.showError(e?.message || "Failed to import database");
+    }
+  }
+
+  function getFallbackExportData(): Uint8Array | null {
+    if (!sqlDb) return null;
+    return sqlDb.export();
   }
 
   async function saveDb() {
@@ -2424,20 +2461,12 @@ function PeopleEditor(){
         syncStatus={sync.isInitialized ? sync.syncStatus : undefined}
       />
       {showBrowserWarning && (
-        <MessageBar intent="warning" style={{ margin: tokens.spacingVerticalM }}>
-          <MessageBarBody>
-            <strong>Browser Compatibility Warning:</strong> This application requires the File System Access API, 
-            which is not supported in your current browser (likely Firefox). Some features may not work correctly. 
-            For the best experience, please use Chrome, Edge, or Safari 15.2+.
-            <Button 
-              size="small" 
-              appearance="transparent" 
-              icon={<DismissRegular />}
-              onClick={() => setShowBrowserWarning(false)}
-              style={{ marginLeft: tokens.spacingHorizontalS }}
-            />
-          </MessageBarBody>
-        </MessageBar>
+        <DatabaseFallback
+          onImport={handleFallbackImport}
+          getExportData={getFallbackExportData}
+          hasDatabase={!!sqlDb}
+          onDismiss={() => setShowBrowserWarning(false)}
+        />
       )}
       <div className={sh.contentRow}>
         <SideRail

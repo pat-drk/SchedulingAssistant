@@ -15,6 +15,34 @@ export interface ChangeOperation {
   timestamp: string;
 }
 
+/**
+ * Persisted change stored in IndexedDB for offline queue
+ */
+export interface PersistedChange {
+  /** UUID for this change */
+  id: string;
+  /** Table name (e.g., "person", "assignment", "segment") */
+  table: string;
+  /** Operation type */
+  operation: OperationType;
+  /** Primary key of the affected row */
+  rowId: string | number;
+  /** Field name (for UPDATE operations) */
+  field?: string;
+  /** Previous value (for UPDATE/DELETE) */
+  oldValue?: unknown;
+  /** New value (for INSERT/UPDATE) */
+  newValue?: unknown;
+  /** Full record data (for INSERT/DELETE) */
+  data?: Record<string, unknown>;
+  /** When the change was made (ms since epoch) */
+  timestamp: number;
+  /** User who made the change */
+  userId: string;
+  /** Whether this change has been synced to the changes folder */
+  synced: boolean;
+}
+
 export interface ChangeSet {
   id: string;
   user: string;
@@ -58,6 +86,11 @@ export interface SyncStatus {
   isSyncing: boolean;
   lastSyncTime?: Date;
   pendingChanges: number;
+  offlineQueueCount: number;
   otherUsers: string[];
+  activeUsers: Array<{ user: string; lastSeen: Date; stale: boolean }>;
+  externalChangeDetected: boolean;
+  fileLastModified?: number;
+  isOnline: boolean;
   error?: string;
 }

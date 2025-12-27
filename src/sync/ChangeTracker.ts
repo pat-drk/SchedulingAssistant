@@ -1,20 +1,30 @@
 /**
  * ChangeTracker - Intercepts and tracks database operations
- * Stores changes in memory until they are written to a change file
+ * Stores changes in memory until they are written to a change file.
+ * Optionally persists changes to IndexedDB for offline queue support.
  */
 
 import { ChangeOperation, OperationType } from './types';
+import { OfflineQueue, getOfflineQueue } from './OfflineQueue';
 
 export class ChangeTracker {
   private operations: ChangeOperation[] = [];
   private isTracking: boolean = true;
+  private offlineQueue: OfflineQueue | null = null;
+  private persistToIndexedDB: boolean = false;
 
   /**
    * Start tracking changes
+   * @param persistOffline - Whether to persist changes to IndexedDB for offline support
    */
-  start(): void {
+  start(persistOffline: boolean = false): void {
     this.isTracking = true;
     this.operations = [];
+    this.persistToIndexedDB = persistOffline;
+    
+    if (persistOffline) {
+      this.offlineQueue = getOfflineQueue();
+    }
   }
 
   /**
@@ -25,7 +35,7 @@ export class ChangeTracker {
   }
 
   /**
-   * Clear all tracked changes
+   * Clear all tracked changes (in-memory only)
    */
   clear(): void {
     this.operations = [];
@@ -37,12 +47,21 @@ export class ChangeTracker {
   trackInsert(table: string, data: Record<string, any>): void {
     if (!this.isTracking) return;
     
-    this.operations.push({
+    const operation: ChangeOperation = {
       type: 'INSERT',
       table,
       data,
       timestamp: new Date().toISOString(),
-    });
+    };
+    
+    this.operations.push(operation);
+    
+    // Persist to IndexedDB if enabled
+    if (this.persistToIndexedDB && this.offlineQueue?.isInitialized()) {
+      this.offlineQueue.addChange(table, 'INSERT', data.id, { data }).catch(err => {
+        console.error('Failed to persist INSERT to offline queue:', err);
+      });
+    }
   }
 
   /**
@@ -57,7 +76,7 @@ export class ChangeTracker {
   ): void {
     if (!this.isTracking) return;
     
-    this.operations.push({
+    const operation: ChangeOperation = {
       type: 'UPDATE',
       table,
       id,
@@ -65,7 +84,20 @@ export class ChangeTracker {
       oldValue,
       newValue,
       timestamp: new Date().toISOString(),
-    });
+    };
+    
+    this.operations.push(operation);
+    
+    // Persist to IndexedDB if enabled
+    if (this.persistToIndexedDB && this.offlineQueue?.isInitialized()) {
+      this.offlineQueue.addChange(table, 'UPDATE', id, { 
+        field, 
+        oldValue, 
+        newValue 
+      }).catch(err => {
+        console.error('Failed to persist UPDATE to offline queue:', err);
+      });
+    }
   }
 
   /**
@@ -74,33 +106,50 @@ export class ChangeTracker {
   trackDelete(table: string, id: number, oldData?: Record<string, any>): void {
     if (!this.isTracking) return;
     
-    this.operations.push({
+    const operation: ChangeOperation = {
       type: 'DELETE',
       table,
       id,
       data: oldData,
       timestamp: new Date().toISOString(),
-    });
+    };
+    
+    this.operations.push(operation);
+    
+    // Persist to IndexedDB if enabled
+    if (this.persistToIndexedDB && this.offlineQueue?.isInitialized()) {
+      this.offlineQueue.addChange(table, 'DELETE', id, { data: oldData }).catch(err => {
+        console.error('Failed to persist DELETE to offline queue:', err);
+      });
+    }
   }
 
   /**
-   * Get all tracked operations
+   * Get all tracked operations (in-memory)
    */
   getOperations(): ChangeOperation[] {
     return [...this.operations];
   }
 
   /**
-   * Check if there are any tracked changes
+   * Check if there are any tracked changes (in-memory)
    */
   hasChanges(): boolean {
     return this.operations.length > 0;
   }
 
   /**
-   * Get the number of tracked changes
+   * Get the number of tracked changes (in-memory)
    */
   getChangeCount(): number {
     return this.operations.length;
   }
+  
+  /**
+   * Get the offline queue (for checking persisted changes)
+   */
+  getOfflineQueue(): OfflineQueue | null {
+    return this.offlineQueue;
+  }
 }
+

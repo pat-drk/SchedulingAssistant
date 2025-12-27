@@ -446,6 +446,78 @@
                         </ol>
                     </div>
 
+                    <h4 class="font-bold text-[#242424] mb-4 flex items-center gap-2">
+                        <i class="fab fa-microsoft text-[#0078d4]"></i>
+                        OneDrive / SharePoint Setup
+                    </h4>
+                    <p class="text-sm text-[#616161] mb-4">For multi-user editing, store your database file in a synced OneDrive or SharePoint folder. Each user should open the file from their own synchronized local folder.</p>
+
+                    <div class="p-4 bg-[#fff4e5] border border-[#ffe0b2] rounded-lg flex gap-3 items-start mb-6">
+                        <i class="fas fa-exclamation-triangle text-[#e65100] mt-1"></i>
+                        <div>
+                            <p class="text-xs text-[#bf360c] font-semibold mb-1">Important: "Always Keep on This Device"</p>
+                            <p class="text-xs text-[#bf360c]">Right-click the database folder in File Explorer and select <strong>"Always keep on this device"</strong>. This ensures the file is always available locally and syncs immediately—files set to "Online-only" may cause sync delays or failures.</p>
+                        </div>
+                    </div>
+
+                    <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd] mb-6">
+                        <h5 class="font-bold text-sm text-[#242424] mb-3">Setup Steps for Team Access</h5>
+                        <ol class="text-xs text-[#616161] space-y-2">
+                            <li><strong>1. Create Shared Folder:</strong> In OneDrive or SharePoint, create a folder (e.g., "Scheduling Database") and share it with your team members.</li>
+                            <li><strong>2. Add to OneDrive:</strong> Each team member should "Add shortcut to OneDrive" so the folder syncs to their local machine.</li>
+                            <li><strong>3. Keep Files Local:</strong> Right-click the folder → <em>Always keep on this device</em>.</li>
+                            <li><strong>4. Open Locally:</strong> Each user opens the .db file from their local OneDrive folder (typically C:\Users\YourName\OneDrive\...).</li>
+                            <li><strong>5. Enter Email:</strong> When prompted, enter your work email to identify your changes.</li>
+                        </ol>
+                    </div>
+
+                    <div class="table-container mb-8">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-[#fafafa] border-b text-[#616161]">
+                                <tr>
+                                    <th class="p-3 font-semibold">Sync Status</th>
+                                    <th class="p-3 font-semibold">Meaning</th>
+                                    <th class="p-3 font-semibold">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
+                                <tr>
+                                    <td class="p-3"><span class="inline-flex items-center gap-1"><i class="fas fa-check-circle text-green-600"></i> Synced</span></td>
+                                    <td class="p-3">All changes saved and synced with cloud.</td>
+                                    <td class="p-3">No action needed.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3"><span class="inline-flex items-center gap-1"><i class="fas fa-sync-alt text-blue-600"></i> Syncing</span></td>
+                                    <td class="p-3">Changes are being synced.</td>
+                                    <td class="p-3">Wait for completion.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3"><span class="inline-flex items-center gap-1"><i class="fas fa-cloud-download-alt text-amber-600"></i> External Changes</span></td>
+                                    <td class="p-3">Another user made changes.</td>
+                                    <td class="p-3">Click "Refresh" to merge.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3"><span class="inline-flex items-center gap-1"><i class="fas fa-wifi-slash text-gray-500"></i> Offline</span></td>
+                                    <td class="p-3">No internet connection.</td>
+                                    <td class="p-3">Changes queued, will sync when online.</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3"><span class="inline-flex items-center gap-1"><i class="fas fa-users text-purple-600"></i> Active Users</span></td>
+                                    <td class="p-3">Shows who else is editing.</td>
+                                    <td class="p-3">Coordinate edits if working on same records.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="p-4 bg-[#f0f7ff] border border-[#cce5ff] rounded-lg flex gap-3 items-start mb-8">
+                        <i class="fas fa-lightbulb text-[#0078d4] mt-1"></i>
+                        <div>
+                            <p class="text-xs text-[#005a9e] font-semibold mb-1">Recommended Browser</p>
+                            <p class="text-xs text-[#005a9e]">Use <strong>Microsoft Edge</strong> or <strong>Google Chrome</strong> for the best experience. These browsers support the File System Access API required for seamless file sync. Firefox and Safari users will need to use manual export/import.</p>
+                        </div>
+                    </div>
+
                     <h3 class="font-bold text-[#242424] mb-4 flex items-center gap-2">
                         <i class="fas fa-arrow-up text-[#0078d4]"></i>
                         Automatic Migrations
@@ -1771,6 +1843,26 @@
                         <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
                             <h5 class="font-bold text-sm text-[#242424] mb-1">Email prompt keeps appearing</h5>
                             <p class="text-xs text-[#616161]">The app prompts for your email each time you open a file. This identifies your changes in the sync system and is expected behavior for multi-user collaboration.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">Sync status shows "Offline"</h5>
+                            <p class="text-xs text-[#616161]">The app detected no internet connection. Your changes will be saved locally and queued for sync. When you reconnect, pending changes will sync automatically. You can continue working—no data will be lost.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">"External changes detected" alert</h5>
+                            <p class="text-xs text-[#616161]">Another user saved changes while you were working. Click the <strong>Refresh</strong> button to merge their changes with yours. The app will automatically resolve non-conflicting edits and prompt you only when the same field was edited by multiple users.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">OneDrive sync seems slow</h5>
+                            <p class="text-xs text-[#616161]">OneDrive can take 2–30 seconds to sync changes between computers. Ensure the database folder is set to <strong>"Always keep on this device"</strong> (right-click folder in File Explorer). If issues persist, manually pause and resume OneDrive sync, or check that all users have a stable internet connection.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">Firefox or Safari: No file sync available</h5>
+                            <p class="text-xs text-[#616161]">The File System Access API is only supported in Chromium-based browsers (Edge, Chrome). In Firefox or Safari, use the <strong>Manual Export/Import</strong> buttons to save and load your database. For the best multi-user experience, switch to Microsoft Edge or Google Chrome.</p>
+                        </div>
+                        <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
+                            <h5 class="font-bold text-sm text-[#242424] mb-1">"Permission denied" or "Access denied" errors</h5>
+                            <p class="text-xs text-[#616161]">The browser may have lost permission to access the file. Try closing and reopening the file using <strong>Open DB</strong>. If using OneDrive, ensure the file isn't open in another application and that OneDrive is running and signed in.</p>
                         </div>
                     </div>
                 </section>
