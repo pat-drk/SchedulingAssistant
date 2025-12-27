@@ -69,10 +69,10 @@ function fmtAvail(v: string) {
 export default function PersonProfileModal({ personId, onClose, all }: PersonProfileModalProps) {
   const s = useStyles();
 
-  const person = all('SELECT * FROM person WHERE id=?', [personId])[0];
+  const person = all('SELECT * FROM person_active WHERE id=?', [personId])[0];
 
   const trainings = all(
-    'SELECT r.name, t.status FROM training t JOIN role r ON r.id=t.role_id WHERE t.person_id=? ORDER BY r.name',
+    'SELECT r.name, t.status FROM training_active t JOIN role_active r ON r.id=t.role_id WHERE t.person_id=? ORDER BY r.name',
     [personId]
   );
 
@@ -80,9 +80,9 @@ export default function PersonProfileModal({ personId, onClose, all }: PersonPro
 
   const defaults = all(
     'SELECT md.month, md.segment, r.name as role_name, g.name as group_name ' +
-    'FROM monthly_default md ' +
-    'JOIN role r ON r.id=md.role_id ' +
-    'JOIN grp g ON g.id=r.group_id ' +
+    'FROM monthly_default_active md ' +
+    'JOIN role_active r ON r.id=md.role_id ' +
+    'JOIN grp_active g ON g.id=r.group_id ' +
     'WHERE md.person_id=? ORDER BY md.month DESC, md.segment',
     [personId]
   );
@@ -105,7 +105,7 @@ export default function PersonProfileModal({ personId, onClose, all }: PersonPro
 
   const nowIso = new Date().toISOString();
   const timeOff = all(
-    'SELECT start_ts, end_ts, reason FROM timeoff WHERE person_id=? AND end_ts>=? ORDER BY start_ts ASC',
+    'SELECT start_ts, end_ts, reason FROM timeoff_active WHERE person_id=? AND end_ts>=? ORDER BY start_ts ASC',
     [personId, nowIso]
   );
 

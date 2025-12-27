@@ -439,10 +439,11 @@
                         <h5 class="font-bold text-sm text-[#242424] mb-3">How the Sync System Works</h5>
                         <ol class="text-xs text-[#616161] space-y-2">
                             <li><strong>1. User Identification:</strong> When you open a file, enter your email to identify your changes.</li>
-                            <li><strong>2. Change Tracking:</strong> All database operations are tracked with timestamps and user info.</li>
-                            <li><strong>3. Auto-Merge:</strong> Non-conflicting changes from other users are merged automatically in the background (every 30 seconds).</li>
-                            <li><strong>4. Conflict Resolution:</strong> If conflicts are detected (same field edited by multiple users), a dialog helps you resolve them.</li>
-                            <li><strong>5. Sync Status:</strong> The sync indicator in the top bar shows current sync state and active users.</li>
+                            <li><strong>2. Change Tracking:</strong> All database operations are tracked with timestamps, user info, and sync IDs.</li>
+                            <li><strong>3. N-Way Merge:</strong> When multiple users have unsaved changes, the system performs an N-way merge comparing all working files against the base simultaneously.</li>
+                            <li><strong>4. Conflict Resolution:</strong> If conflicts are detected (same row edited by multiple users), a dialog shows all versions and lets you pick which to keep—or keep all for additive tables like time-off.</li>
+                            <li><strong>5. Soft-Delete:</strong> Deleted records are preserved with a timestamp, allowing conflict resolution even when one user deleted what another edited.</li>
+                            <li><strong>6. Sync Status:</strong> The sync indicator in the top bar shows current sync state and active users.</li>
                         </ol>
                     </div>
 
@@ -516,6 +517,22 @@
                             <p class="text-xs text-[#005a9e] font-semibold mb-1">Recommended Browser</p>
                             <p class="text-xs text-[#005a9e]">Use <strong>Microsoft Edge</strong> or <strong>Google Chrome</strong> for the best experience. These browsers support the File System Access API required for seamless file sync. Firefox and Safari users will need to use manual export/import.</p>
                         </div>
+                    </div>
+
+                    <h4 class="font-bold text-[#242424] mb-4 flex items-center gap-2">
+                        <i class="fas fa-code-branch text-[#0078d4]"></i>
+                        Conflict Resolution Dialog
+                    </h4>
+                    <p class="text-sm text-[#616161] mb-4">When multiple users edit the same record, a conflict resolution dialog appears. Conflicts are grouped by table (e.g., "assignment", "timeoff").</p>
+                    
+                    <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd] mb-8">
+                        <h5 class="font-bold text-sm text-[#242424] mb-3">Resolution Options</h5>
+                        <ol class="text-xs text-[#616161] space-y-2">
+                            <li><strong>Keep Base:</strong> Discard all user changes and keep the original version from before editing.</li>
+                            <li><strong>Keep User's Version:</strong> Select a specific user's changes. Shows each modifier's email and their version.</li>
+                            <li><strong>Delete:</strong> Mark the record as deleted (soft-delete preserves history).</li>
+                            <li><strong>Keep All (Additive tables):</strong> For time-off, assignments, and department events—keep all versions with fresh sync IDs.</li>
+                        </ol>
                     </div>
 
                     <h3 class="font-bold text-[#242424] mb-4 flex items-center gap-2">

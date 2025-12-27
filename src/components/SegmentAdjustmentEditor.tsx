@@ -207,7 +207,7 @@ export default function SegmentAdjustmentEditor({ all, run, refresh, segments, d
       adjRows = adjRows.map(row => ({ ...row, logic_operator: 'AND' }));
     }
     setRows(adjRows);
-    setRoles(all(`SELECT id,name FROM role ORDER BY name`));
+    setRoles(all(`SELECT id,name FROM role_active ORDER BY name`));
     
     // Load conditions for each adjustment
     const condMap = new Map<number, SegmentAdjustmentCondition[]>();

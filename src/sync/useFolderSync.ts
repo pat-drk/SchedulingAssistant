@@ -38,6 +38,7 @@ import {
   type MergeResult,
   type MergeConflict,
   type ConflictResolution,
+  type ConflictResolutionEntry,
 } from './ThreeWayMerge';
 
 export interface FolderSyncState {
@@ -85,7 +86,7 @@ export interface FolderSyncActions {
   
   /** Resolve merge conflicts and complete merge */
   resolveMergeConflicts: (
-    resolutions: ConflictResolution[],
+    resolutions: ConflictResolutionEntry[],
     applyMigrations: (db: Database) => void
   ) => Promise<{ success: boolean; db: Database | null }>;
   
@@ -339,7 +340,7 @@ export function useFolderSync(): [FolderSyncState, FolderSyncActions] {
   }, [state.workingFileHandle, state.userEmail]);
 
   const resolveMergeConflicts = useCallback(async (
-    resolutions: ConflictResolution[],
+    resolutions: ConflictResolutionEntry[],
     applyMigrations: (db: Database) => void
   ): Promise<{ success: boolean; db: Database | null }> => {
     const { pendingMerge, folderHandle, baseFileHandle, userEmail } = state;

@@ -21,7 +21,7 @@ export interface SegmentAdjustmentRow {
 export function listSegmentAdjustments(db: Database): SegmentAdjustmentRow[] {
   try {
     // Try to query with logic_operator column
-    const res = db.exec(`SELECT id, condition_segment, condition_role_id, target_segment, target_field, baseline, offset_minutes, COALESCE(logic_operator, 'AND') as logic_operator FROM segment_adjustment`);
+    const res = db.exec(`SELECT id, condition_segment, condition_role_id, target_segment, target_field, baseline, offset_minutes, COALESCE(logic_operator, 'AND') as logic_operator FROM segment_adjustment_active`);
     const values = res[0]?.values || [];
     return values.map(row => ({
       id: Number(row[0]),
@@ -36,7 +36,7 @@ export function listSegmentAdjustments(db: Database): SegmentAdjustmentRow[] {
   } catch (e) {
     // If logic_operator column doesn't exist yet, query without it
     console.log('Querying segment_adjustment without logic_operator column (pre-migration)');
-    const res = db.exec(`SELECT id, condition_segment, condition_role_id, target_segment, target_field, baseline, offset_minutes FROM segment_adjustment`);
+    const res = db.exec(`SELECT id, condition_segment, condition_role_id, target_segment, target_field, baseline, offset_minutes FROM segment_adjustment_active`);
     const values = res[0]?.values || [];
     return values.map(row => ({
       id: Number(row[0]),
@@ -54,7 +54,7 @@ export function listSegmentAdjustments(db: Database): SegmentAdjustmentRow[] {
 export function listSegmentAdjustmentConditions(db: Database, adjustmentId: number): SegmentAdjustmentCondition[] {
   try {
     // Use prepared statement for proper parameter binding (db.exec doesn't bind params correctly)
-    const stmt = db.prepare(`SELECT id, adjustment_id, condition_segment, condition_role_id FROM segment_adjustment_condition WHERE adjustment_id = ?`);
+    const stmt = db.prepare(`SELECT id, adjustment_id, condition_segment, condition_role_id FROM segment_adjustment_condition_active WHERE adjustment_id = ?`);
     stmt.bind([adjustmentId]);
     const rows: SegmentAdjustmentCondition[] = [];
     while (stmt.step()) {

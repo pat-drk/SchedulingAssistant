@@ -349,7 +349,7 @@ export default function CrewHistoryView({
 
   useEffect(() => {
     if (sqlDb) {
-      setDefs(all(`SELECT * FROM monthly_default`));
+      setDefs(all(`SELECT * FROM monthly_default_active`));
     }
   }, [sqlDb, monthlyDefaults]);
 
@@ -575,7 +575,7 @@ export default function CrewHistoryView({
         onChange={(v) => {
           const rid = v ? Number(v) : null;
           setMonthlyDefaultForMonth(month, personId, seg, rid);
-          setDefs(all(`SELECT * FROM monthly_default`));
+          setDefs(all(`SELECT * FROM monthly_default_active`));
         }}
         placeholder="--"
       />

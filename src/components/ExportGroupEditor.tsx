@@ -41,10 +41,10 @@ export default function ExportGroupEditor({ all, run, refresh }: ExportGroupEdit
 
   function load() {
     const r = all(`SELECT eg.group_id, g.name as group_name, eg.code, eg.color, eg.column_group
-                     FROM export_group eg JOIN grp g ON g.id=eg.group_id ORDER BY g.name`);
+                     FROM export_group_active eg JOIN grp_active g ON g.id=eg.group_id ORDER BY g.name`);
     setRows(r);
     const used = new Set(r.map((x: any) => x.group_id));
-    const avail = all(`SELECT id,name FROM grp ORDER BY name`).filter((g: any) => !used.has(g.id));
+    const avail = all(`SELECT id,name FROM grp_active ORDER BY name`).filter((g: any) => !used.has(g.id));
     setAvailable(avail);
   }
 

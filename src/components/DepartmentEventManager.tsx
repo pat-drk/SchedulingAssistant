@@ -147,19 +147,19 @@ export default function DepartmentEventManager({ all, run, refresh }: Department
   const events = React.useMemo(() => {
     return all(`
       SELECT de.*, g.name as group_name, r.name as role_name
-      FROM department_event de
-      LEFT JOIN grp g ON g.id = de.group_id
-      LEFT JOIN role r ON r.id = de.role_id
+      FROM department_event_active de
+      LEFT JOIN grp_active g ON g.id = de.group_id
+      LEFT JOIN role_active r ON r.id = de.role_id
       ORDER BY de.date DESC, de.start_time ASC
     `) as DepartmentEvent[];
   }, [all]);
 
   const groups = React.useMemo(() => {
-    return all(`SELECT id, name FROM grp ORDER BY name`) as Group[];
+    return all(`SELECT id, name FROM grp_active ORDER BY name`) as Group[];
   }, [all]);
 
   const roles = React.useMemo(() => {
-    return all(`SELECT id, name, group_id FROM role ORDER BY name`) as Role[];
+    return all(`SELECT id, name, group_id FROM role_active ORDER BY name`) as Role[];
   }, [all]);
 
   const rolesForGroup = React.useMemo(() => {
@@ -220,17 +220,17 @@ export default function DepartmentEventManager({ all, run, refresh }: Department
       );
 
       // Auto-assign all active crew to this event
-      const newEventRows = all(`SELECT id FROM department_event WHERE date=? AND title=? ORDER BY id DESC LIMIT 1`, [date, title.trim()]);
+      const newEventRows = all(`SELECT id FROM department_event_active WHERE date=? AND title=? ORDER BY id DESC LIMIT 1`, [date, title.trim()]);
       if (newEventRows.length > 0) {
         const eventId = newEventRows[0].id;
-        const activePeople = all(`SELECT id FROM person WHERE active=1`);
+        const activePeople = all(`SELECT id FROM person_active WHERE active=1`);
         
         // Create assignments for all active people
         // Use the event title as the segment name
         for (const person of activePeople) {
           // Check if assignment already exists
           const existing = all(
-            `SELECT id FROM assignment WHERE date=? AND person_id=? AND segment=?`,
+            `SELECT id FROM assignment_active WHERE date=? AND person_id=? AND segment=?`,
             [date, person.id, title.trim()]
           );
           if (existing.length === 0) {

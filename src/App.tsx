@@ -24,7 +24,7 @@ import { isInTrainingPeriod, weeksRemainingInTraining } from "./utils/trainingCo
 import MergeConflictDialog from "./components/MergeConflictDialog";
 import { useFolderSync } from "./sync/useFolderSync";
 import { FileSystemUtils } from "./sync/FileSystemUtils";
-import type { ConflictResolution as MergeConflictResolution } from "./sync/ThreeWayMerge";
+import type { ConflictResolutionEntry } from "./sync/ThreeWayMerge";
 import { getWeekOfMonth, type WeekStartMode } from "./utils/weekCalculation";
 import AlertDialog from "./components/AlertDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
@@ -599,7 +599,7 @@ export default function App() {
   const toast = useToast();
 
   // Alert and Confirm dialogs
-  const [alertDialog, setAlertDialog] = useState<{ title?: string; message: string } | null>(null);
+  const [alertDialog, setAlertDialog] = useState<{ title?: string; message: string; onClose?: () => void } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     title?: string;
     message: string;
@@ -755,6 +755,12 @@ export default function App() {
       const file = await handle.getFile();
       const buf = await file.arrayBuffer();
       const db = new SQL.Database(new Uint8Array(buf));
+      
+      // Set placeholder user_email before migrations (triggers use it for modified_by)
+      try {
+        db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+      } catch { /* meta table may not exist yet, migrations will create it */ }
+      
       applyMigrations(db);
 
       setSqlDb(db);
@@ -767,6 +773,12 @@ export default function App() {
       setEmailDialog({
         onSubmit: (email: string) => {
           setUserEmail(email);
+          // Update meta table with user email for trigger attribution
+          if (db) {
+            try {
+              db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', ?);`, [email]);
+            } catch (e) { console.warn('Failed to update user_email in meta:', e); }
+          }
           setEmailDialog(null);
           toast.showSuccess("Database opened successfully");
         },
@@ -796,6 +808,28 @@ export default function App() {
       
       if (!result.success) {
         toast.showError(folderSyncState.error || "Failed to open folder");
+        return;
+      }
+
+      // Check for stale merge lock (indicates previous merge may have crashed)
+      if (result.staleMergeLock) {
+        const lockInfo = result.staleMergeLock;
+        const lockAge = Date.now() - new Date(lockInfo.timestamp).getTime();
+        const lockAgeMinutes = Math.round(lockAge / 60000);
+        
+        setAlertDialog({
+          title: "Previous Merge Interrupted",
+          message: `A merge lock from ${lockInfo.startedBy} was found (${lockAgeMinutes} minutes old). ` +
+            `This typically means a previous merge was interrupted. ` +
+            `The lock will be cleared so you can continue. ` +
+            `Files involved: ${lockInfo.files.join(', ')}`,
+          onClose: async () => {
+            setAlertDialog(null);
+            await folderSyncActions.clearStaleLock();
+            // Re-open folder after clearing the lock
+            openFolderForSync();
+          }
+        });
         return;
       }
 
@@ -855,7 +889,7 @@ export default function App() {
   }
 
   // Handle merge conflict resolution from folder sync
-  async function handleFolderMergeResolve(resolutions: MergeConflictResolution[]) {
+  async function handleFolderMergeResolve(resolutions: ConflictResolutionEntry[]) {
     if (!SQL) return;
     
     const result = await folderSyncActions.resolveMergeConflicts(resolutions, applyMigrations);
@@ -888,6 +922,12 @@ export default function App() {
     }
     try {
       const db = new SQL.Database(new Uint8Array(arrayBuffer));
+      
+      // Set placeholder user_email before migrations (triggers use it for modified_by)
+      try {
+        db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', 'system');`);
+      } catch { /* meta table may not exist yet, migrations will create it */ }
+      
       applyMigrations(db);
       setSqlDb(db);
       fileHandleRef.current = null; // No file handle in fallback mode
@@ -899,6 +939,12 @@ export default function App() {
       setEmailDialog({
         onSubmit: (email: string) => {
           setUserEmail(email);
+          // Update meta table with user email for trigger attribution
+          if (db) {
+            try {
+              db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('user_email', ?);`, [email]);
+            } catch (e) { console.warn('Failed to update user_email in meta:', e); }
+          }
           setEmailDialog(null);
         },
         onCancel: () => {
@@ -1007,7 +1053,7 @@ export default function App() {
     if (!db) return;
     // Gather all (person, role) pairs from monthly defaults (any month, any weekday) as implicit qualification
     const pairs = all(
-      `SELECT DISTINCT person_id, role_id FROM monthly_default
+      `SELECT DISTINCT person_id, role_id FROM monthly_default_active
        UNION
        SELECT DISTINCT person_id, role_id FROM monthly_default_day`,
       [],
@@ -1018,7 +1064,7 @@ export default function App() {
     // Upsert monthly-derived qualifications, without overriding manual
     for (const row of pairs as any[]) {
       const existing = all(
-        `SELECT source FROM training WHERE person_id=? AND role_id=?`,
+        `SELECT source FROM training_active WHERE person_id=? AND role_id=?`,
         [row.person_id, row.role_id],
         db
       )[0];
@@ -1039,7 +1085,7 @@ export default function App() {
 
     // Remove stale monthly-derived qualifications that are no longer supported by monthly defaults
     const stale = all(
-      `SELECT person_id, role_id FROM training WHERE source='monthly'`,
+      `SELECT person_id, role_id FROM training_active WHERE source='monthly'`,
       [],
       db
     ).filter((r: any) => !monthlySet.has(`${r.person_id}|${r.role_id}`));
@@ -1050,11 +1096,11 @@ export default function App() {
 
   function refreshCaches(db = sqlDb) {
     if (!db) return;
-    const g = all(`SELECT id,name,theme,custom_color FROM grp ORDER BY name`, [], db);
+    const g = all(`SELECT id,name,theme,custom_color FROM grp_active ORDER BY name`, [], db);
     setGroups(g);
-    const r = all(`SELECT r.id, r.code, r.name, r.group_id, r.segments, g.name as group_name, g.custom_color as group_color FROM role r JOIN grp g ON g.id=r.group_id ORDER BY g.name, r.name`, [], db);
+    const r = all(`SELECT r.id, r.code, r.name, r.group_id, r.segments, g.name as group_name, g.custom_color as group_color FROM role_active r JOIN grp_active g ON g.id=r.group_id ORDER BY g.name, r.name`, [], db);
     setRoles(r.map(x => ({ ...x, segments: JSON.parse(x.segments) })));
-    const p = all(`SELECT * FROM person WHERE active=1 ORDER BY last_name, first_name`, [], db);
+    const p = all(`SELECT * FROM person_active WHERE active=1 ORDER BY last_name, first_name`, [], db);
     setPeople(p);
     const s = listSegments(db);
     setSegments(s);
@@ -1151,10 +1197,10 @@ export default function App() {
                              p.first_name, p.last_name, p.work_email,
                              r.name as role_name, r.code as role_code, r.group_id,
                              g.name as group_name
-                      FROM assignment a
-                      JOIN person p ON p.id=a.person_id
-                      JOIN role r ON r.id=a.role_id
-                      JOIN grp g  ON g.id=r.group_id
+                      FROM assignment_active a
+                      JOIN person_active p ON p.id=a.person_id
+                      JOIN role_active r ON r.id=a.role_id
+                      JOIN grp_active g  ON g.id=r.group_id
                       WHERE a.date=?
                       ORDER BY g.name, r.name, p.last_name, p.first_name`, [dYMD]);
     return rows;
@@ -1182,9 +1228,9 @@ export default function App() {
     const dYMD = ymd(d);
     const existing = all(
       `SELECT a.id, a.role_id, r.name as role_name, g.name as group_name
-       FROM assignment a
-       JOIN role r ON r.id=a.role_id
-       JOIN grp g  ON g.id=r.group_id
+       FROM assignment_active a
+       JOIN role_active r ON r.id=a.role_id
+       JOIN grp_active g  ON g.id=r.group_id
        WHERE a.date=? AND a.person_id=? AND a.segment=?`,
       [dYMD, personId, segment]
     );
@@ -1394,7 +1440,7 @@ export default function App() {
   function listTimeOffIntervals(personId: number, date: Date): Array<{start: Date; end: Date; reason?: string}> {
     const startDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0,0,0,0);
     const endDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23,59,59,999);
-    const rows = all(`SELECT start_ts, end_ts, reason FROM timeoff WHERE person_id=?`, [personId]);
+    const rows = all(`SELECT start_ts, end_ts, reason FROM timeoff_active WHERE person_id=?`, [personId]);
     return rows
       .map((r) => ({ start: new Date(r.start_ts), end: new Date(r.end_ts), reason: r.reason }))
       .filter((r) => r.end >= startDay && r.start <= endDay)
@@ -1408,7 +1454,7 @@ export default function App() {
       setAvailabilityOverrides([]);
       return;
     }
-    const rows = all(`SELECT * FROM monthly_default WHERE month=?`, [month], db);
+    const rows = all(`SELECT * FROM monthly_default_active WHERE month=?`, [month], db);
     setMonthlyDefaults(rows);
     const ov = all(`SELECT * FROM monthly_default_day WHERE month=?`, [month], db);
     setMonthlyOverrides(ov);
@@ -1428,7 +1474,7 @@ export default function App() {
       const startYmd = ymd(startDate);
       const endYmd = ymd(endDate);
       availOverrides = all(
-        `SELECT person_id, date, avail FROM availability_override WHERE date BETWEEN ? AND ?`,
+        `SELECT person_id, date, avail FROM availability_override_active WHERE date BETWEEN ? AND ?`,
         [startYmd, endYmd],
         db
       );
@@ -1449,7 +1495,7 @@ export default function App() {
     if (!sqlDb) {
       return { defaults: [], overrides: [], weekOverrides: [] };
     }
-    const defaults = all(`SELECT * FROM monthly_default WHERE month=?`, [month], sqlDb);
+    const defaults = all(`SELECT * FROM monthly_default_active WHERE month=?`, [month], sqlDb);
     const overrides = all(`SELECT * FROM monthly_default_day WHERE month=?`, [month], sqlDb);
     const weekOverrides = all(`SELECT * FROM monthly_default_week WHERE month=?`, [month], sqlDb);
     return { defaults, overrides, weekOverrides };
@@ -1526,7 +1572,7 @@ export default function App() {
 
   function copyMonthlyDefaults(fromMonth: string, toMonth: string) {
     if (!sqlDb) return;
-    const rows = all(`SELECT person_id, segment, role_id FROM monthly_default WHERE month=?`, [fromMonth]);
+    const rows = all(`SELECT person_id, segment, role_id FROM monthly_default_active WHERE month=?`, [fromMonth]);
     for (const row of rows) {
       run(
         `INSERT INTO monthly_default (month, person_id, segment, role_id) VALUES (?,?,?,?)
@@ -1611,7 +1657,7 @@ export default function App() {
           if (seg !== 'Early' && isSegmentBlockedByTimeOff(person.id, d, seg)) continue;
           const dateStr = ymd(d);
           const existing = all(
-            `SELECT role_id FROM assignment WHERE date=? AND person_id=? AND segment=?`,
+            `SELECT role_id FROM assignment_active WHERE date=? AND person_id=? AND segment=?`,
             [dateStr, person.id, seg]
           );
           if (existing.length) {
@@ -1752,7 +1798,7 @@ export default function App() {
     const dY = ymd(date);
     const ov = all(`SELECT required FROM needs_override WHERE date=? AND group_id=? AND role_id=? AND segment=?`, [dY, groupId, roleId, segment]);
     if (ov.length) return ov[0].required;
-    const bl = all(`SELECT required FROM needs_baseline WHERE group_id=? AND role_id=? AND segment=?`, [groupId, roleId, segment]);
+    const bl = all(`SELECT required FROM needs_baseline_active WHERE group_id=? AND role_id=? AND segment=?`, [groupId, roleId, segment]);
     return bl.length ? bl[0].required : 0;
   }
 
@@ -1792,10 +1838,10 @@ async function exportShifts() {
                                     p.first_name, p.last_name, p.work_email,
                                     r.name as role_name, r.code as role_code, r.group_id,
                                     g.name as group_name
-                             FROM assignment a
-                             JOIN person p ON p.id=a.person_id
-                             JOIN role r ON r.id=a.role_id
-                             JOIN grp g  ON g.id=r.group_id
+                             FROM assignment_active a
+                             JOIN person_active p ON p.id=a.person_id
+                             JOIN role_active r ON r.id=a.role_id
+                             JOIN grp_active g  ON g.id=r.group_id
                              WHERE a.date=?`, [dYMD]);
 
         // For Teams export, use per-person segment times to correctly apply adjustments
@@ -1932,12 +1978,12 @@ async function exportShifts() {
   }, [sqlDb, selectedDate]);
 
   function peopleOptionsForSegment(date: Date, segment: Segment, role: any) {
-    const rows = all(`SELECT id, last_name, first_name FROM person WHERE active=1 ORDER BY last_name, first_name`);
+    const rows = all(`SELECT id, last_name, first_name FROM person_active WHERE active=1 ORDER BY last_name, first_name`);
     const trained = new Set<number>([
-      ...all(`SELECT person_id FROM training WHERE role_id=? AND status='Qualified'`, [role.id]).map((r: any) => r.person_id),
+      ...all(`SELECT person_id FROM training_active WHERE role_id=? AND status='Qualified'`, [role.id]).map((r: any) => r.person_id),
       // Implicit monthly qualification for this role/segment
       ...all(
-        `SELECT DISTINCT person_id FROM monthly_default WHERE role_id=? AND segment=?
+        `SELECT DISTINCT person_id FROM monthly_default_active WHERE role_id=? AND segment=?
          UNION
          SELECT DISTINCT person_id FROM monthly_default_day WHERE role_id=? AND segment=?`,
         [role.id, segment, role.id, segment]
@@ -1985,7 +2031,7 @@ async function exportShifts() {
   // Removed unused helpers assignmentsByGroupRole and countAssigned
 
   function RequiredCell({date, group, role, segment}:{date:Date|null; group:any; role:any; segment:Segment}){
-    const req = date ? getRequiredFor(date, group.id, role.id, segment) : (all(`SELECT required FROM needs_baseline WHERE group_id=? AND role_id=? AND segment=?`, [group.id, role.id, segment])[0]?.required||0);
+    const req = date ? getRequiredFor(date, group.id, role.id, segment) : (all(`SELECT required FROM needs_baseline_active WHERE group_id=? AND role_id=? AND segment=?`, [group.id, role.id, segment])[0]?.required||0);
     const [val,setVal] = useState<number>(req);
     useEffect(()=>setVal(req),[req]);
     const r = useRequiredCellStyles();
@@ -2021,7 +2067,7 @@ async function exportShifts() {
     const totalSegments = segments.length;
     const totalGroups = groups.length;
     const totalBaselines = useMemo(() => {
-      return all(`SELECT COUNT(*) as count FROM needs_baseline WHERE required > 0`)[0]?.count || 0;
+      return all(`SELECT COUNT(*) as count FROM needs_baseline_active WHERE required > 0`)[0]?.count || 0;
     }, [all]);
     
     // Calculate per-group stats
@@ -2033,7 +2079,7 @@ async function exportShifts() {
         for (const r of groupRoles) {
           for (const seg of segments) {
             const baseline = all(
-              `SELECT required FROM needs_baseline WHERE group_id=? AND role_id=? AND segment=?`,
+              `SELECT required FROM needs_baseline_active WHERE group_id=? AND role_id=? AND segment=?`,
               [g.id, r.id, seg.name]
             )[0];
             totalRequired += baseline?.required || 0;
@@ -2157,12 +2203,12 @@ function PeopleEditor(){
   const [filters, setFilters] = usePersistentFilters('peopleEditorFilters');
 
   // Query all people, including inactive entries, so they can be edited
-  const people = all(`SELECT * FROM person ORDER BY last_name, first_name`);
+  const people = all(`SELECT * FROM person_active ORDER BY last_name, first_name`);
   const viewPeople = useMemo(() => filterPeopleList(people, filters), [people, filters]);
 
   useEffect(()=>{
     if(editing){
-      const rows = all(`SELECT role_id FROM training WHERE person_id=? AND status='Qualified'`, [editing.id]);
+      const rows = all(`SELECT role_id FROM training_active WHERE person_id=? AND status='Qualified'`, [editing.id]);
       setQualifications(new Set(rows.map((r:any)=>r.role_id)));
     } else {
       setQualifications(new Set());
@@ -2773,8 +2819,6 @@ function PeopleEditor(){
         <MergeConflictDialog
           open={true}
           conflicts={folderSyncState.pendingMerge.conflicts}
-          userALabel={folderSyncState.pendingMerge.workingFiles[0]?.email || "User A"}
-          userBLabel={folderSyncState.pendingMerge.workingFiles[1]?.email || "User B"}
           onResolve={handleFolderMergeResolve}
           onCancel={() => {
             folderSyncActions.reset();
@@ -2793,7 +2837,7 @@ function PeopleEditor(){
           open={true}
           title={alertDialog.title}
           message={alertDialog.message}
-          onClose={() => setAlertDialog(null)}
+          onClose={alertDialog.onClose || (() => setAlertDialog(null))}
         />
       )}
       

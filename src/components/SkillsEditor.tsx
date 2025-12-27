@@ -53,7 +53,7 @@ export default function SkillsEditor({ all, run, refresh }: SkillsEditorProps) {
       group_id: r.group_id ?? null, group_name: r.group_name ?? null,
     }));
     setRows(list);
-  const g = all(`SELECT id, name FROM grp ORDER BY name`);
+  const g = all(`SELECT id, name FROM grp_active ORDER BY name`);
     const gList: GroupRow[] = (g || []).map((x: any) => ({ id: Number(x.id), name: String(x.name) }));
     setGroups(gList);
     if (gList.length && groupId === "") setGroupId(gList[0].id);

@@ -125,10 +125,10 @@ export default function ExportPreview({
                   p.first_name, p.last_name, p.work_email,
                   r.name as role_name, r.code as role_code, r.group_id,
                   g.name as group_name
-           FROM assignment a
-           JOIN person p ON p.id=a.person_id
-           JOIN role r ON r.id=a.role_id
-           JOIN grp g  ON g.id=r.group_id
+           FROM assignment_active a
+           JOIN person_active p ON p.id=a.person_id
+           JOIN role_active r ON r.id=a.role_id
+           JOIN grp_active g  ON g.id=r.group_id
            WHERE a.date=?`,
           [dYMD]
         );

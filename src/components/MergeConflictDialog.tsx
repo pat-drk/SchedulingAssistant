@@ -1,9 +1,10 @@
 /**
- * MergeConflictDialog - Displays merge conflicts and allows user resolution
+ * MergeConflictDialog - Displays N-way merge conflicts and allows user resolution
  * 
- * Shows conflicts between working files and provides:
- * - "Keep All from A" / "Keep All from B" quick buttons
+ * Shows conflicts between multiple working files and provides:
+ * - Quick buttons to keep all from a specific user
  * - "Keep Original" to revert to base
+ * - "Keep All Versions" for additive tables (timeoff, assignment)
  * - Advanced row-by-row resolution option
  */
 
@@ -34,7 +35,7 @@ import {
   Divider,
   Text,
 } from "@fluentui/react-components";
-import type { MergeConflict, ConflictResolution } from "../sync/ThreeWayMerge";
+import type { MergeConflict, ConflictResolution, ConflictResolutionEntry } from "../sync/ThreeWayMerge";
 
 const useStyles = makeStyles({
   surface: {
@@ -58,6 +59,7 @@ const useStyles = makeStyles({
     display: 'flex',
     gap: tokens.spacingHorizontalS,
     marginTop: tokens.spacingVerticalS,
+    flexWrap: 'wrap',
   },
   conflictTable: {
     width: '100%',
@@ -79,7 +81,8 @@ const useStyles = makeStyles({
   },
   radioGroup: {
     display: 'flex',
-    gap: tokens.spacingHorizontalM,
+    flexDirection: 'column',
+    gap: tokens.spacingVerticalXS,
   },
   actions: {
     display: 'flex',
@@ -89,28 +92,54 @@ const useStyles = makeStyles({
   warningText: {
     color: tokens.colorPaletteRedForeground1,
   },
+  userList: {
+    display: 'flex',
+    gap: tokens.spacingHorizontalXS,
+    flexWrap: 'wrap',
+  },
 });
 
 export interface MergeConflictDialogProps {
   open: boolean;
   conflicts: MergeConflict[];
-  userALabel: string; // e.g., "john@company.com"
-  userBLabel: string; // e.g., "jane@company.com"
-  onResolve: (resolutions: ConflictResolution[]) => void;
+  onResolve: (resolutions: ConflictResolutionEntry[]) => void;
   onCancel: () => void;
+}
+
+// Helper to create resolution entry
+function makeResolution(conflict: MergeConflict, resolution: ConflictResolution): ConflictResolutionEntry {
+  return {
+    conflictKey: conflict.conflictKey,
+    table: conflict.table,
+    syncId: conflict.syncId,
+    resolution,
+  };
 }
 
 export default function MergeConflictDialog({
   open,
   conflicts,
-  userALabel,
-  userBLabel,
   onResolve,
   onCancel,
 }: MergeConflictDialogProps) {
   const styles = useStyles();
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [resolutions, setResolutions] = useState<Record<string, 'base' | 'a' | 'b' | 'both'>>({});
+  
+  // Resolution state: map from conflictKey to resolution
+  const [resolutions, setResolutions] = useState<Record<string, ConflictResolution>>({});
+
+  // Get unique users who have conflicts
+  const allModifiers = useMemo(() => {
+    const emails = new Set<string>();
+    for (const conflict of conflicts) {
+      for (const modifier of conflict.modifiers) {
+        if (modifier.email) {
+          emails.add(modifier.email);
+        }
+      }
+    }
+    return Array.from(emails);
+  }, [conflicts]);
 
   // Group conflicts by table
   const conflictsByTable = useMemo(() => {
@@ -124,60 +153,68 @@ export default function MergeConflictDialog({
     return grouped;
   }, [conflicts]);
 
-  // Set all resolutions to a specific choice
-  const setAllResolutions = (choice: 'base' | 'a' | 'b') => {
-    const newResolutions: Record<string, 'base' | 'a' | 'b' | 'both'> = {};
-    for (const conflict of conflicts) {
-      newResolutions[`${conflict.table}:${conflict.syncId}`] = choice;
-    }
-    setResolutions(newResolutions);
-  };
-
-  // Handle quick action buttons
+  // Set all resolutions to base
   const handleKeepAllOriginal = () => {
-    const allResolutions: ConflictResolution[] = conflicts.map(c => ({
-      syncId: c.syncId,
-      table: c.table,
-      choice: 'base' as const,
-    }));
+    const allResolutions: ConflictResolutionEntry[] = conflicts.map(c => 
+      makeResolution(c, { type: 'base' })
+    );
     onResolve(allResolutions);
   };
 
-  const handleKeepAllA = () => {
-    const allResolutions: ConflictResolution[] = conflicts.map(c => ({
-      syncId: c.syncId,
-      table: c.table,
-      choice: 'a' as const,
-    }));
-    onResolve(allResolutions);
-  };
-
-  const handleKeepAllB = () => {
-    const allResolutions: ConflictResolution[] = conflicts.map(c => ({
-      syncId: c.syncId,
-      table: c.table,
-      choice: 'b' as const,
-    }));
+  // Set all resolutions to a specific user
+  const handleKeepAllFromUser = (email: string) => {
+    const allResolutions: ConflictResolutionEntry[] = conflicts.map(c => {
+      const modifierIndex = c.modifiers.findIndex(m => m.email === email);
+      if (modifierIndex >= 0) {
+        return makeResolution(c, { type: 'modifier', index: modifierIndex });
+      }
+      // User didn't modify this row - keep base
+      return makeResolution(c, { type: 'base' });
+    });
     onResolve(allResolutions);
   };
 
   // Handle advanced merge submit
   const handleAdvancedSubmit = () => {
-    const allResolutions: ConflictResolution[] = conflicts.map(c => {
-      const key = `${c.table}:${c.syncId}`;
-      return {
-        syncId: c.syncId,
-        table: c.table,
-        choice: resolutions[key] || 'base',
-      };
+    const allResolutions: ConflictResolutionEntry[] = conflicts.map(c => {
+      const resolution = resolutions[c.conflictKey];
+      return makeResolution(c, resolution || { type: 'base' });
     });
     onResolve(allResolutions);
   };
 
+  // Set resolution for a specific conflict
+  const setResolution = (conflictKey: string, resolution: ConflictResolution) => {
+    setResolutions(prev => ({
+      ...prev,
+      [conflictKey]: resolution,
+    }));
+  };
+
+  // Set all resolutions to a specific choice (for quick buttons in advanced mode)
+  const setAllToBase = () => {
+    const newResolutions: Record<string, ConflictResolution> = {};
+    for (const conflict of conflicts) {
+      newResolutions[conflict.conflictKey] = { type: 'base' };
+    }
+    setResolutions(newResolutions);
+  };
+
+  const setAllToUser = (email: string) => {
+    const newResolutions: Record<string, ConflictResolution> = {};
+    for (const conflict of conflicts) {
+      const modifierIndex = conflict.modifiers.findIndex(m => m.email === email);
+      if (modifierIndex >= 0) {
+        newResolutions[conflict.conflictKey] = { type: 'modifier', index: modifierIndex };
+      } else {
+        newResolutions[conflict.conflictKey] = { type: 'base' };
+      }
+    }
+    setResolutions(newResolutions);
+  };
+
   // Check if all conflicts have a resolution in advanced mode
-  const allResolved = conflicts.every(
-    c => resolutions[`${c.table}:${c.syncId}`] !== undefined
-  );
+  const allResolved = conflicts.every(c => resolutions[c.conflictKey] !== undefined);
 
   // Format a value for display
   const formatValue = (value: unknown): string => {
@@ -186,18 +223,46 @@ export default function MergeConflictDialog({
     return String(value);
   };
 
-  // Get the key differences between two rows
-  const getDifferences = (rowA: Record<string, unknown> | null, rowB: Record<string, unknown> | null): string[] => {
-    if (!rowA || !rowB) return [];
-    const diffs: string[] = [];
-    const allKeys = new Set([...Object.keys(rowA), ...Object.keys(rowB)]);
+  // Get the key differences between rows
+  const getDifferences = (rows: (Record<string, unknown> | null)[]): string[] => {
+    const nonNullRows = rows.filter(r => r !== null) as Record<string, unknown>[];
+    if (nonNullRows.length < 2) return [];
+    
+    const diffs = new Set<string>();
+    const allKeys = new Set(nonNullRows.flatMap(r => Object.keys(r)));
+    
     for (const key of allKeys) {
-      if (key === 'sync_id' || key === 'modified_at' || key === 'modified_by') continue;
-      if (formatValue(rowA[key]) !== formatValue(rowB[key])) {
-        diffs.push(key);
+      if (key === 'sync_id' || key === 'modified_at' || key === 'modified_by' || key === 'deleted_at') continue;
+      const values = nonNullRows.map(r => formatValue(r[key]));
+      if (new Set(values).size > 1) {
+        diffs.add(key);
       }
     }
-    return diffs;
+    return Array.from(diffs);
+  };
+
+  // Get radio value from resolution
+  const getRadioValue = (resolution: ConflictResolution | undefined): string => {
+    if (!resolution) return '';
+    switch (resolution.type) {
+      case 'base': return 'base';
+      case 'modifier': return `modifier-${resolution.index}`;
+      case 'delete': return 'delete';
+      case 'all': return 'all';
+      default: return '';
+    }
+  };
+
+  // Parse radio value to resolution
+  const parseRadioValue = (value: string): ConflictResolution => {
+    if (value === 'base') return { type: 'base' };
+    if (value === 'delete') return { type: 'delete' };
+    if (value === 'all') return { type: 'all' };
+    if (value.startsWith('modifier-')) {
+      const index = parseInt(value.replace('modifier-', ''), 10);
+      return { type: 'modifier', index };
+    }
+    return { type: 'base' };
   };
 
   return (
@@ -211,8 +276,15 @@ export default function MergeConflictDialog({
                 {conflicts.length} conflict{conflicts.length !== 1 ? 's' : ''}
               </Badge>
               <Text>
-                Changes from both <strong>{userALabel}</strong> and <strong>{userBLabel}</strong> affect the same records.
+                Changes from multiple users affect the same records:
               </Text>
+              <div className={styles.userList}>
+                {allModifiers.map((email) => (
+                  <Badge key={email} appearance="outline" color="informative">
+                    {email}
+                  </Badge>
+                ))}
+              </div>
             </div>
 
             {!showAdvanced ? (
@@ -222,12 +294,15 @@ export default function MergeConflictDialog({
                   <Button appearance="outline" onClick={handleKeepAllOriginal}>
                     Keep All Original
                   </Button>
-                  <Button appearance="primary" onClick={handleKeepAllA}>
-                    Keep All from {userALabel}
-                  </Button>
-                  <Button appearance="primary" onClick={handleKeepAllB}>
-                    Keep All from {userBLabel}
-                  </Button>
+                  {allModifiers.map(email => (
+                    <Button 
+                      key={email} 
+                      appearance="primary" 
+                      onClick={() => handleKeepAllFromUser(email)}
+                    >
+                      Keep All from {email}
+                    </Button>
+                  ))}
                 </div>
                 <Divider />
                 <Button appearance="subtle" onClick={() => setShowAdvanced(true)}>
@@ -241,9 +316,12 @@ export default function MergeConflictDialog({
                 </Button>
                 <div className={styles.quickActions}>
                   <Text size={200}>Set all to:</Text>
-                  <Button size="small" onClick={() => setAllResolutions('base')}>Original</Button>
-                  <Button size="small" onClick={() => setAllResolutions('a')}>{userALabel}</Button>
-                  <Button size="small" onClick={() => setAllResolutions('b')}>{userBLabel}</Button>
+                  <Button size="small" onClick={setAllToBase}>Original</Button>
+                  {allModifiers.map(email => (
+                    <Button key={email} size="small" onClick={() => setAllToUser(email)}>
+                      {email}
+                    </Button>
+                  ))}
                 </div>
                 <Divider />
                 <Accordion multiple collapsible>
@@ -263,15 +341,23 @@ export default function MergeConflictDialog({
                           </TableHeader>
                           <TableBody>
                             {tableConflicts.map(conflict => {
-                              const key = `${conflict.table}:${conflict.syncId}`;
-                              const diffs = getDifferences(conflict.rowA, conflict.rowB);
+                              const diffs = getDifferences([
+                                conflict.baseRow,
+                                ...conflict.modifiers.map(m => m.row),
+                              ]);
+                              const currentResolution = resolutions[conflict.conflictKey];
+                              const hasDeletedVersion = conflict.modifiers.some(m => m.row === null);
+                              
                               return (
-                                <TableRow key={key} className={styles.conflictRow}>
+                                <TableRow key={conflict.conflictKey} className={styles.conflictRow}>
                                   <TableCell>
                                     <div>{conflict.rowDescription}</div>
                                     <div className={styles.modifiedBy}>
-                                      A: {conflict.modifiedByA || 'unknown'}<br />
-                                      B: {conflict.modifiedByB || 'unknown'}
+                                      {conflict.modifiers.map((m, i) => (
+                                        <div key={i}>
+                                          {m.email}: {m.row ? 'modified' : 'deleted'}
+                                        </div>
+                                      ))}
                                     </div>
                                   </TableCell>
                                   <TableCell>
@@ -281,18 +367,26 @@ export default function MergeConflictDialog({
                                   </TableCell>
                                   <TableCell>
                                     <RadioGroup
-                                      layout="horizontal"
-                                      value={resolutions[key] || ''}
+                                      className={styles.radioGroup}
+                                      value={getRadioValue(currentResolution)}
                                       onChange={(_, data) => {
-                                        setResolutions(prev => ({
-                                          ...prev,
-                                          [key]: data.value as 'base' | 'a' | 'b',
-                                        }));
+                                        setResolution(conflict.conflictKey, parseRadioValue(data.value));
                                       }}
                                     >
-                                      <Radio value="base" label="Original" />
-                                      <Radio value="a" label="A" />
-                                      <Radio value="b" label="B" />
+                                      <Radio value="base" label="Keep original" />
+                                      {conflict.modifiers.map((m, i) => (
+                                        <Radio 
+                                          key={i} 
+                                          value={`modifier-${i}`} 
+                                          label={`Keep ${m.email}'s ${m.row ? 'version' : 'deletion'}`}
+                                        />
+                                      ))}
+                                      {hasDeletedVersion && (
+                                        <Radio value="delete" label="Accept deletion" />
+                                      )}
+                                      {conflict.allowMultiple && (
+                                        <Radio value="all" label="Keep all versions" />
+                                      )}
                                     </RadioGroup>
                                   </TableCell>
                                 </TableRow>

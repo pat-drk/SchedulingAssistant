@@ -50,7 +50,7 @@ export default function GroupEditor({ all, run, refresh }: GroupEditorProps) {
   const dialogs = useDialogs();
 
   function load() {
-    setGroups(all(`SELECT id,name,theme,custom_color FROM grp ORDER BY name`));
+    setGroups(all(`SELECT id,name,theme,custom_color FROM grp_active ORDER BY name`));
   }
 
   useEffect(load, []);

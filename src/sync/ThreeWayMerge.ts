@@ -12,6 +12,7 @@
  */
 
 import type { Database } from 'sql.js';
+import { SYNCED_TABLES, isAdditiveTable } from '../utils/syncedTables';
 
 export interface MergeResult {
   /** Whether the merge completed without conflicts */
@@ -36,6 +37,8 @@ export interface TableMergeStats {
 }
 
 export interface MergeConflict {
+  /** Unique key for this conflict: ${table}:${syncId} */
+  conflictKey: string;
   /** Table name */
   table: string;
   /** The sync_id of the conflicting row */
@@ -44,47 +47,32 @@ export interface MergeConflict {
   rowDescription: string;
   /** The base version of the row (before changes) */
   baseRow: Record<string, unknown> | null;
-  /** Version from working file A */
-  rowA: Record<string, unknown> | null;
-  /** Version from working file B */
-  rowB: Record<string, unknown> | null;
-  /** Email of user who modified A */
-  modifiedByA: string | null;
-  /** Email of user who modified B */
-  modifiedByB: string | null;
-  /** Timestamp when A was modified */
-  modifiedAtA: string | null;
-  /** Timestamp when B was modified */
-  modifiedAtB: string | null;
+  /** All modifiers (users who changed this row) */
+  modifiers: Array<{
+    email: string;
+    row: Record<string, unknown> | null;
+    modifiedAt: string | null;
+  }>;
+  /** Whether this table allows "keep all" resolution (additive tables like timeoff, assignment) */
+  allowMultiple: boolean;
 }
 
-export interface ConflictResolution {
-  syncId: string;
+/** Resolution choice for a conflict */
+export type ConflictResolution = 
+  | { type: 'base' }                    // Keep original/base version
+  | { type: 'modifier'; index: number } // Keep specific modifier's version
+  | { type: 'delete' }                  // Accept deletion
+  | { type: 'all' };                    // Keep all versions (for allowMultiple tables)
+
+export interface ConflictResolutionEntry {
+  conflictKey: string;
   table: string;
-  /** Which version to keep: 'base', 'a', 'b', or 'both' (for some tables) */
-  choice: 'base' | 'a' | 'b' | 'both';
+  syncId: string;
+  resolution: ConflictResolution;
 }
 
-/** Tables that have sync tracking columns */
-export const SYNCED_TABLES = [
-  'person',
-  'assignment',
-  'training',
-  'training_rotation',
-  'training_area_override',
-  'monthly_default',
-  'monthly_default_day',
-  'monthly_default_week',
-  'monthly_default_note',
-  'timeoff',
-  'availability_override',
-  'needs_baseline',
-  'needs_override',
-  'competency',
-  'person_quality',
-  'person_skill',
-  'department_event',
-] as const;
+// Re-export SYNCED_TABLES for consumers that imported from here
+export { SYNCED_TABLES };
 
 /**
  * Gets all rows from a table as a map keyed by sync_id
@@ -410,28 +398,6 @@ export function performTwoWayMerge(
 }
 
 /**
- * Extended conflict interface for n-way merge (supports more than 2 working files)
- */
-export interface NWayMergeConflict extends MergeConflict {
-  /** All working file versions that modified this row */
-  workingVersions: {
-    email: string;
-    row: Record<string, unknown>;
-    modifiedAt: string | null;
-  }[];
-}
-
-/**
- * Extended resolution for n-way conflicts
- */
-export interface NWayConflictResolution {
-  syncId: string;
-  table: string;
-  /** Index of the working version to keep, or 'base' */
-  choice: 'base' | number;
-}
-
-/**
  * Performs an n-way merge comparing all working files against the base
  * 
  * Unlike sequential 2-way merges, this compares ALL working files against base
@@ -527,24 +493,20 @@ export function performNWayMerge(
         }
 
         // Case 3: Multiple working files modified - CONFLICT
-        // For compatibility with existing MergeConflict interface, use first two modifiers
+        const conflictKey = `${table}:${syncId}`;
         const conflict: MergeConflict = {
+          conflictKey,
           table,
           syncId,
-          rowDescription: getRowDescription(table, modifiers[0].row || baseRow || {}),
+          rowDescription: getRowDescription(table, modifiers[0]?.row || baseRow || {}),
           baseRow: baseRow || null,
-          rowA: modifiers[0]?.row || null,
-          rowB: modifiers[1]?.row || null,
-          modifiedByA: modifiers[0]?.email || null,
-          modifiedByB: modifiers[1]?.email || null,
-          modifiedAtA: modifiers[0]?.modifiedAt || null,
-          modifiedAtB: modifiers[1]?.modifiedAt || null,
+          modifiers: modifiers.map(m => ({
+            email: m.email,
+            row: m.row,
+            modifiedAt: m.modifiedAt,
+          })),
+          allowMultiple: isAdditiveTable(table),
         };
-
-        // If more than 2 modifiers, log warning (rare edge case)
-        if (modifiers.length > 2) {
-          console.warn(`[NWayMerge] Row ${syncId} in ${table} modified by ${modifiers.length} users - showing first 2 in conflict UI`);
-        }
 
         result.conflicts.push(conflict);
         stats.conflicts++;
@@ -569,47 +531,72 @@ export function performNWayMerge(
 export function applyConflictResolutions(
   targetDb: Database,
   conflicts: MergeConflict[],
-  resolutions: ConflictResolution[]
+  resolutions: ConflictResolutionEntry[]
 ): void {
-  const resolutionMap = new Map(resolutions.map(r => [`${r.table}:${r.syncId}`, r]));
+  const resolutionMap = new Map(resolutions.map(r => [r.conflictKey, r.resolution]));
 
   for (const conflict of conflicts) {
-    const key = `${conflict.table}:${conflict.syncId}`;
-    const resolution = resolutionMap.get(key);
+    const resolution = resolutionMap.get(conflict.conflictKey);
 
     if (!resolution) {
-      console.warn(`[ThreeWayMerge] No resolution for conflict ${key}`);
+      console.warn(`[ThreeWayMerge] No resolution for conflict ${conflict.conflictKey}`);
       continue;
     }
 
     const columns = getTableColumns(targetDb, conflict.table);
 
-    switch (resolution.choice) {
+    switch (resolution.type) {
       case 'base':
         if (conflict.baseRow) {
           upsertRow(targetDb, conflict.table, conflict.baseRow, columns);
         }
         break;
-      case 'a':
-        if (conflict.rowA) {
-          upsertRow(targetDb, conflict.table, conflict.rowA, columns);
+        
+      case 'modifier': {
+        const modifier = conflict.modifiers[resolution.index];
+        if (modifier?.row) {
+          upsertRow(targetDb, conflict.table, modifier.row, columns);
         }
         break;
-      case 'b':
-        if (conflict.rowB) {
-          upsertRow(targetDb, conflict.table, conflict.rowB, columns);
-        }
+      }
+      
+      case 'delete':
+        // Accept deletion - delete from target (will become soft-delete via trigger)
+        targetDb.run(`DELETE FROM ${conflict.table} WHERE sync_id = ?`, [conflict.syncId]);
         break;
-      case 'both':
-        // For 'both', we insert both versions with new sync_ids
-        // This only makes sense for certain tables (e.g., timeoff, assignments)
-        if (conflict.rowA) {
-          const newRowA = { ...conflict.rowA, sync_id: crypto.randomUUID() };
-          upsertRow(targetDb, conflict.table, newRowA, columns);
+        
+      case 'all':
+        // Keep all versions with fresh IDs and sync metadata
+        // This only makes sense for additive tables (timeoff, assignment, department_event)
+        if (!conflict.allowMultiple) {
+          console.warn(`[ThreeWayMerge] 'all' resolution used on non-additive table ${conflict.table}`);
         }
-        if (conflict.rowB) {
-          const newRowB = { ...conflict.rowB, sync_id: crypto.randomUUID() };
-          upsertRow(targetDb, conflict.table, newRowB, columns);
+        
+        for (const modifier of conflict.modifiers) {
+          if (!modifier.row) continue;
+          
+          // Exclude PK and old sync metadata
+          const excludeColumns = new Set(['id', 'rowid', 'sync_id', 'modified_at', 'modified_by', 'deleted_at']);
+          const dataColumns = columns.filter(c => !excludeColumns.has(c));
+          
+          // Build INSERT with fresh sync metadata
+          const newSyncId = crypto.randomUUID();
+          const now = new Date().toISOString().replace('T', ' ').slice(0, 23);
+          
+          const allColumns = [...dataColumns, 'sync_id', 'modified_at', 'modified_by', 'deleted_at'];
+          const values = [
+            ...dataColumns.map(c => modifier.row![c]),
+            newSyncId,
+            now,
+            modifier.email,
+            null, // deleted_at = NULL
+          ];
+          
+          const placeholders = allColumns.map(() => '?').join(', ');
+          targetDb.run(
+            `INSERT INTO ${conflict.table} (${allColumns.join(', ')}) VALUES (${placeholders})`,
+            values as unknown[]
+          );
         }
         break;
     }

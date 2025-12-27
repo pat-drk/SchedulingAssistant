@@ -224,9 +224,9 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
       // Get all monthly defaults for this person to determine area exposure
       const defaults = all(
         `SELECT md.month, md.segment, r.group_id, g.name as group_name
-         FROM monthly_default md
-         JOIN role r ON r.id = md.role_id
-         JOIN grp g ON g.id = r.group_id
+         FROM monthly_default_active md
+         JOIN role_active r ON r.id = md.role_id
+         JOIN grp_active g ON g.id = r.group_id
          WHERE md.person_id = ?
          ORDER BY md.month DESC`,
         [person.id]
@@ -235,9 +235,9 @@ export default function Training({ people, roles, groups, all, run }: TrainingPr
       // Also check assignment history
       const assignments = all(
         `SELECT DISTINCT strftime('%Y-%m', a.date) as month, r.group_id, g.name as group_name
-         FROM assignment a
-         JOIN role r ON r.id = a.role_id
-         JOIN grp g ON g.id = r.group_id
+         FROM assignment_active a
+         JOIN role_active r ON r.id = a.role_id
+         JOIN grp_active g ON g.id = r.group_id
          WHERE a.person_id = ?
          ORDER BY a.date DESC`,
         [person.id]

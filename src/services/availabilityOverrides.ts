@@ -4,7 +4,7 @@ export type Availability = 'U' | 'AM' | 'PM' | 'B';
 
 export function getOverride(db: Database, personId: number, date: string): Availability | null {
   const res = db.exec(
-    `SELECT avail FROM availability_override WHERE person_id=? AND date=?`,
+    `SELECT avail FROM availability_override_active WHERE person_id=? AND date=?`,
     [personId, date]
   );
   const val = res[0]?.values?.[0]?.[0];

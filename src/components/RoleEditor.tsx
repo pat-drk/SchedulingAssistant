@@ -37,10 +37,10 @@ export default function RoleEditor({ all, run, refresh, segments }: RoleEditorPr
 
   function load() {
     setRoles(
-      all(`SELECT r.id,r.code,r.name,r.group_id,r.segments,g.name as group_name FROM role r JOIN grp g ON g.id=r.group_id ORDER BY g.name,r.name`)
+      all(`SELECT r.id,r.code,r.name,r.group_id,r.segments,g.name as group_name FROM role_active r JOIN grp_active g ON g.id=r.group_id ORDER BY g.name,r.name`)
         .map((r: any) => ({ ...r, segs: new Set<string>(JSON.parse(r.segments)) }))
     );
-    setGroups(all(`SELECT id,name FROM grp ORDER BY name`));
+    setGroups(all(`SELECT id,name FROM grp_active ORDER BY name`));
   }
 
   useEffect(load, []);

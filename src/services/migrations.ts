@@ -839,6 +839,245 @@ export const migrate29AddSyncTracking: Migration = (db) => {
   console.log('[migrate29] Sync tracking migration complete');
 };
 
+/**
+ * Migration 30: Fix soft-delete constraints, improve triggers, add _active views
+ * 
+ * 1. Rebuild training, monthly_default, needs_baseline with partial unique indexes
+ *    (allows re-adding records after soft delete)
+ * 2. Update all triggers to use millisecond precision and set modified_by
+ * 3. Add deleted_at indexes for view performance
+ * 4. Create _active views for all synced tables (excludes soft-deleted rows)
+ */
+export const migrate30SoftDeleteAndViews: Migration = (db) => {
+  console.log('[migrate30] Starting soft-delete constraints and views migration');
+
+  // Tables that have sync tracking
+  const syncedTables = [
+    'person',
+    'assignment',
+    'training',
+    'training_rotation',
+    'training_area_override',
+    'monthly_default',
+    'monthly_default_day',
+    'monthly_default_week',
+    'monthly_default_note',
+    'timeoff',
+    'availability_override',
+    'needs_baseline',
+    'needs_override',
+    'competency',
+    'person_quality',
+    'person_skill',
+    'department_event',
+  ];
+
+  // Column lists for each table's _active view (explicit, excluding deleted_at)
+  const tableColumns: Record<string, string> = {
+    person: 'id, first_name, last_name, work_email, brother_sister, commuter, active, avail_mon, avail_tue, avail_wed, avail_thu, avail_fri, start_date, end_date, sync_id, modified_at, modified_by',
+    assignment: 'id, date, person_id, role_id, segment, sync_id, modified_at, modified_by',
+    training: 'id, person_id, role_id, status, source, sync_id, modified_at, modified_by',
+    training_rotation: 'id, person_id, area, start_month, end_month, completed, notes, sync_id, modified_at, modified_by',
+    training_area_override: 'id, person_id, area, completed, created_at, sync_id, modified_at, modified_by',
+    monthly_default: 'id, month, person_id, segment, role_id, sync_id, modified_at, modified_by',
+    monthly_default_day: 'id, month, person_id, weekday, segment, role_id, sync_id, modified_at, modified_by',
+    monthly_default_week: 'id, month, person_id, week_number, segment, role_id, sync_id, modified_at, modified_by',
+    monthly_default_note: 'id, month, person_id, note, sync_id, modified_at, modified_by',
+    timeoff: 'id, person_id, start_ts, end_ts, reason, source, sync_id, modified_at, modified_by',
+    availability_override: 'id, person_id, date, avail, sync_id, modified_at, modified_by',
+    needs_baseline: 'id, group_id, role_id, segment, required, sync_id, modified_at, modified_by',
+    needs_override: 'id, date, group_id, role_id, segment, required, sync_id, modified_at, modified_by',
+    competency: 'person_id, role_id, rating, sync_id, modified_at, modified_by',
+    person_quality: 'person_id, work_capabilities, work_habits, spirituality, dealings_with_others, health, dress_grooming, attitude_safety, response_counsel, training_ability, potential_future_use, sync_id, modified_at, modified_by',
+    person_skill: 'person_id, skill_id, rating, sync_id, modified_at, modified_by',
+    department_event: 'id, title, date, start_time, end_time, group_id, role_id, description, created_at, sync_id, modified_at, modified_by',
+  };
+
+  // ========================================
+  // PART A: Disable FK checks during rebuild
+  // ========================================
+  db.run(`PRAGMA foreign_keys=OFF;`);
+
+  // ========================================
+  // PART B: Rebuild training table (composite PK → id PK + partial unique)
+  // ========================================
+  try {
+    console.log('[migrate30] Rebuilding training table...');
+    db.run(`CREATE TABLE training_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER NOT NULL,
+      role_id INTEGER NOT NULL,
+      status TEXT CHECK(status IN ('Not trained','In training','Qualified')) NOT NULL DEFAULT 'Not trained',
+      source TEXT CHECK(source IN ('manual','monthly')) NOT NULL DEFAULT 'manual',
+      sync_id TEXT,
+      modified_at TEXT,
+      modified_by TEXT,
+      deleted_at TEXT,
+      FOREIGN KEY (person_id) REFERENCES person(id),
+      FOREIGN KEY (role_id) REFERENCES role(id)
+    );`);
+    db.run(`INSERT INTO training_new (person_id, role_id, status, source, sync_id, modified_at, modified_by, deleted_at)
+      SELECT person_id, role_id, status, source, sync_id, modified_at, modified_by, deleted_at FROM training;`);
+    db.run(`DROP TABLE training;`);
+    db.run(`ALTER TABLE training_new RENAME TO training;`);
+    db.run(`CREATE UNIQUE INDEX training_active_unique ON training(person_id, role_id) WHERE deleted_at IS NULL;`);
+    console.log('[migrate30] training table rebuilt with partial unique index');
+  } catch (e) {
+    console.error('[migrate30] Error rebuilding training table:', e);
+  }
+
+  // ========================================
+  // PART C: Rebuild monthly_default table (remove inline UNIQUE)
+  // ========================================
+  try {
+    console.log('[migrate30] Rebuilding monthly_default table...');
+    db.run(`CREATE TABLE monthly_default_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      month TEXT NOT NULL,
+      person_id INTEGER NOT NULL,
+      segment TEXT NOT NULL,
+      role_id INTEGER NOT NULL,
+      sync_id TEXT,
+      modified_at TEXT,
+      modified_by TEXT,
+      deleted_at TEXT,
+      FOREIGN KEY (person_id) REFERENCES person(id),
+      FOREIGN KEY (role_id) REFERENCES role(id)
+    );`);
+    db.run(`INSERT INTO monthly_default_new (id, month, person_id, segment, role_id, sync_id, modified_at, modified_by, deleted_at)
+      SELECT id, month, person_id, segment, role_id, sync_id, modified_at, modified_by, deleted_at FROM monthly_default;`);
+    db.run(`DROP TABLE monthly_default;`);
+    db.run(`ALTER TABLE monthly_default_new RENAME TO monthly_default;`);
+    db.run(`CREATE UNIQUE INDEX monthly_default_active_unique ON monthly_default(month, person_id, segment) WHERE deleted_at IS NULL;`);
+    console.log('[migrate30] monthly_default table rebuilt with partial unique index');
+  } catch (e) {
+    console.error('[migrate30] Error rebuilding monthly_default table:', e);
+  }
+
+  // ========================================
+  // PART D: Rebuild needs_baseline table (remove inline UNIQUE)
+  // ========================================
+  try {
+    console.log('[migrate30] Rebuilding needs_baseline table...');
+    db.run(`CREATE TABLE needs_baseline_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL,
+      role_id INTEGER NOT NULL,
+      segment TEXT NOT NULL,
+      required INTEGER NOT NULL DEFAULT 0,
+      sync_id TEXT,
+      modified_at TEXT,
+      modified_by TEXT,
+      deleted_at TEXT
+    );`);
+    db.run(`INSERT INTO needs_baseline_new (id, group_id, role_id, segment, required, sync_id, modified_at, modified_by, deleted_at)
+      SELECT id, group_id, role_id, segment, required, sync_id, modified_at, modified_by, deleted_at FROM needs_baseline;`);
+    db.run(`DROP TABLE needs_baseline;`);
+    db.run(`ALTER TABLE needs_baseline_new RENAME TO needs_baseline;`);
+    db.run(`CREATE UNIQUE INDEX needs_baseline_active_unique ON needs_baseline(group_id, role_id, segment) WHERE deleted_at IS NULL;`);
+    console.log('[migrate30] needs_baseline table rebuilt with partial unique index');
+  } catch (e) {
+    console.error('[migrate30] Error rebuilding needs_baseline table:', e);
+  }
+
+  // ========================================
+  // PART E: Re-enable FK checks
+  // ========================================
+  db.run(`PRAGMA foreign_keys=ON;`);
+
+  // ========================================
+  // PART F: Update triggers for ALL synced tables
+  // ========================================
+  for (const table of syncedTables) {
+    try {
+      // Drop existing triggers
+      db.run(`DROP TRIGGER IF EXISTS ${table}_insert_sync;`);
+      db.run(`DROP TRIGGER IF EXISTS ${table}_update_sync;`);
+      db.run(`DROP TRIGGER IF EXISTS ${table}_soft_delete;`);
+
+      // INSERT trigger: set sync_id, modified_at, modified_by
+      db.run(`
+        CREATE TRIGGER ${table}_insert_sync
+        AFTER INSERT ON ${table}
+        FOR EACH ROW
+        WHEN NEW.sync_id IS NULL
+        BEGIN
+          UPDATE ${table} SET 
+            sync_id = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),
+            modified_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
+            modified_by = COALESCE(NEW.modified_by, (SELECT value FROM meta WHERE key = 'user_email'), 'system')
+          WHERE rowid = NEW.rowid;
+        END;
+      `);
+
+      // UPDATE trigger: set modified_at, modified_by
+      db.run(`
+        CREATE TRIGGER ${table}_update_sync
+        AFTER UPDATE ON ${table}
+        FOR EACH ROW
+        WHEN NEW.modified_at = OLD.modified_at OR NEW.modified_at IS NULL
+        BEGIN
+          UPDATE ${table} SET 
+            modified_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
+            modified_by = COALESCE((SELECT value FROM meta WHERE key = 'user_email'), 'system')
+          WHERE rowid = NEW.rowid;
+        END;
+      `);
+
+      // BEFORE DELETE trigger: convert to soft delete with modified_by
+      db.run(`
+        CREATE TRIGGER ${table}_soft_delete
+        BEFORE DELETE ON ${table}
+        FOR EACH ROW
+        WHEN OLD.deleted_at IS NULL
+        BEGIN
+          UPDATE ${table} SET 
+            deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
+            modified_by = COALESCE((SELECT value FROM meta WHERE key = 'user_email'), 'system')
+          WHERE rowid = OLD.rowid;
+          SELECT RAISE(IGNORE);
+        END;
+      `);
+
+      console.log(`[migrate30] Updated triggers for ${table}`);
+    } catch (e) {
+      console.warn(`[migrate30] Could not update triggers for ${table}:`, e);
+    }
+  }
+
+  // ========================================
+  // PART G: Add deleted_at indexes for all synced tables
+  // ========================================
+  for (const table of syncedTables) {
+    try {
+      db.run(`DROP INDEX IF EXISTS ${table}_deleted_at_idx;`);
+      db.run(`CREATE INDEX ${table}_deleted_at_idx ON ${table}(deleted_at);`);
+    } catch (e) {
+      console.warn(`[migrate30] Could not create deleted_at index for ${table}:`, e);
+    }
+  }
+
+  // ========================================
+  // PART H: Create _active views for all synced tables
+  // ========================================
+  for (const table of syncedTables) {
+    const columns = tableColumns[table];
+    if (!columns) {
+      console.warn(`[migrate30] No column list defined for ${table}, skipping view`);
+      continue;
+    }
+    try {
+      db.run(`DROP VIEW IF EXISTS ${table}_active;`);
+      db.run(`CREATE VIEW ${table}_active AS SELECT ${columns} FROM ${table} WHERE deleted_at IS NULL;`);
+      console.log(`[migrate30] Created ${table}_active view`);
+    } catch (e) {
+      console.warn(`[migrate30] Could not create ${table}_active view:`, e);
+    }
+  }
+
+  console.log('[migrate30] Soft-delete constraints and views migration complete');
+};
+
 const migrations: Record<number, Migration> = {
   1: (db) => {
     db.run(`PRAGMA journal_mode=WAL;`);
@@ -1018,6 +1257,7 @@ const migrations: Record<number, Migration> = {
   27: migrate27AddTimeOffThreshold,
   28: migrate28AddDepartmentEvent,
   29: migrate29AddSyncTracking,
+  30: migrate30SoftDeleteAndViews,
 };
 
 export function addMigration(version: number, fn: Migration) {

@@ -424,7 +424,7 @@ export default function DailyRunBoard({
 
   const assignedCountMap = useMemo(() => {
     const rows = all(
-      `SELECT role_id, COUNT(*) as c FROM assignment WHERE date=? AND segment=? GROUP BY role_id`,
+      `SELECT role_id, COUNT(*) as c FROM assignment_active WHERE date=? AND segment=? GROUP BY role_id`,
       [ymd(selectedDateObj), seg]
     );
     return new Map<number, number>(rows.map((r: any) => [r.role_id, r.c]));
@@ -433,7 +433,7 @@ export default function DailyRunBoard({
   const assignedIdSet = useMemo(
     () =>
       new Set(
-        all(`SELECT person_id FROM assignment WHERE date=? AND segment=?`, [ymd(selectedDateObj), seg]).map(
+        all(`SELECT person_id FROM assignment_active WHERE date=? AND segment=?`, [ymd(selectedDateObj), seg]).map(
           (r: any) => r.person_id
         )
       ),
@@ -474,9 +474,9 @@ export default function DailyRunBoard({
 
     const assignments = all(
       `SELECT a.person_id, a.role_id, r.group_id, p.last_name, p.first_name
-       FROM assignment a
-       JOIN role r ON r.id=a.role_id
-       JOIN person p ON p.id=a.person_id
+       FROM assignment_active a
+       JOIN role_active r ON r.id=a.role_id
+       JOIN person_active p ON p.id=a.person_id
        WHERE a.date=? AND a.segment=?`,
       [ymd(selectedDateObj), seg]
     ) as Array<{ person_id: number; role_id: number; group_id: number; last_name: string; first_name: string }>;
@@ -508,7 +508,7 @@ export default function DailyRunBoard({
       [monthKey, weekday, seg]
     ) as Array<{ person_id: number; role_id: number }>;
     const defMonthRows = all(
-      `SELECT person_id, role_id FROM monthly_default WHERE month=? AND segment=?`,
+      `SELECT person_id, role_id FROM monthly_default_active WHERE month=? AND segment=?`,
       [monthKey, seg]
     ) as Array<{ person_id: number; role_id: number }>;
     const defaultsDay = new Map<number, number[]>();
@@ -535,9 +535,9 @@ export default function DailyRunBoard({
       let set = trainedCache.get(role.id);
       if (!set) {
         set = new Set<number>([
-          ...all(`SELECT person_id FROM training WHERE role_id=? AND status='Qualified'`, [role.id]).map((r: any) => r.person_id),
+          ...all(`SELECT person_id FROM training_active WHERE role_id=? AND status='Qualified'`, [role.id]).map((r: any) => r.person_id),
           ...all(
-            `SELECT DISTINCT person_id FROM monthly_default WHERE role_id=? AND segment=?
+            `SELECT DISTINCT person_id FROM monthly_default_active WHERE role_id=? AND segment=?
              UNION
              SELECT DISTINCT person_id FROM monthly_default_day WHERE role_id=? AND segment=?`,
             [role.id, seg, role.id, seg]
@@ -787,7 +787,7 @@ export default function DailyRunBoard({
           // Check if already assigned
           const dateStr = ymd(selectedDateObj);
           const existing = all(
-            `SELECT role_id FROM assignment WHERE date=? AND person_id=? AND segment=?`,
+            `SELECT role_id FROM assignment_active WHERE date=? AND person_id=? AND segment=?`,
             [dateStr, person.id, seg]
           );
           if (existing.length > 0) continue; // Skip if already assigned
@@ -865,7 +865,7 @@ export default function DailyRunBoard({
   // Get all assignments for this date grouped by person
   const personAssignmentsTop = useMemo(() => {
     const rows = all(
-      `SELECT person_id, segment, role_id FROM assignment WHERE date=?`,
+      `SELECT person_id, segment, role_id FROM assignment_active WHERE date=?`,
       [ymd(selectedDateObj)]
     ) as { person_id: number; segment: string; role_id: number }[];
     
@@ -972,7 +972,7 @@ export default function DailyRunBoard({
     const dayStart = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate(), 0, 0, 0, 0);
     const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1, 0, 0, 0, 0);
     const timeOff = all(
-      `SELECT person_id, start_ts, end_ts FROM timeoff WHERE NOT (? >= end_ts OR ? <= start_ts)`,
+      `SELECT person_id, start_ts, end_ts FROM timeoff_active WHERE NOT (? >= end_ts OR ? <= start_ts)`,
       [dayStart.toISOString(), dayEnd.toISOString()]
     ) as any[];
     
@@ -984,7 +984,7 @@ export default function DailyRunBoard({
       timeOffByPerson.set(t.person_id, entries);
     }
     
-    const assigns = all(`SELECT person_id, role_id FROM assignment WHERE date=? AND segment=?`, [ymd(selectedDateObj), seg]) as any[];
+    const assigns = all(`SELECT person_id, role_id FROM assignment_active WHERE date=? AND segment=?`, [ymd(selectedDateObj), seg]) as any[];
     for (const r of roles) map.set(r.id, 0);
     
     for (const a of assigns) {
@@ -1095,7 +1095,7 @@ export default function DailyRunBoard({
     const assigns = useMemo(
       () =>
         all(
-          `SELECT a.id, p.first_name, p.last_name, p.id as person_id FROM assignment a JOIN person p ON p.id=a.person_id WHERE a.date=? AND a.role_id=? AND a.segment=? ORDER BY p.last_name,p.first_name`,
+          `SELECT a.id, p.first_name, p.last_name, p.id as person_id FROM assignment_active a JOIN person_active p ON p.id=a.person_id WHERE a.date=? AND a.role_id=? AND a.segment=? ORDER BY p.last_name,p.first_name`,
           [ymd(selectedDateObj), role.id, seg]
         ),
       [all, selectedDateObj, role.id, seg, ymd]
@@ -1103,12 +1103,12 @@ export default function DailyRunBoard({
 
     const trainedBefore = useMemo(() => {
       const qualified = all(
-        `SELECT person_id FROM training WHERE role_id=? AND status='Qualified'`,
+        `SELECT person_id FROM training_active WHERE role_id=? AND status='Qualified'`,
         [role.id]
       ).map((r: any) => r.person_id);
       // Treat monthly assignment history as implicit qualification for this role/segment
       const monthly = all(
-        `SELECT DISTINCT person_id FROM monthly_default WHERE role_id=? AND segment=?
+        `SELECT DISTINCT person_id FROM monthly_default_active WHERE role_id=? AND segment=?
          UNION
          SELECT DISTINCT person_id FROM monthly_default_day WHERE role_id=? AND segment=?`,
         [role.id, seg, role.id, seg]
@@ -1150,7 +1150,7 @@ export default function DailyRunBoard({
     // Get assignments for a specific person on this date
     const personAssignments = useMemo(() => {
       const rows = all(
-        `SELECT person_id, segment, role_id FROM assignment WHERE date=?`,
+        `SELECT person_id, segment, role_id FROM assignment_active WHERE date=?`,
         [ymd(selectedDateObj)]
       ) as { person_id: number; segment: string; role_id: number }[];
       
@@ -1263,7 +1263,7 @@ export default function DailyRunBoard({
       const dayStart = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate(), 0, 0, 0, 0);
       const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1, 0, 0, 0, 0);
       const rows = all(
-        `SELECT person_id, start_ts, end_ts FROM timeoff WHERE NOT (? >= end_ts OR ? <= start_ts)`,
+        `SELECT person_id, start_ts, end_ts FROM timeoff_active WHERE NOT (? >= end_ts OR ? <= start_ts)`,
         [dayStart.toISOString(), dayEnd.toISOString()]
       );
       
@@ -1315,7 +1315,7 @@ export default function DailyRunBoard({
     // Map current person -> assigned role (if any) for this date+segment
     const personAssignedRoleMap = useMemo(() => {
       const rows = all(
-        `SELECT person_id, role_id FROM assignment WHERE date=? AND segment=?`,
+        `SELECT person_id, role_id FROM assignment_active WHERE date=? AND segment=?`,
         [ymd(selectedDateObj), seg]
       ) as any[];
       const m = new Map<number, number>();
@@ -1344,13 +1344,13 @@ export default function DailyRunBoard({
         // Also track training status for the person being moved
         const trainedForRole = (roleId: number) => {
           const qualified = all(
-            `SELECT person_id FROM training WHERE role_id=? AND status='Qualified' AND person_id=?`,
+            `SELECT person_id FROM training_active WHERE role_id=? AND status='Qualified' AND person_id=?`,
             [roleId, a.person_id]
           );
           if (qualified.length > 0) return true;
           // Also check monthly defaults as implicit qualification
           const monthly = all(
-            `SELECT DISTINCT person_id FROM monthly_default WHERE role_id=? AND person_id=?
+            `SELECT DISTINCT person_id FROM monthly_default_active WHERE role_id=? AND person_id=?
              UNION
              SELECT DISTINCT person_id FROM monthly_default_day WHERE role_id=? AND person_id=?`,
             [roleId, a.person_id, roleId, a.person_id]

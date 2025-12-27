@@ -27,7 +27,7 @@ export function availabilityFor(
     case 5: field = 'avail_fri'; break;
     default: return 'U';
   }
-  const res = db.exec(`SELECT ${field} AS avail FROM person WHERE id=?`, [personId]);
+  const res = db.exec(`SELECT ${field} AS avail FROM person_active WHERE id=?`, [personId]);
   const val = res[0]?.values?.[0]?.[0];
   return (val != null ? String(val) : 'U') as Availability;
 }

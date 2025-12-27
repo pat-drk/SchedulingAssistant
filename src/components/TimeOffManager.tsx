@@ -132,7 +132,7 @@ export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProp
   const [status, setStatus] = React.useState<string>("");
   const [importSummary, setImportSummary] = React.useState<null | { added: number; updated: number; ignored: number; skipped: number; noEmail: number; badDate: number; matchedByName: number }>(null);
 
-  const people = React.useMemo(() => all(`SELECT id, first_name, last_name, work_email FROM person WHERE active=1 ORDER BY last_name, first_name`), [all]);
+  const people = React.useMemo(() => all(`SELECT id, first_name, last_name, work_email FROM person_active WHERE active=1 ORDER BY last_name, first_name`), [all]);
   const [addPersonId, setAddPersonId] = React.useState<number | null>(people[0]?.id ?? null);
   const [addStartDate, setAddStartDate] = React.useState<string>("");
   const [addStartTime, setAddStartTime] = React.useState<string>("08:00");
@@ -145,7 +145,7 @@ export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProp
     return match ? `${match.last_name}, ${match.first_name}` : "";
   }, [addPersonId, people]);
   // Always query fresh so the table updates after changes
-  const rows = all(`SELECT t.id, t.person_id, t.start_ts, t.end_ts, t.reason, p.first_name, p.last_name, p.work_email FROM timeoff t JOIN person p ON p.id=t.person_id ORDER BY t.start_ts DESC LIMIT 200`);
+  const rows = all(`SELECT t.id, t.person_id, t.start_ts, t.end_ts, t.reason, p.first_name, p.last_name, p.work_email FROM timeoff_active t JOIN person_active p ON p.id=t.person_id ORDER BY t.start_ts DESC LIMIT 200`);
 
   async function handleImportXlsx(file: File){
     try{
@@ -280,7 +280,7 @@ export default function TimeOffManager({ all, run, refresh }: TimeOffManagerProp
         const sIso = start.toISOString();
         const eIso = end.toISOString();
         // Check for exact duplicate timeoff for same person and time window
-        const existing = all(`SELECT id, reason FROM timeoff WHERE person_id=? AND start_ts=? AND end_ts=? LIMIT 1`, [pid, sIso, eIso]);
+        const existing = all(`SELECT id, reason FROM timeoff_active WHERE person_id=? AND start_ts=? AND end_ts=? LIMIT 1`, [pid, sIso, eIso]);
         if (existing && existing[0]){
           const ex = existing[0];
           const exReason = String(ex.reason || '');

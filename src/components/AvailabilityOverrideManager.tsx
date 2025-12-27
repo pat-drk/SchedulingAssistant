@@ -80,7 +80,7 @@ export default function AvailabilityOverrideManager({
   const people = React.useMemo(
     () =>
       all(
-        `SELECT id, first_name, last_name FROM person WHERE active=1 ORDER BY last_name, first_name`
+        `SELECT id, first_name, last_name FROM person_active WHERE active=1 ORDER BY last_name, first_name`
       ),
     [all]
   );
@@ -117,7 +117,7 @@ export default function AvailabilityOverrideManager({
     () =>
       all(
         `SELECT o.person_id, o.date, o.avail, p.first_name, p.last_name
-         FROM availability_override o JOIN person p ON p.id=o.person_id
+         FROM availability_override_active o JOIN person_active p ON p.id=o.person_id
          ORDER BY o.date DESC`
       ),
     [all, rev]
@@ -129,7 +129,7 @@ export default function AvailabilityOverrideManager({
     const end = new Date(start);
     end.setDate(start.getDate() + 4);
     const defs = all(
-      `SELECT avail_mon, avail_tue, avail_wed, avail_thu, avail_fri FROM person WHERE id=?`,
+      `SELECT avail_mon, avail_tue, avail_wed, avail_thu, avail_fri FROM person_active WHERE id=?`,
       [personId]
     )[0];
     const defaults: Availability[] = [
@@ -140,7 +140,7 @@ export default function AvailabilityOverrideManager({
       (defs?.avail_fri || "U") as Availability,
     ];
     const res = all(
-      `SELECT date, avail FROM availability_override WHERE person_id=? AND date BETWEEN ? AND ?`,
+      `SELECT date, avail FROM availability_override_active WHERE person_id=? AND date BETWEEN ? AND ?`,
       [personId, ymd(start), ymd(end)]
     );
     const overrides: (Availability | null)[] = [
@@ -173,7 +173,7 @@ export default function AvailabilityOverrideManager({
     if (!sqlDb) return;
     // Get all assignments for this person on this date
     const assignments = all(
-      `SELECT a.id, a.segment FROM assignment a WHERE a.person_id=? AND a.date=?`,
+      `SELECT a.id, a.segment FROM assignment_active a WHERE a.person_id=? AND a.date=?`,
       [pid, date]
     );
     

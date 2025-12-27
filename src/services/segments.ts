@@ -11,7 +11,7 @@ export interface SegmentRow {
 export type Segment = SegmentRow['name'];
 
 export function listSegments(db: Database): SegmentRow[] {
-  const res = db.exec(`SELECT id, name, start_time, end_time, ordering FROM segment ORDER BY ordering`);
+  const res = db.exec(`SELECT id, name, start_time, end_time, ordering FROM segment_active ORDER BY ordering`);
   const values = res[0]?.values || [];
   return values.map((row) => ({
     id: Number(row[0]),
