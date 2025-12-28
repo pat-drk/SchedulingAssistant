@@ -21,7 +21,6 @@ import CrewHistoryView from "./components/CrewHistoryView";
 import Training from "./components/Training";
 import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, usePersistentFilters } from "./components/filters/PeopleFilters";
 import { isInTrainingPeriod, weeksRemainingInTraining } from "./utils/trainingConstants";
-import ConflictResolutionDialog from "./components/ConflictResolutionDialog";
 import { useSync } from "./sync/useSync";
 import { FileSystemUtils } from "./sync/FileSystemUtils";
 import { Conflict, ConflictResolution } from "./sync/types";
@@ -2603,13 +2602,6 @@ function PeopleEditor(){
           all={all}
         />
       )}
-      {/* Sync Setup Dialog */}
-      <SyncSetupDialog
-        open={showSyncSetup}
-        onDismiss={() => setShowSyncSetup(false)}
-        onSetup={handleSyncSetup}
-        userEmail={userEmail}
-      />
 
       {conflictPrompt && (
         <Dialog open>
@@ -2628,26 +2620,6 @@ function PeopleEditor(){
             </DialogBody>
           </DialogSurface>
         </Dialog>
-      )}
-      {syncConflicts && (
-        <ConflictResolutionDialog
-          conflicts={syncConflicts.conflicts}
-          autoMergedCount={syncConflicts.autoMergedCount}
-          onResolve={async (resolutions) => {
-            const result = await sync.resolveConflicts(syncConflicts.conflicts, resolutions);
-            if (result.success) {
-              setSyncConflicts(null);
-              refreshCaches();
-              setStatus('Conflicts resolved successfully');
-            } else {
-              setStatus(`Error resolving conflicts: ${result.error}`);
-            }
-          }}
-          onCancel={() => {
-            setSyncConflicts(null);
-            setStatus('Sync cancelled - conflicts not resolved');
-          }}
-        />
       )}
       
       {/* Toast notifications */}
