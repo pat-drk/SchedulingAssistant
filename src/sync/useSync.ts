@@ -36,9 +36,7 @@ export interface UseSyncResult {
 }
 
 export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOptions): UseSyncResult {
-  const [syncEngine] = useState<SyncEngine | null>(() => 
-    db && enabled ? new SyncEngine(db) : null
-  );
+  const [syncEngine, setSyncEngine] = useState<SyncEngine | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     isSyncing: false,
     pendingChanges: 0,
@@ -46,6 +44,24 @@ export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOpt
   });
   const [isInitialized, setIsInitialized] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Initialize/Destroy SyncEngine when db changes
+  useEffect(() => {
+    if (db && enabled) {
+      const engine = new SyncEngine(db);
+      setSyncEngine(engine);
+      setIsInitialized(false); // Reset init state for new engine
+
+      return () => {
+        engine.destroy();
+        setSyncEngine(null);
+        setIsInitialized(false);
+      };
+    } else {
+      setSyncEngine(null);
+      setIsInitialized(false);
+    }
+  }, [db, enabled]);
 
   // Subscribe to sync status updates
   useEffect(() => {
@@ -61,15 +77,6 @@ export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOpt
         }
       };
     }
-  }, [syncEngine]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (syncEngine) {
-        syncEngine.destroy();
-      }
-    };
   }, [syncEngine]);
 
   const initializeSync = async (
