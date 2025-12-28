@@ -7,6 +7,7 @@ import { ChangeTracker } from './ChangeTracker';
 import { ChangeFileManager } from './ChangeFileManager';
 import { MergeEngine } from './MergeEngine';
 import { FileSystemUtils } from './FileSystemUtils';
+import { SignalClient } from './SignalClient';
 import { 
   ChangeOperation, 
   Conflict, 
@@ -20,8 +21,10 @@ export class SyncEngine {
   private changeTracker: ChangeTracker;
   private changeFileManager: ChangeFileManager;
   private mergeEngine: MergeEngine;
+  private signalClient: SignalClient;
   private syncState: SyncState;
   private syncIntervalId: NodeJS.Timeout | null = null;
+  private burstCheckIntervalId: NodeJS.Timeout | null = null;
   private syncStatusCallbacks: Array<(status: SyncStatus) => void> = [];
   private currentStatus: SyncStatus;
 
@@ -30,6 +33,7 @@ export class SyncEngine {
     this.changeTracker = new ChangeTracker();
     this.changeFileManager = new ChangeFileManager();
     this.mergeEngine = new MergeEngine(db);
+    this.signalClient = new SignalClient();
     this.syncState = {
       version: 0,
       appliedChanges: [],
@@ -47,18 +51,60 @@ export class SyncEngine {
    */
   async initialize(
     changesFolderHandle: FileSystemDirectoryHandle,
-    userEmail: string
+    userEmail: string,
+    signalServerUrl?: string
   ): Promise<void> {
     await this.changeFileManager.initialize(changesFolderHandle, userEmail);
     
     // Load sync state
     this.syncState = await this.changeFileManager.readSyncState();
     
+    // Connect to signal server
+    // Use a fixed room for now, or generate one based on folder name if possible
+    // Ideally, we'd store a project ID in the sync folder
+    const roomId = 'project-default'; 
+    this.signalClient.connect(roomId, userEmail, signalServerUrl);
+
+    // Listen for "Doorbell" signals
+    this.signalClient.onRefresh(() => {
+      console.log('[SyncEngine] Received remote signal, triggering burst check');
+      this.triggerBurstCheck();
+    });
+
     // Start tracking changes
     this.changeTracker.start();
     
     // Update status
     this.updateStatus({ isSyncing: false });
+  }
+
+  /**
+   * Trigger a "burst check" - poll frequently for a short period
+   * This is called when we hear the doorbell but might not see the file yet
+   */
+  private triggerBurstCheck(): void {
+    if (this.burstCheckIntervalId) {
+      clearInterval(this.burstCheckIntervalId);
+    }
+
+    let checks = 0;
+    const maxChecks = 12; // 12 * 5s = 60s
+    
+    // Check immediately
+    this.pullChanges();
+
+    this.burstCheckIntervalId = setInterval(async () => {
+      checks++;
+      const result = await this.pullChanges();
+      
+      // If we found changes (autoMergedCount > 0) or hit max checks, stop
+      if ((result.autoMergedCount && result.autoMergedCount > 0) || checks >= maxChecks) {
+        if (this.burstCheckIntervalId) {
+          clearInterval(this.burstCheckIntervalId);
+          this.burstCheckIntervalId = null;
+        }
+      }
+    }, 5000); // Check every 5 seconds
   }
 
   /**
@@ -109,6 +155,9 @@ export class SyncEngine {
       // Write change file
       await this.changeFileManager.writeChangeSet(operations, this.syncState.version);
       
+      // Ring the doorbell!
+      this.signalClient.sendRefresh();
+
       // Clear tracked changes
       this.changeTracker.clear();
       
@@ -316,6 +365,11 @@ export class SyncEngine {
    */
   destroy(): void {
     this.stopBackgroundSync();
+    if (this.burstCheckIntervalId) {
+      clearInterval(this.burstCheckIntervalId);
+      this.burstCheckIntervalId = null;
+    }
+    this.signalClient.disconnect();
     this.changeTracker.stop();
     this.syncStatusCallbacks = [];
   }

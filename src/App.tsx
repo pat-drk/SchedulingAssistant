@@ -29,6 +29,7 @@ import { getWeekOfMonth, type WeekStartMode } from "./utils/weekCalculation";
 import AlertDialog from "./components/AlertDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 import EmailInputDialog from "./components/EmailInputDialog";
+import SyncSetupDialog from "./components/SyncSetupDialog";
 import { ToastContainer, useToast } from "./components/Toast";
 import { logger } from "./utils/logger";
 import { MOBILE_NAV_HEIGHT, BREAKPOINTS } from "./styles/breakpoints";
@@ -610,6 +611,9 @@ export default function App() {
     onCancel: () => void;
   } | null>(null);
 
+  // Sync setup dialog
+  const [showSyncSetup, setShowSyncSetup] = useState(false);
+
   // Browser compatibility warning
   const [showBrowserWarning, setShowBrowserWarning] = useState(false);
 
@@ -841,6 +845,32 @@ export default function App() {
       logger.error('Failed to initialize sync:', error);
     }
   }
+
+  const handleSyncSetup = async (handle: FileSystemDirectoryHandle, signalUrl: string) => {
+    if (!userEmail) {
+      toast.showError("Please set your email first (File -> Open or similar)");
+      return;
+    }
+    
+    try {
+      // Create changes folder if needed
+      await FileSystemUtils.ensureChangesFolderExists(handle);
+      
+      // Get handle to changes folder
+      const changesHandle = await handle.getDirectoryHandle('changes');
+      
+      changesFolderHandleRef.current = changesHandle;
+      
+      await sync.initializeSync(changesHandle, userEmail, signalUrl);
+      
+      toast.showSuccess("Sync initialized successfully!");
+      setStatus("Sync enabled (Simultaneous Editing)");
+    } catch (e: any) {
+      logger.error("Sync setup failed", e);
+      toast.showError(`Sync setup failed: ${e.message}`);
+      setAlertDialog({ title: "Sync Setup Failed", message: e.message });
+    }
+  };
 
   function syncTrainingFromMonthly(db = sqlDb) {
     if (!db) return;
@@ -2412,16 +2442,18 @@ function PeopleEditor(){
   <FluentProvider theme={themeName === "dark" ? webDarkTheme : webLightTheme}>
   <ProfileContext.Provider value={{ showProfile: (id: number) => setProfilePersonId(id) }}>
   <div className={sh.shell}>
-      <TopBar
+      <TopBar 
+        appName="Scheduling Assistant"
         ready={ready}
         sqlDb={sqlDb}
-        canSave={canSave}
+        canSave={!!sqlDb}
         createNewDb={createNewDb}
         openDbFromFile={openDbFromFile}
         saveDb={saveDb}
         saveDbAs={saveDbAs}
         status={status}
-        syncStatus={sync.isInitialized ? sync.syncStatus : undefined}
+        syncStatus={sync.syncStatus}
+        onOpenSyncSetup={() => setShowSyncSetup(true)}
       />
       {showBrowserWarning && (
         <MessageBar intent="warning" style={{ margin: tokens.spacingVerticalM }}>
@@ -2595,6 +2627,14 @@ function PeopleEditor(){
           all={all}
         />
       )}
+      {/* Sync Setup Dialog */}
+      <SyncSetupDialog
+        open={showSyncSetup}
+        onDismiss={() => setShowSyncSetup(false)}
+        onSetup={handleSyncSetup}
+        userEmail={userEmail}
+      />
+
       {conflictPrompt && (
         <Dialog open>
           <DialogSurface>

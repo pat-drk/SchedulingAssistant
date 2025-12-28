@@ -1,6 +1,6 @@
 import * as React from "react";
 import { makeStyles, tokens, Text, Tooltip, Toolbar as FluentToolbar, ToolbarButton, ToolbarDivider, Spinner } from "@fluentui/react-components";
-import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular, QuestionCircle20Regular } from "@fluentui/react-icons";
+import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular, QuestionCircle20Regular, CloudSync20Regular } from "@fluentui/react-icons";
 import { isEdgeBrowser } from "../utils/edgeBrowser";
 import CopilotHelper from "./CopilotHelper";
 import CopilotPromptMenu from "./CopilotPromptMenu";
@@ -18,6 +18,7 @@ interface TopBarProps {
   saveDbAs: () => void;
   status: string;
   syncStatus?: SyncStatus;
+  onOpenSyncSetup?: () => void;
 }
 
 const useStyles = makeStyles({
@@ -97,7 +98,7 @@ const useStyles = makeStyles({
   },
 });
 
-export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status, syncStatus }: TopBarProps){
+export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status, syncStatus, onOpenSyncSetup }: TopBarProps){
   const s = useStyles();
   const isEdge = isEdgeBrowser();
   
@@ -124,6 +125,14 @@ export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, c
           <Tooltip content="Save As" relationship="label">
             <ToolbarButton icon={<SaveCopy20Regular />} onClick={saveDbAs} disabled={!sqlDb}>Save As</ToolbarButton>
           </Tooltip>
+          {onOpenSyncSetup && (
+            <>
+              <ToolbarDivider />
+              <Tooltip content="Sync Setup (Simultaneous Editing)" relationship="label">
+                <ToolbarButton icon={<CloudSync20Regular />} onClick={onOpenSyncSetup} disabled={!sqlDb}>Sync</ToolbarButton>
+              </Tooltip>
+            </>
+          )}
         </FluentToolbar>
       </div>
       <div className={s.right}>

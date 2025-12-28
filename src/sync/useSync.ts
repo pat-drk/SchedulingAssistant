@@ -19,7 +19,8 @@ export interface UseSyncResult {
   isInitialized: boolean;
   initializeSync: (
     changesFolderHandle: FileSystemDirectoryHandle,
-    userEmail: string
+    userEmail: string,
+    signalServerUrl?: string
   ) => Promise<void>;
   pushChanges: () => Promise<{ success: boolean; error?: string }>;
   pullChanges: () => Promise<{
@@ -73,13 +74,14 @@ export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOpt
 
   const initializeSync = async (
     changesFolderHandle: FileSystemDirectoryHandle,
-    userEmail: string
+    userEmail: string,
+    signalServerUrl?: string
   ): Promise<void> => {
     if (!syncEngine) {
       throw new Error('Sync engine not available');
     }
 
-    await syncEngine.initialize(changesFolderHandle, userEmail);
+    await syncEngine.initialize(changesFolderHandle, userEmail, signalServerUrl);
     setIsInitialized(true);
 
     // Start background sync
