@@ -1,11 +1,10 @@
 import * as React from "react";
 import { makeStyles, tokens, Text, Tooltip, Toolbar as FluentToolbar, ToolbarButton, ToolbarDivider, Spinner } from "@fluentui/react-components";
-import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular, QuestionCircle20Regular, CloudSync20Regular } from "@fluentui/react-icons";
+import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular, QuestionCircle20Regular, LockClosed20Regular, LockOpen20Regular } from "@fluentui/react-icons";
 import { isEdgeBrowser } from "../utils/edgeBrowser";
 import CopilotHelper from "./CopilotHelper";
 import CopilotPromptMenu from "./CopilotPromptMenu";
-import SyncStatusIndicator from "./SyncStatusIndicator";
-import { SyncStatus } from "../sync/types";
+// import SyncStatusIndicator from "./SyncStatusIndicator"; // Removed
 
 interface TopBarProps {
   appName?: string;
@@ -17,8 +16,9 @@ interface TopBarProps {
   saveDb: () => void;
   saveDbAs: () => void;
   status: string;
-  syncStatus?: SyncStatus;
-  onOpenSyncSetup?: () => void;
+  isReadOnly?: boolean;
+  lockedBy?: string | null;
+  onConnectLock?: () => void;
 }
 
 const useStyles = makeStyles({
@@ -98,7 +98,7 @@ const useStyles = makeStyles({
   },
 });
 
-export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status, syncStatus, onOpenSyncSetup }: TopBarProps){
+export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status, isReadOnly, lockedBy, onConnectLock }: TopBarProps){
   const s = useStyles();
   const isEdge = isEdgeBrowser();
   
@@ -119,24 +119,43 @@ export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, c
             <ToolbarButton icon={<FolderOpen20Regular />} onClick={openDbFromFile}>Open</ToolbarButton>
           </Tooltip>
           <ToolbarDivider />
-          <Tooltip content="Save" relationship="label">
-            <ToolbarButton icon={<Save20Regular />} onClick={saveDb} disabled={!canSave}>Save</ToolbarButton>
+          <Tooltip content={isReadOnly ? "Read Only - Locked by " + lockedBy : "Save"} relationship="label">
+            <ToolbarButton 
+              icon={<Save20Regular />} 
+              onClick={saveDb} 
+              disabled={!canSave || isReadOnly}
+            >
+              Save
+            </ToolbarButton>
           </Tooltip>
           <Tooltip content="Save As" relationship="label">
             <ToolbarButton icon={<SaveCopy20Regular />} onClick={saveDbAs} disabled={!sqlDb}>Save As</ToolbarButton>
           </Tooltip>
-          {onOpenSyncSetup && (
+          
+          {sqlDb && (
             <>
               <ToolbarDivider />
-              <Tooltip content="Sync Setup (Simultaneous Editing)" relationship="label">
-                <ToolbarButton icon={<CloudSync20Regular />} onClick={onOpenSyncSetup} disabled={!sqlDb}>Sync</ToolbarButton>
-              </Tooltip>
+              {isReadOnly !== undefined ? (
+                <Tooltip content={isReadOnly ? `Locked by ${lockedBy}` : "You have the lock"} relationship="label">
+                   <ToolbarButton 
+                     icon={isReadOnly ? <LockClosed20Regular style={{color: tokens.colorPaletteRedForeground1}} /> : <LockOpen20Regular style={{color: tokens.colorPaletteGreenForeground1}} />}
+                     onClick={onConnectLock} // Allow reconnecting/checking
+                   >
+                     {isReadOnly ? "Locked" : "Editing"}
+                   </ToolbarButton>
+                </Tooltip>
+              ) : (
+                <Tooltip content="Enable Locking (Select Folder)" relationship="label">
+                  <ToolbarButton icon={<LockClosed20Regular />} onClick={onConnectLock}>Locking</ToolbarButton>
+                </Tooltip>
+              )}
             </>
           )}
+
         </FluentToolbar>
       </div>
       <div className={s.right}>
-        {syncStatus && <SyncStatusIndicator status={syncStatus} />}
+        {isReadOnly && <Text style={{color: tokens.colorPaletteRedForeground1, fontWeight: 'bold'}}>READ ONLY MODE</Text>}
         {isEdge && <CopilotHelper />}
         {isEdge && <CopilotPromptMenu />}
         <FluentToolbar aria-label="Help actions" size="small">

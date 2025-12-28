@@ -1,133 +1,56 @@
 /**
- * React hook for managing sync state
- * Provides a clean interface to the SyncEngine from React components
+ * React hook for managing File Lock state
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { SyncEngine } from '../sync/SyncEngine';
-import { SyncStatus, Conflict, ConflictResolution } from '../sync/types';
-
-export interface UseSyncOptions {
-  db: any;
-  enabled: boolean;
-  backgroundSyncInterval?: number;
-}
+import { useEffect, useState, useRef } from 'react';
+import { LockManager } from './LockManager';
 
 export interface UseSyncResult {
-  syncEngine: SyncEngine | null;
-  syncStatus: SyncStatus;
-  isInitialized: boolean;
-  initializeSync: (
-    changesFolderHandle: FileSystemDirectoryHandle,
-    userEmail: string,
-    signalServerUrl?: string
-  ) => Promise<void>;
-  pushChanges: () => Promise<{ success: boolean; error?: string }>;
-  pullChanges: () => Promise<{
-    success: boolean;
-    conflicts?: Conflict[];
-    autoMergedCount?: number;
-    error?: string;
-  }>;
-  resolveConflicts: (
-    conflicts: Conflict[],
-    resolutions: Map<Conflict, ConflictResolution>
-  ) => Promise<{ success: boolean; error?: string }>;
+  isReadOnly: boolean;
+  lockedBy: string | null;
+  checkLock: (folderHandle: FileSystemDirectoryHandle, email: string) => Promise<boolean>;
+  releaseLock: () => Promise<void>;
 }
 
-export function useSync({ db, enabled, backgroundSyncInterval = 30 }: UseSyncOptions): UseSyncResult {
-  const [syncEngine, setSyncEngine] = useState<SyncEngine | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>({
-    isSyncing: false,
-    pendingChanges: 0,
-    otherUsers: [],
-  });
-  const [isInitialized, setIsInitialized] = useState(false);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+export function useSync(): UseSyncResult {
+  const [isReadOnly, setIsReadOnly] = useState(false);
+  const [lockedBy, setLockedBy] = useState<string | null>(null);
+  const lockManager = useRef(new LockManager());
 
-  // Initialize/Destroy SyncEngine when db changes
+  // Cleanup on unmount
   useEffect(() => {
-    if (db && enabled) {
-      const engine = new SyncEngine(db);
-      setSyncEngine(engine);
-      setIsInitialized(false); // Reset init state for new engine
+    return () => {
+      lockManager.current.releaseLock();
+    };
+  }, []);
 
-      return () => {
-        engine.destroy();
-        setSyncEngine(null);
-        setIsInitialized(false);
-      };
+  const checkLock = async (folderHandle: FileSystemDirectoryHandle, email: string) => {
+    lockManager.current.initialize(folderHandle, email);
+    
+    // Attempt to acquire
+    const result = await lockManager.current.acquireLock();
+    
+    if (result.success) {
+      setIsReadOnly(false);
+      setLockedBy(null);
+      return true;
     } else {
-      setSyncEngine(null);
-      setIsInitialized(false);
-    }
-  }, [db, enabled]);
-
-  // Subscribe to sync status updates
-  useEffect(() => {
-    if (syncEngine) {
-      unsubscribeRef.current = syncEngine.onStatusChange((status) => {
-        setSyncStatus(status);
-      });
-
-      return () => {
-        if (unsubscribeRef.current) {
-          unsubscribeRef.current();
-          unsubscribeRef.current = null;
-        }
-      };
-    }
-  }, [syncEngine]);
-
-  const initializeSync = async (
-    changesFolderHandle: FileSystemDirectoryHandle,
-    userEmail: string,
-    signalServerUrl?: string
-  ): Promise<void> => {
-    if (!syncEngine) {
-      throw new Error('Sync engine not available');
-    }
-
-    await syncEngine.initialize(changesFolderHandle, userEmail, signalServerUrl);
-    setIsInitialized(true);
-
-    // Start background sync
-    if (backgroundSyncInterval > 0) {
-      syncEngine.startBackgroundSync(backgroundSyncInterval);
+      setIsReadOnly(true);
+      setLockedBy(result.lockedBy || 'Unknown User');
+      return false;
     }
   };
 
-  const pushChanges = async () => {
-    if (!syncEngine) {
-      return { success: false, error: 'Sync engine not available' };
-    }
-    return await syncEngine.pushChanges();
-  };
-
-  const pullChanges = async () => {
-    if (!syncEngine) {
-      return { success: false, error: 'Sync engine not available' };
-    }
-    return await syncEngine.pullChanges();
-  };
-
-  const resolveConflicts = async (
-    conflicts: Conflict[],
-    resolutions: Map<Conflict, ConflictResolution>
-  ) => {
-    if (!syncEngine) {
-      return { success: false, error: 'Sync engine not available' };
-    }
-    return await syncEngine.resolveConflicts(conflicts, resolutions);
+  const releaseLock = async () => {
+    await lockManager.current.releaseLock();
+    setIsReadOnly(false);
+    setLockedBy(null);
   };
 
   return {
-    syncEngine,
-    syncStatus,
-    isInitialized,
-    initializeSync,
-    pushChanges,
-    pullChanges,
-    resolveConflicts,
+    isReadOnly,
+    lockedBy,
+    checkLock,
+    releaseLock
   };
 }

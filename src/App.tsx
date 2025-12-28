@@ -29,7 +29,6 @@ import { getWeekOfMonth, type WeekStartMode } from "./utils/weekCalculation";
 import AlertDialog from "./components/AlertDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 import EmailInputDialog from "./components/EmailInputDialog";
-import SyncSetupDialog from "./components/SyncSetupDialog";
 import { ToastContainer, useToast } from "./components/Toast";
 import { logger } from "./utils/logger";
 import { MOBILE_NAV_HEIGHT, BREAKPOINTS } from "./styles/breakpoints";
@@ -612,7 +611,7 @@ export default function App() {
   } | null>(null);
 
   // Sync setup dialog
-  const [showSyncSetup, setShowSyncSetup] = useState(false);
+  // const [showSyncSetup, setShowSyncSetup] = useState(false); // Removed
 
   // Browser compatibility warning
   const [showBrowserWarning, setShowBrowserWarning] = useState(false);
@@ -621,16 +620,7 @@ export default function App() {
   const [personToDelete, setPersonToDelete] = useState<number | null>(null);
 
   // Sync system
-  const changesFolderHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
-  const [syncConflicts, setSyncConflicts] = useState<{
-    conflicts: Conflict[];
-    autoMergedCount: number;
-  } | null>(null);
-  const sync = useSync({
-    db: sqlDb,
-    enabled: !!sqlDb,
-    backgroundSyncInterval: 30,
-  });
+  const { isReadOnly, lockedBy, checkLock, releaseLock } = useSync();
 
   useEffect(() => {
     if (segments.length && !segments.find(s => s.name === activeRunSegment)) {
@@ -748,12 +738,31 @@ export default function App() {
       setStatus(`Opened ${file.name}`);
       refreshCaches(db);
 
-      // Prompt for user email (needed for sync system and personalization)
+      // Prompt for user email
       setEmailDialog({
-        onSubmit: (email: string) => {
+        onSubmit: async (email: string) => {
           setUserEmail(email);
           setEmailDialog(null);
           toast.showSuccess("Database opened successfully");
+          
+          // Try to get parent folder and acquire lock
+          // Note: File System Access API doesn't give parent access directly from file handle
+          // In a real app, we'd need to ask user to select the FOLDER, not the file
+          // For this MVP, we will try to use a convention or ask for folder access if needed
+          // But for now, we'll just show a toast that locking requires folder selection
+          
+          // Ideally, we change "Open" to "Open Project Folder"
+          // But to keep it simple, we'll try to implement the lock check if we can get the folder
+          // Current limitation: showOpenFilePicker returns a file handle, we can't get parent
+          
+          // Workaround: We'll assume for now that users will coordinate via Teams
+          // until we switch the "Open" flow to "Select Folder"
+          
+          // If we had the directory handle:
+          // const parent = await handle.getParent(); // Not available in standard API yet
+          // await checkLock(parent, email);
+          
+          // For now, we will add a separate "Connect Lock" button in TopBar or rely on social coordination
         },
         onCancel: () => {
           setEmailDialog(null);
@@ -782,33 +791,6 @@ export default function App() {
     if (!sqlDb) return;
     if (!fileHandleRef.current) return saveDbAs();
     
-    // If sync is enabled, push changes first
-    if (sync.isInitialized && sync.syncEngine) {
-      const pushResult = await sync.pushChanges();
-      if (!pushResult.success) {
-        const errorMsg = `Sync error: ${pushResult.error}`;
-        setStatus(errorMsg);
-        toast.showError(errorMsg);
-        return;
-      }
-      
-      // Pull and merge changes from others
-      const pullResult = await sync.pullChanges();
-      if (!pullResult.success && pullResult.conflicts) {
-        // Show conflict resolution dialog
-        setSyncConflicts({
-          conflicts: pullResult.conflicts,
-          autoMergedCount: pullResult.autoMergedCount || 0,
-        });
-        return;
-      } else if (pullResult.autoMergedCount && pullResult.autoMergedCount > 0) {
-        const msg = `Auto-merged ${pullResult.autoMergedCount} changes from other users`;
-        setStatus(msg);
-        toast.showInfo(msg);
-        refreshCaches(); // Refresh UI to show merged changes
-      }
-    }
-    
     await writeDbToHandle(fileHandleRef.current);
   }
 
@@ -817,60 +799,13 @@ export default function App() {
     const writable = await (handle as any).createWritable();
     await writable.write(data);
     await writable.close();
+    
+    // Release lock after save
+    await releaseLock();
+    
     setStatus("Saved.");
-    toast.showSuccess("Database saved successfully");
-    
-    // Try to initialize sync if we have a handle and user email
-    // Note: Sync system is incomplete - this is a placeholder
-    if (!sync.isInitialized && userEmail && !changesFolderHandleRef.current) {
-      await tryInitializeSync(handle);
-    }
+    toast.showSuccess("Database saved and lock released");
   }
-
-  async function tryInitializeSync(dbHandle: FileSystemFileHandle) {
-    // INCOMPLETE: Multi-user sync system is not yet production-ready
-    // See SYNC_SYSTEM.md for details on the architecture
-    // This is a placeholder for future sync initialization
-    if (!userEmail) return;
-    
-    try {
-      // Try to get the parent directory
-      // Note: This is a limitation - File System Access API doesn't provide direct parent access
-      // We'll need to ask the user or use a different approach
-      // For now, we'll skip automatic initialization and require manual setup
-      
-      // Alternative: Store the directory handle in IndexedDB for future use
-      // This would be a production enhancement
-    } catch (error) {
-      logger.error('Failed to initialize sync:', error);
-    }
-  }
-
-  const handleSyncSetup = async (handle: FileSystemDirectoryHandle, signalUrl: string) => {
-    if (!userEmail) {
-      toast.showError("Please set your email first (File -> Open or similar)");
-      return;
-    }
-    
-    try {
-      // Create changes folder if needed
-      await FileSystemUtils.ensureChangesFolderExists(handle);
-      
-      // Get handle to changes folder
-      const changesHandle = await handle.getDirectoryHandle('changes');
-      
-      changesFolderHandleRef.current = changesHandle;
-      
-      await sync.initializeSync(changesHandle, userEmail, signalUrl);
-      
-      toast.showSuccess("Sync initialized successfully!");
-      setStatus("Sync enabled (Simultaneous Editing)");
-    } catch (e: any) {
-      logger.error("Sync setup failed", e);
-      toast.showError(`Sync setup failed: ${e.message}`);
-      setAlertDialog({ title: "Sync Setup Failed", message: e.message });
-    }
-  };
 
   function syncTrainingFromMonthly(db = sqlDb) {
     if (!db) return;
@@ -944,6 +879,46 @@ export default function App() {
       console.error('Failed to load time_off_block_threshold:', e);
     }
   }
+
+  const handleConnectLock = async () => {
+    if (!userEmail) {
+      setEmailDialog({
+        onSubmit: async (email) => {
+          setUserEmail(email);
+          setEmailDialog(null);
+          await connectLock(email);
+        },
+        onCancel: () => setEmailDialog(null)
+      });
+      return;
+    }
+    await connectLock(userEmail);
+  };
+
+  const connectLock = async (email: string) => {
+    try {
+      // Ask user to select the parent folder for locking
+      const handle = await (window as any).showDirectoryPicker({
+        id: 'lock-folder',
+        mode: 'readwrite',
+        startIn: 'documents'
+      });
+      
+      const success = await checkLock(handle, email);
+      if (success) {
+        toast.showSuccess("Lock acquired! You are editing.");
+        setStatus("Editing (Locked)");
+      } else {
+        toast.showError("File is locked by another user.");
+        setStatus(`Read Only (Locked by ${lockedBy})`);
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        logger.error("Lock setup failed", e);
+        toast.showError(`Lock setup failed: ${e.message}`);
+      }
+    }
+  };
 
   // People CRUD minimal
   function addPerson(rec: any) {
@@ -2452,8 +2427,9 @@ function PeopleEditor(){
         saveDb={saveDb}
         saveDbAs={saveDbAs}
         status={status}
-        syncStatus={sync.syncStatus}
-        onOpenSyncSetup={() => setShowSyncSetup(true)}
+        isReadOnly={isReadOnly}
+        lockedBy={lockedBy}
+        onConnectLock={handleConnectLock}
       />
       {showBrowserWarning && (
         <MessageBar intent="warning" style={{ margin: tokens.spacingVerticalM }}>
