@@ -25,8 +25,8 @@ export class LockManager {
   
   // Settings
   private readonly LOCK_FILE_NAME = 'lock.json';
-  private readonly STALE_THRESHOLD_MS = 1000 * 60 * 5; // 5 minutes (Lock expires if app crashes)
-  private readonly HEARTBEAT_MS = 1000 * 60; // 1 minute
+  private readonly STALE_THRESHOLD_MS = 1000 * 20; // 20 seconds (Lock expires quickly if app crashes)
+  private readonly HEARTBEAT_MS = 1000 * 5; // 5 seconds
 
   constructor() {
     this.machineId = Math.random().toString(36).substring(2, 15);
