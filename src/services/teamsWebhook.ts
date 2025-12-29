@@ -20,7 +20,7 @@ export interface WebhookPayload {
 /**
  * Format time from 24-hour to 12-hour format
  */
-function formatTime12h(time24: string): string {
+export function formatTime12h(time24: string): string {
   const [hours, minutes] = time24.split(':').map(Number);
   const period = hours >= 12 ? 'PM' : 'AM';
   const hours12 = hours === 0 ? 12 : (hours > 12 ? hours - 12 : hours);
