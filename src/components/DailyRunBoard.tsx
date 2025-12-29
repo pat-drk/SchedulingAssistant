@@ -11,6 +11,7 @@ import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
 import { exportDailyScheduleXlsx } from "../excel/export-one-sheet";
 import { getEffectiveMonth, getWeekOfMonth, type WeekStartMode } from "../utils/weekCalculation";
+import { sendToTeamsWebhook, getWebhookUrl, type ScheduleEntry, type WebhookPayload } from "../services/teamsWebhook";
 import {
   Button,
   Dropdown,
@@ -37,6 +38,13 @@ import {
   MessageBar,
   MessageBarBody,
   MessageBarTitle,
+  Table,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  TableBody,
+  TableCell,
+  Text,
 } from "@fluentui/react-components";
 import { Navigation20Regular, CalendarMonth20Regular } from "@fluentui/react-icons";
 import AlertDialog from "./AlertDialog";
@@ -239,7 +247,66 @@ const useStyles = makeStyles({
     columnGap: tokens.spacingHorizontalS,
     flexShrink: 0,
   },
+  movedBadge: {
+    backgroundColor: tokens.colorPaletteYellowBackground2,
+    color: tokens.colorPaletteYellowForeground2,
+    fontSize: tokens.fontSizeBase100,
+    padding: `0 ${tokens.spacingHorizontalXS}`,
+    borderRadius: tokens.borderRadiusSmall,
+    marginLeft: tokens.spacingHorizontalXS,
+  },
 });
+
+// Component to display today's moves
+function TodaysMovesList({ date, all, allRoles, people }: { date: string; all: (sql: string, params?: any[]) => any[]; allRoles: any[]; people: any[] }) {
+  const moves = React.useMemo(() => {
+    // Get moves from the last week for cleanup display, but focus on today
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const oneWeekAgoStr = `${oneWeekAgo.getFullYear()}-${String(oneWeekAgo.getMonth() + 1).padStart(2, '0')}-${String(oneWeekAgo.getDate()).padStart(2, '0')}`;
+    
+    return all(
+      `SELECT cl.*, p.first_name, p.last_name 
+       FROM change_log cl 
+       JOIN person p ON p.id = cl.person_id 
+       WHERE cl.date = ? AND cl.action = 'move'
+       ORDER BY cl.created_at DESC`,
+      [date]
+    );
+  }, [all, date]);
+  
+  const getRoleName = (roleId: number) => {
+    const role = allRoles.find((r: any) => r.id === roleId);
+    return role ? role.name : 'Unknown';
+  };
+  
+  if (moves.length === 0) {
+    return <Text>No moves recorded for this date.</Text>;
+  }
+  
+  return (
+    <Table size="small">
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>Person</TableHeaderCell>
+          <TableHeaderCell>From</TableHeaderCell>
+          <TableHeaderCell>To</TableHeaderCell>
+          <TableHeaderCell>Segment</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {moves.map((m: any) => (
+          <TableRow key={m.id}>
+            <TableCell>{m.first_name} {m.last_name}</TableCell>
+            <TableCell>{getRoleName(m.from_role_id)}</TableCell>
+            <TableCell>{getRoleName(m.to_role_id)}</TableCell>
+            <TableCell>{m.segment}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 interface DailyRunBoardProps {
   activeRunSegment: Segment;
@@ -287,6 +354,7 @@ interface DailyRunBoardProps {
   allRoles: any[];
   availabilityFor: (db: any, personId: number, date: Date) => string;
   isSegmentBlockedByTimeOff: (personId: number, date: Date, segment: Segment) => boolean;
+  timeOffThreshold: number;
   weekdayName: (d: Date) => string;
   refreshCaches: () => void;
   setStatus: (msg: string) => void;
@@ -321,6 +389,7 @@ export default function DailyRunBoard({
   allRoles,
   availabilityFor,
   isSegmentBlockedByTimeOff,
+  timeOffThreshold,
   weekdayName,
   refreshCaches,
   setStatus,
@@ -352,6 +421,8 @@ export default function DailyRunBoard({
   const [autoFillSuggestions, setAutoFillSuggestions] = useState<
     Array<{ role: any; group: any; candidates: Array<{ id: number; label: string }>; selected: number | null }>
   >([]);
+  const [showMovesModal, setShowMovesModal] = useState(false);
+  const [showUnassigned, setShowUnassigned] = useState(false);
 
   const moveSelectedLabel = useMemo(() => {
     if (!moveContext || moveTargetId == null) return "";
@@ -441,6 +512,65 @@ export default function DailyRunBoard({
   );
   // assignedIdSet was unused; removed to keep build warnings clean
   void assignedIdSet;
+
+  // Track which person_id + role_id combinations were moved to for showing "Moved" badge
+  const movedToMap = useMemo(() => {
+    const moves = all(
+      `SELECT person_id, to_role_id FROM change_log WHERE date=? AND segment=? AND action='move'`,
+      [ymd(selectedDateObj), seg]
+    );
+    const map = new Map<string, boolean>();
+    for (const m of moves) {
+      map.set(`${m.person_id}:${m.to_role_id}`, true);
+    }
+    return map;
+  }, [all, selectedDateObj, seg, ymd]);
+
+  // Get all unassigned but available people for this segment
+  const unassignedAvailable = useMemo(() => {
+    const dayName = weekdayName(selectedDateObj);
+    if (dayName === 'Weekend') return [];
+    
+    const availCol = `avail_${dayName.toLowerCase().slice(0, 3)}`;
+    
+    // Get all active people with their availability
+    const allPeople = all(
+      `SELECT id, first_name, last_name, ${availCol} as avail FROM person WHERE active = 1 ORDER BY last_name, first_name`
+    );
+    
+    // Get people assigned in this segment
+    const dateStr = ymd(selectedDateObj);
+    const assignedPeople = new Set(
+      all(`SELECT DISTINCT person_id FROM assignment WHERE date=? AND segment=?`, [dateStr, seg])
+        .map((r: any) => r.person_id)
+    );
+    
+    // Get availability overrides for this date
+    const overrides = all(
+      `SELECT person_id, avail FROM availability_override WHERE date=?`,
+      [dateStr]
+    );
+    const overrideMap = new Map(overrides.map((o: any) => [o.person_id, o.avail]));
+    
+    // Filter to available but unassigned
+    return allPeople.filter((p: any) => {
+      if (assignedPeople.has(p.id)) return false;
+      
+      // Check availability (override takes precedence)
+      const avail = overrideMap.get(p.id) || p.avail || 'U';
+      if (avail === 'U') return false;
+      
+      // Check segment compatibility
+      if (seg === 'AM' || seg === 'Early') {
+        return avail === 'AM' || avail === 'B';
+      } else if (seg === 'PM') {
+        return avail === 'PM' || avail === 'B';
+      } else if (seg === 'Lunch') {
+        return avail !== 'U';
+      }
+      return avail !== 'U';
+    });
+  }, [all, selectedDateObj, seg, ymd, weekdayName]);
 
   const groupMap = useMemo(() => new Map(groups.map((g: any) => [g.id, g])), [groups]);
 
@@ -847,6 +977,61 @@ export default function DailyRunBoard({
     }
   }
 
+  async function handleSendToTeams() {
+    const webhookUrl = getWebhookUrl(all);
+    if (!webhookUrl) {
+      dialogs.showAlert(
+        "Teams webhook URL is not configured. Please go to Admin → Settings → Teams Webhook Settings to configure it.",
+        "Webhook Not Configured"
+      );
+      return;
+    }
+    
+    // Get assignments for current segment only
+    const dateStr = ymd(selectedDateObj);
+    const assigns = all(
+      `SELECT a.id, a.segment, a.role_id, p.first_name, p.last_name, r.name as role_name, g.name as group_name
+       FROM assignment a
+       JOIN person p ON p.id = a.person_id
+       JOIN role r ON r.id = a.role_id
+       JOIN grp g ON g.id = r.group_id
+       WHERE a.date = ? AND a.segment = ?
+       ORDER BY g.name, r.name, p.last_name, p.first_name`,
+      [dateStr, seg]
+    );
+    
+    if (assigns.length === 0) {
+      dialogs.showAlert("No assignments found for this segment.", "No Data");
+      return;
+    }
+    
+    // Build schedule entries with times
+    const segTimes = segTimesTop[seg];
+    const startTime = segTimes ? `${segTimes.start.getHours().toString().padStart(2, '0')}:${segTimes.start.getMinutes().toString().padStart(2, '0')}` : '00:00';
+    const endTime = segTimes ? `${segTimes.end.getHours().toString().padStart(2, '0')}:${segTimes.end.getMinutes().toString().padStart(2, '0')}` : '00:00';
+    
+    const entries: ScheduleEntry[] = assigns.map((a: any) => ({
+      personName: `${a.first_name} ${a.last_name}`,
+      roleName: a.role_name,
+      groupName: a.group_name,
+      startTime,
+      endTime,
+    }));
+    
+    const payload: WebhookPayload = {
+      date: dateStr,
+      segment: seg,
+      entries,
+    };
+    
+    const result = await sendToTeamsWebhook(webhookUrl, payload);
+    if (result.success) {
+      dialogs.showAlert(`Successfully sent ${entries.length} assignments to Teams.`, "Sent to Teams");
+    } else {
+      dialogs.showAlert(`Failed to send to Teams: ${result.error}`, "Error");
+    }
+  }
+
   // Base segment times for the selected date (without per-person adjustments)
   // Per-person adjustments are calculated in RoleCard for accurate time-off overlap
   const segTimesTop = useMemo(() => {
@@ -994,7 +1179,9 @@ export default function DailyRunBoard({
       const en = personSegTimes[seg]?.end || baseEn;
       const segStart = st.getTime();
       const segEnd = en.getTime();
-      const half = Math.ceil((segEnd - segStart) / 2);
+      const segDuration = segEnd - segStart;
+      // Use configurable threshold instead of hardcoded 50%
+      const thresholdMs = Math.ceil(segDuration * (timeOffThreshold / 100));
       
       // Calculate overlap for this person
       const personTimeOff = timeOffByPerson.get(a.person_id) || [];
@@ -1005,30 +1192,31 @@ export default function DailyRunBoard({
         ovl += Math.max(0, Math.min(e, segEnd) - Math.max(s, segStart));
       }
       
-      const heavy = ovl >= half;
+      const heavy = ovl >= thresholdMs;
       if (heavy) continue;
       map.set(a.role_id, (map.get(a.role_id) || 0) + 1);
     }
     return map;
-  }, [all, roles, seg, segTimesTop, selectedDateObj, ymd, assignedCountMap, getSegTimesForPersonTop]);
+  }, [all, roles, seg, segTimesTop, selectedDateObj, ymd, assignedCountMap, getSegTimesForPersonTop, timeOffThreshold]);
 
   const GroupCard = React.memo(function GroupCard({ group, isDraggable }: { group: any; isDraggable: boolean }) {
     const rolesForGroup = roles.filter((r) => r.group_id === group.id);
     
     // Calculate total filled and total required for the group
+    // Use effectiveCount which accounts for time-off overlaps
     let totalFilled = 0;
     let totalRequired = 0;
     for (const r of rolesForGroup) {
-      const assignedCount = assignedCountMap.get(r.id) || 0;
+      const effectiveCount = assignedEffectiveCountMap.get(r.id) || 0;
       const req = getRequiredFor(selectedDateObj, group.id, r.id, seg);
-      totalFilled += assignedCount;
+      totalFilled += effectiveCount;
       totalRequired += req;
     }
     
     const groupNeedsMet = rolesForGroup.every((r: any) => {
-      const assignedCount = assignedCountMap.get(r.id) || 0;
+      const effectiveCount = assignedEffectiveCountMap.get(r.id) || 0;
       const req = getRequiredFor(selectedDateObj, group.id, r.id, seg);
-      return assignedCount >= req;
+      return effectiveCount >= req;
     });
     // Use more subtle accent colors
     const groupAccent = groupNeedsMet
@@ -1505,6 +1693,11 @@ export default function DailyRunBoard({
                   {a.last_name}, {a.first_name}
                   {!trainedBefore.has(a.person_id) && " (Untrained)"}
                 </PersonName>
+                {movedToMap.has(`${a.person_id}:${role.id}`) && (
+                  <Tooltip content="This person was moved to this role" relationship="label">
+                    <span className={s.movedBadge}>Moved</span>
+                  </Tooltip>
+                )}
         {(() => {
                   const info = overlapByPerson.get(a.person_id);
                   if (!info) return null;
@@ -1572,6 +1765,14 @@ export default function DailyRunBoard({
     
     const confirmed = await dialogs.showConfirm(message, "Confirm Move");
     if (!confirmed) return;
+    
+    // Log the move to change_log table
+    const dateStr = ymd(selectedDateObj);
+    run(
+      `INSERT INTO change_log (date, person_id, segment, from_role_id, to_role_id, action) VALUES (?,?,?,?,?,?)`,
+      [dateStr, moveContext.assignment.person_id, seg, moveContext.assignment.role_id, chosen.role.id, 'move']
+    );
+    
     deleteAssignment(moveContext.assignment.id);
     addAssignment(selectedDate, moveContext.assignment.person_id, chosen.role.id, seg);
     setMoveContext(null);
@@ -1615,6 +1816,8 @@ export default function DailyRunBoard({
           </TabList>
         </div>
         <div className={s.headerRight}>
+          <Button appearance="secondary" onClick={() => setShowMovesModal(true)}>View Moves</Button>
+          <Button appearance="secondary" onClick={handleSendToTeams}>Send to Teams</Button>
           <Button appearance="secondary" onClick={handleExportDaily}>Export</Button>
           <Button appearance="secondary" onClick={handleAutoFill}>Auto Fill</Button>
           <Button appearance="secondary" onClick={handleCopyDefaults}>Copy Defaults</Button>
@@ -1672,6 +1875,50 @@ export default function DailyRunBoard({
               </MessageBar>
             );
           })}
+        </div>
+      )}
+
+      {/* Unassigned Available People Indicator */}
+      {unassignedAvailable.length > 0 && (
+        <div 
+          style={{ 
+            marginBottom: tokens.spacingVerticalM,
+            padding: tokens.spacingHorizontalS,
+            backgroundColor: tokens.colorNeutralBackground3,
+            borderRadius: tokens.borderRadiusMedium,
+            border: `1px solid ${tokens.colorNeutralStroke2}`,
+          }}
+        >
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+            }}
+            onClick={() => setShowUnassigned(!showUnassigned)}
+          >
+            <Text weight="semibold" size={200}>
+              📋 {unassignedAvailable.length} available but unassigned
+            </Text>
+            <Button size="small" appearance="subtle">
+              {showUnassigned ? 'Hide' : 'Show'}
+            </Button>
+          </div>
+          {showUnassigned && (
+            <div style={{ 
+              marginTop: tokens.spacingVerticalS,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: tokens.spacingHorizontalXS,
+            }}>
+              {unassignedAvailable.map((p: any) => (
+                <Badge key={p.id} appearance="outline" size="small">
+                  {p.first_name} {p.last_name}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1804,6 +2051,23 @@ export default function DailyRunBoard({
           onConfirm={() => dialogs.handleConfirm(true)}
           onCancel={() => dialogs.handleConfirm(false)}
         />
+      )}
+      
+      {/* Today's Moves Summary Modal */}
+      {showMovesModal && (
+        <Dialog open={showMovesModal} onOpenChange={(_, d) => { if (!d.open) setShowMovesModal(false); }}>
+          <DialogSurface>
+            <DialogBody>
+              <DialogTitle>Today's Moves</DialogTitle>
+              <DialogContent>
+                <TodaysMovesList date={ymd(selectedDateObj)} all={all} allRoles={allRoles} people={people} />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowMovesModal(false)}>Close</Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
       )}
     </div>
   );

@@ -326,6 +326,78 @@ export const migrate28AddDepartmentEvent: Migration = (db) => {
   console.log('Migration 28 complete - added department_event table');
 };
 
+// 29. Add change_log table for tracking assignment moves
+export const migrate29AddChangeLog: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS change_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    person_id INTEGER NOT NULL,
+    segment TEXT NOT NULL,
+    from_role_id INTEGER,
+    to_role_id INTEGER,
+    action TEXT CHECK(action IN ('move','add','remove')) NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (person_id) REFERENCES person(id),
+    FOREIGN KEY (from_role_id) REFERENCES role(id),
+    FOREIGN KEY (to_role_id) REFERENCES role(id)
+  );`);
+  console.log('Migration 29 complete - added change_log table');
+};
+
+// 30. Add recurring_timeoff table for Flex Time feature
+export const migrate30AddRecurringTimeoff: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS recurring_timeoff (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id INTEGER NOT NULL,
+    weekday INTEGER CHECK(weekday BETWEEN 0 AND 4) NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    reason TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (person_id) REFERENCES person(id)
+  );`);
+  console.log('Migration 30 complete - added recurring_timeoff table');
+};
+
+// 31. Add autofill_priority table for configurable auto-fill logic
+export const migrate31AddAutofillPriority: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS autofill_priority (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_key TEXT NOT NULL UNIQUE,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    priority INTEGER NOT NULL
+  );`);
+  // Seed default priority rules
+  const defaultRules = [
+    { key: 'prefer_trained', priority: 1 },
+    { key: 'pull_overstaffed_first', priority: 2 },
+    { key: 'respect_segment_availability', priority: 3 },
+    { key: 'exclude_high_timeoff_overlap', priority: 4 },
+  ];
+  for (const r of defaultRules) {
+    db.run(`INSERT OR IGNORE INTO autofill_priority (rule_key, enabled, priority) VALUES (?, 1, ?)`, [r.key, r.priority]);
+  }
+  
+  // Add group priority order table
+  db.run(`CREATE TABLE IF NOT EXISTS autofill_group_priority (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL UNIQUE,
+    priority INTEGER NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES grp(id)
+  );`);
+  console.log('Migration 31 complete - added autofill_priority tables');
+};
+
+// 32. Add teams_webhook_url to meta table
+export const migrate32AddTeamsWebhook: Migration = (db) => {
+  try {
+    db.run(`INSERT OR IGNORE INTO meta (key, value) VALUES ('teams_webhook_url', '');`);
+    console.log('Migration 32 complete - added teams_webhook_url setting');
+  } catch (e) {
+    console.error('migrate32AddTeamsWebhook failed:', e);
+  }
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -843,6 +915,10 @@ const migrations: Record<number, Migration> = {
   26: migrate26AddMultiConditionSegmentAdjustments,
   27: migrate27AddTimeOffThreshold,
   28: migrate28AddDepartmentEvent,
+  29: migrate29AddChangeLog,
+  30: migrate30AddRecurringTimeoff,
+  31: migrate31AddAutofillPriority,
+  32: migrate32AddTeamsWebhook,
 };
 
 export function addMigration(version: number, fn: Migration) {
@@ -914,6 +990,17 @@ export function ensureSchemaIntegrity(db: Database) {
         FOREIGN KEY (group_id) REFERENCES grp(id),
         FOREIGN KEY (role_id) REFERENCES role(id)
       );`);
+    }
+    
+    // Cleanup old change_log entries (older than 1 week)
+    try {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      const oneWeekAgoStr = `${oneWeekAgo.getFullYear()}-${String(oneWeekAgo.getMonth() + 1).padStart(2, '0')}-${String(oneWeekAgo.getDate()).padStart(2, '0')}`;
+      db.run(`DELETE FROM change_log WHERE date < ?`, [oneWeekAgoStr]);
+      console.log('[SchemaIntegrity] Cleaned up old change_log entries');
+    } catch (e) {
+      // Table may not exist yet, that's fine
     }
     
     console.log('[SchemaIntegrity] Schema integrity check complete');

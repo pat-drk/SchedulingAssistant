@@ -1233,11 +1233,38 @@ export default function App() {
   function listTimeOffIntervals(personId: number, date: Date): Array<{start: Date; end: Date; reason?: string}> {
     const startDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0,0,0,0);
     const endDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23,59,59,999);
+    
+    // Regular time-off entries
     const rows = all(`SELECT start_ts, end_ts, reason FROM timeoff WHERE person_id=?`, [personId]);
-    return rows
+    const regularTimeOff = rows
       .map((r) => ({ start: new Date(r.start_ts), end: new Date(r.end_ts), reason: r.reason }))
       .filter((r) => r.end >= startDay && r.start <= endDay)
       .map((r) => ({ start: r.start < startDay ? startDay : r.start, end: r.end > endDay ? endDay : r.end, reason: r.reason }));
+
+    // Recurring time-off (Flex Time) entries
+    // Convert Date's getDay() (0=Sun..6=Sat) to our weekday (0=Mon..4=Fri)
+    const jsWeekday = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const weekday = jsWeekday >= 1 && jsWeekday <= 5 ? jsWeekday - 1 : -1; // 0=Mon..4=Fri, -1 for weekend
+    
+    const recurringTimeOff: Array<{start: Date; end: Date; reason?: string}> = [];
+    if (weekday >= 0) {
+      const recurringRows = all(
+        `SELECT start_time, end_time, reason FROM recurring_timeoff WHERE person_id=? AND weekday=? AND active=1`,
+        [personId, weekday]
+      );
+      for (const r of recurringRows) {
+        // Parse HH:MM format times and create Date objects for the given date
+        const [startH, startM] = (r.start_time as string).split(':').map(Number);
+        const [endH, endM] = (r.end_time as string).split(':').map(Number);
+        recurringTimeOff.push({
+          start: new Date(date.getFullYear(), date.getMonth(), date.getDate(), startH, startM, 0, 0),
+          end: new Date(date.getFullYear(), date.getMonth(), date.getDate(), endH, endM, 0, 0),
+          reason: r.reason || 'Flex Time',
+        });
+      }
+    }
+
+    return [...regularTimeOff, ...recurringTimeOff];
   }
 
 
@@ -1724,7 +1751,20 @@ async function exportShifts() {
     // Group logic: Breakfast forces Dining Room, otherwise from role
     const group = a.segment === "Early" ? "Dining Room" : a.group_name;
     const themeColor = groups.find((g) => g.name === group)?.theme || "";
-    const customLabel = a.role_name; // per user: Plain Name
+    
+    // Simplify role label to remove redundant group name prefix
+    // e.g., if group is "Dining Room" and role is "Dining Room", label is blank
+    // If role is "Dining Room Coordinator", label is "Coordinator"
+    const simplifyRole = (role: string, groupName: string): string => {
+      if (role === groupName) return '';
+      const prefix = groupName + ' ';
+      if (role.startsWith(prefix)) {
+        return role.slice(prefix.length);
+      }
+      return role;
+    };
+    const customLabel = simplifyRole(a.role_name, group);
+    
     const unpaidBreak = 0; // per user
     
     // Format time for notes (e.g., "8-12" or "1-5")
@@ -2269,7 +2309,7 @@ function PeopleEditor(){
                 </div>
                 <div className={s.checkboxRow}>
                   <Checkbox label="Commuter" checked={!!form.commuter} onChange={(_,data)=>setForm({...form,commuter:!!data.checked})} />
-                  <Checkbox label="Active" checked={form.active!==false} onChange={(_,data)=>setForm({...form,active:!!data.checked})} />
+                  <Checkbox label="Active" checked={!!form.active} onChange={(_,data)=>setForm({...form,active:!!data.checked})} />
                 </div>
               </div>
 
@@ -2497,6 +2537,7 @@ function PeopleEditor(){
                   allRoles={roles}
                   availabilityFor={availabilityFor}
                   isSegmentBlockedByTimeOff={isSegmentBlockedByTimeOff}
+                  timeOffThreshold={timeOffThreshold}
                   weekdayName={weekdayName}
                   refreshCaches={refreshCaches}
                   setStatus={setStatus}
@@ -2581,7 +2622,7 @@ function PeopleEditor(){
           )}
           {activeTab === 'ADMIN' && (
             <Suspense fallback={<div className="p-4 text-slate-600">Loading Admin…</div>}>
-              <AdminView sqlDb={sqlDb} all={all} run={run} refresh={refreshCaches} segments={segments} onTimeOffThresholdChange={setTimeOffThreshold} />
+              <AdminView sqlDb={sqlDb} all={all} run={run} refresh={refreshCaches} segments={segments} groups={groups} onTimeOffThresholdChange={setTimeOffThreshold} />
             </Suspense>
           )}
         </>
@@ -2593,6 +2634,7 @@ function PeopleEditor(){
           personId={profilePersonId}
           onClose={() => setProfilePersonId(null)}
           all={all}
+          run={run}
         />
       )}
       {conflictPrompt && (

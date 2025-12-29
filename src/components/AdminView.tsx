@@ -12,6 +12,8 @@ import {
   Divider,
   Card,
   tokens,
+  Input,
+  Label,
 } from "@fluentui/react-components";
 import {
   Settings20Regular,
@@ -28,7 +30,7 @@ import ExportGroupEditor from "./ExportGroupEditor";
 import type { SegmentRow } from "../services/segments";
 import TimeOffManager from "./TimeOffManager";
 import AvailabilityOverrideManager from "./AvailabilityOverrideManager";
-import AutoFillSettings from "./AutoFillSettings";
+import AutoFillSettings, { AutoFillPrioritySettings } from "./AutoFillSettings";
 import SkillsEditor from "./SkillsEditor";
 import WeekCalculationSettings from "./WeekCalculationSettings";
 import TimeOffThresholdSettings from "./TimeOffThresholdSettings";
@@ -72,15 +74,27 @@ interface AdminViewProps {
   run: (sql: string, params?: any[]) => void;
   refresh: () => void;
   segments: SegmentRow[];
+  groups: any[];
   onTimeOffThresholdChange?: (threshold: number) => void;
 }
 
-export default function AdminView({ sqlDb, all, run, refresh, segments, onTimeOffThresholdChange }: AdminViewProps) {
+export default function AdminView({ sqlDb, all, run, refresh, segments, groups, onTimeOffThresholdChange }: AdminViewProps) {
   const s = useAdminViewStyles();
   const [showOverrides, setShowOverrides] = React.useState(false);
   const [showAutoFillSettings, setShowAutoFillSettings] = React.useState(false);
+  const [showAutoFillPrioritySettings, setShowAutoFillPrioritySettings] = React.useState(false);
   const [showWeekCalcSettings, setShowWeekCalcSettings] = React.useState(false);
   const [showTimeOffThresholdSettings, setShowTimeOffThresholdSettings] = React.useState(false);
+  const [showWebhookSettings, setShowWebhookSettings] = React.useState(false);
+  const [webhookUrl, setWebhookUrl] = React.useState('');
+  
+  // Load webhook URL on mount
+  React.useEffect(() => {
+    try {
+      const rows = all(`SELECT value FROM meta WHERE key='teams_webhook_url'`);
+      setWebhookUrl(rows[0]?.value || '');
+    } catch {}
+  }, [all]);
   
   return (
     <div className={s.root}>
@@ -95,11 +109,17 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, onTimeOf
             <Button appearance="outline" onClick={() => setShowAutoFillSettings(true)}>
               Auto-Fill Settings
             </Button>
+            <Button appearance="outline" onClick={() => setShowAutoFillPrioritySettings(true)}>
+              Auto-Fill Priority Logic
+            </Button>
             <Button appearance="outline" onClick={() => setShowWeekCalcSettings(true)}>
               Week Calculation Settings
             </Button>
             <Button appearance="outline" onClick={() => setShowTimeOffThresholdSettings(true)}>
               Time-Off Threshold Settings
+            </Button>
+            <Button appearance="outline" onClick={() => setShowWebhookSettings(true)}>
+              Teams Webhook Settings
             </Button>
           </div>
         </Card>
@@ -176,6 +196,16 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, onTimeOf
         <AutoFillSettings open={showAutoFillSettings} onClose={() => setShowAutoFillSettings(false)} />
       )}
       
+      {showAutoFillPrioritySettings && (
+        <AutoFillPrioritySettings 
+          open={showAutoFillPrioritySettings} 
+          onClose={() => setShowAutoFillPrioritySettings(false)}
+          all={all}
+          run={run}
+          groups={groups}
+        />
+      )}
+      
       {showWeekCalcSettings && (
         <WeekCalculationSettings 
           open={showWeekCalcSettings} 
@@ -193,6 +223,52 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, onTimeOf
           run={run}
           onThresholdChange={onTimeOffThresholdChange}
         />
+      )}
+      
+      {showWebhookSettings && (
+        <Dialog open onOpenChange={(_, d) => { if (!d.open) setShowWebhookSettings(false); }}>
+          <DialogSurface>
+            <DialogBody>
+              <DialogTitle>Teams Webhook Settings</DialogTitle>
+              <DialogContent>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalM }}>
+                  <Text>
+                    Enter your Microsoft Teams incoming webhook URL to enable sending schedule updates directly to a Teams channel.
+                  </Text>
+                  <div>
+                    <Label htmlFor="webhook-url">Webhook URL</Label>
+                    <Input
+                      id="webhook-url"
+                      value={webhookUrl}
+                      onChange={(_, d) => setWebhookUrl(d.value)}
+                      placeholder="https://outlook.office.com/webhook/..."
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                    To create a webhook, go to your Teams channel &rarr; Connectors &rarr; Incoming Webhook &rarr; Configure.
+                  </Text>
+                </div>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowWebhookSettings(false)}>Cancel</Button>
+                <Button 
+                  appearance="primary" 
+                  onClick={() => {
+                    run(
+                      `INSERT INTO meta (key, value) VALUES ('teams_webhook_url', ?)
+                       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+                      [webhookUrl]
+                    );
+                    setShowWebhookSettings(false);
+                  }}
+                >
+                  Save
+                </Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
       )}
     </div>
   );

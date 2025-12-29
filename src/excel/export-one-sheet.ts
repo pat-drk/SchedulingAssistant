@@ -104,9 +104,9 @@ type DayRow = WithAvail & {
   month: string;
 };
 
-// Buckets: regular/commuter -> groupCode -> personName -> { AM days, PM days, roles, weekLabel }
+// Buckets: regular/commuter -> groupCode -> personName -> { AM days, PM days, roles, weekLabel, note }
 type Buckets = Record<'regular'|'commuter',
-  Record<string, Record<string, { AM: Set<DayLetter>; PM: Set<DayLetter>; roles: Set<string>; weekLabel: string }>>
+  Record<string, Record<string, { AM: Set<DayLetter>; PM: Set<DayLetter>; roles: Set<string>; weekLabel: string; note?: string }>>
 >;
 
 type LunchBuckets = Record<'regular'|'commuter',
@@ -284,6 +284,16 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     mdwMonth.params
   );
 
+  // Load notes for this month
+  const noteRows = all<{ person_id: number; note: string }>(
+    `SELECT person_id, note FROM monthly_default_note WHERE month = ?`,
+    [monthKey]
+  );
+  const notesByPersonId = new Map<number, string>();
+  for (const n of noteRows) {
+    if (n.note) notesByPersonId.set(n.person_id, n.note);
+  }
+
   // Load week_start_mode setting
   let weekStartMode: WeekStartMode = 'first_monday';
   try {
@@ -350,7 +360,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
       const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
       const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
-      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel: '' });
+      const personBucket = groupBucket[row.person] || (groupBucket[row.person] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel: '', note: notesByPersonId.get(row.person_id) });
       personBucket.roles.add(row.role_name);
 
       if (s === 'AM') personBucket.AM.add(dayLetter);
@@ -445,7 +455,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       
       // Use a composite key for person entries when week labels differ
       const personKey = weekLabel ? `${row.person}|${weekLabel}` : row.person;
-      const personBucket = groupBucket[personKey] || (groupBucket[personKey] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel });
+      const personBucket = groupBucket[personKey] || (groupBucket[personKey] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel, note: notesByPersonId.get(row.person_id) });
       personBucket.roles.add(row.role_name);
 
       for (const d of keepLetters) {
@@ -479,7 +489,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       const kind: 'regular' | 'commuter' = row.commuter ? 'commuter' : 'regular';
       const groupBucket = buckets[kind][code] || (buckets[kind][code] = {});
       const personKey = weekLabel ? `${row.person}|${weekLabel}` : row.person;
-      const personBucket = groupBucket[personKey] || (groupBucket[personKey] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel });
+      const personBucket = groupBucket[personKey] || (groupBucket[personKey] = { AM: new Set<DayLetter>(), PM: new Set<DayLetter>(), roles: new Set<string>(), weekLabel, note: notesByPersonId.get(row.person_id) });
       personBucket.roles.add(row.role_name);
 
       // Add all available days for this segment (week overrides apply to all days of their weeks)
@@ -498,13 +508,14 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Schedule');
+  // 5 columns per pane: Name, Role, Shift, Days, Notes + 1 gap column between panes
   ws.columns = [
-    { width:30 }, { width:20 }, { width:10 }, { width:18 }, { width:2 },
-    { width:30 }, { width:20 }, { width:10 }, { width:18 }, { width:2 },
-    { width:30 }, { width:20 }, { width:10 }, { width:18 }
+    { width:30 }, { width:20 }, { width:10 }, { width:18 }, { width:20 }, { width:2 },
+    { width:30 }, { width:20 }, { width:10 }, { width:18 }, { width:20 }, { width:2 },
+    { width:30 }, { width:20 }, { width:10 }, { width:18 }, { width:20 }
   ];
 
-  ws.mergeCells(1,1,1,14);
+  ws.mergeCells(1,1,1,17);
   const titleCell = ws.getCell(1,1);
   titleCell.value = `Kitchen / Dining Room Schedule — ${titleText}`;
   titleCell.font = { bold: true, size: 18, name: 'Calibri' };
@@ -525,14 +536,14 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
   function renderBlock(
     pane: 'kitchen1'|'kitchen2'|'dining',
     group: string,
-    people: Record<string,{AM:Set<DayLetter>;PM:Set<DayLetter>;roles:Set<string>;weekLabel:string}>)
+    people: Record<string,{AM:Set<DayLetter>;PM:Set<DayLetter>;roles:Set<string>;weekLabel:string;note?:string}>)
   {
-    const startCol = pane==='kitchen1'?1:pane==='kitchen2'?6:11;
+    const startCol = pane==='kitchen1'?1:pane==='kitchen2'?7:13;
     if (!people || !Object.keys(people).length) return;
     const rowIndex = paneState[pane];
 
     // Group header
-    ws.mergeCells(rowIndex, startCol, rowIndex, startCol + 3);
+    ws.mergeCells(rowIndex, startCol, rowIndex, startCol + 4);
     const hcell = ws.getCell(rowIndex, startCol);
     hcell.value = group;
     hcell.alignment = { horizontal: 'left' };
@@ -540,10 +551,10 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
     hcell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
     // Ensure all cells in the merged range are bolded so row-level fonts from
     // other panes do not override the header styling.
-    for (let c = startCol; c <= startCol + 3; c++) {
+    for (let c = startCol; c <= startCol + 4; c++) {
       ws.getCell(rowIndex, c).font = { bold: true, size: 18 };
     }
-    setRowBorders(ws.getRow(rowIndex), startCol, startCol + 3);
+    setRowBorders(ws.getRow(rowIndex), startCol, startCol + 4);
 
     function simplifyRole(role: string): string | null {
       if (role === group) return null;
@@ -612,12 +623,20 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
       const dayCell = ws.getCell(r, startCol + 3);
       dayCell.value = days;
       dayCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+
+      // Notes column
+      if (info.note) {
+        const noteCell = ws.getCell(r, startCol + 4);
+        noteCell.value = info.note;
+        noteCell.alignment = { vertical: 'top', wrapText: true };
+      }
+
       // Apply font to each cell individually to avoid interfering with other
       // panes that may use the same worksheet row.
-      for (let c = startCol; c <= startCol + 3; c++) {
+      for (let c = startCol; c <= startCol + 4; c++) {
         ws.getCell(r, c).font = { size: 16 };
       }
-      setRowBorders(ws.getRow(r), startCol, startCol + 3);
+      setRowBorders(ws.getRow(r), startCol, startCol + 4);
       r++;
     }
     paneState[pane] = r;
@@ -653,7 +672,7 @@ export async function exportMonthOneSheetXlsx(month: string): Promise<void> {
 
   if (hasAny('commuter')) {
     const afterRegular = Math.max(paneState.kitchen1, paneState.kitchen2, paneState.dining);
-    ws.mergeCells(afterRegular,1,afterRegular,14);
+    ws.mergeCells(afterRegular,1,afterRegular,17);
     const commCell = ws.getCell(afterRegular,1);
     commCell.value = 'COMMUTERS';
     commCell.font = { bold:true, size:18 };
@@ -1166,7 +1185,8 @@ export async function exportDailyScheduleXlsx(date: string): Promise<void> {
   }
 
   // ---------- Sheet rendering ----------
-  const dateObj = new Date(date);
+  // Use T00:00:00 to force local timezone parsing instead of UTC
+  const dateObj = new Date(date + 'T00:00:00');
   const dateText = dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const wb = new ExcelJS.Workbook();

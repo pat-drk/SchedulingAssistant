@@ -566,7 +566,7 @@
                                         </tr>
                                         <tr>
                                             <td class="p-3 font-semibold">Auto Fill</td>
-                                            <td class="p-3">Generate intelligent assignment suggestions for unfilled roles based on training, availability, and historical patterns.</td>
+                                            <td class="p-3">Generate intelligent assignment suggestions for unfilled roles based on training, availability, and historical patterns. Priority rules can be configured in Admin &gt; Auto-Fill Priority Logic.</td>
                                         </tr>
                                         <tr>
                                             <td class="p-3 font-semibold">Copy Defaults</td>
@@ -575,6 +575,18 @@
                                         <tr>
                                             <td class="p-3 font-semibold">Edit Needs for This Day</td>
                                             <td class="p-3">Adjust the required staffing levels for specific roles on the selected date.</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">View Moves</td>
+                                            <td class="p-3">Shows a summary of all people who were manually moved from their default assignment for the day. Displays where each person was moved from and to which role/group.</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Send to Teams</td>
+                                            <td class="p-3">Sends the current schedule to a Microsoft Teams channel via webhook. Formats the schedule as an Adaptive Card with groups, roles, times, and assignments. Configure the webhook URL in Admin &gt; Teams Webhook Settings.</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Unassigned Available</td>
+                                            <td class="p-3">A floating indicator shows the count of people who are available for the selected date/segment but are not assigned to any role. Click to expand the list of names.</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -594,6 +606,11 @@
                                         <tr>
                                             <td class="p-3 font-semibold">(Untrained)</td>
                                             <td class="p-3">Person is not yet trained for this role.</td>
+                                            <td class="p-3">✅ Yes</td>
+                                        </tr>
+                                        <tr>
+                                            <td class="p-3 font-semibold">Moved</td>
+                                            <td class="p-3">Person was manually moved from their default monthly assignment to this role. Shows the original role/group they were moved from.</td>
                                             <td class="p-3">✅ Yes</td>
                                         </tr>
                                         <tr>
@@ -715,6 +732,45 @@
                                 <p class="text-xs text-[#005a9e] font-semibold mb-1">Filtering Tip</p>
                                 <p class="text-xs text-[#005a9e]">Use the "Active only" filter to hide inactive staff members from your view and keep the roster clean.</p>
                             </div>
+                        </div>
+
+                        <h4 class="font-bold text-[#242424] mb-4 mt-8">Person Profile Modal</h4>
+                        <p class="text-xs text-[#616161] mb-4">Click any person's name to open their detailed profile modal. The modal provides a comprehensive view and management options:</p>
+                        <div class="table-container mb-8">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-[#fafafa] border-b text-[#616161]">
+                                    <tr>
+                                        <th class="p-3 font-semibold">Section</th>
+                                        <th class="p-3 font-semibold">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-[#f0f0f0] text-[#424242]">
+                                    <tr>
+                                        <td class="p-3 font-semibold">Info</td>
+                                        <td class="p-3">Email, active status, brother/sister classification, and commuter status.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Availability</td>
+                                        <td class="p-3">Weekly availability pattern (AM, PM, Both, Unknown for each day).</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Training</td>
+                                        <td class="p-3">List of training qualifications with status for each role.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Monthly Defaults</td>
+                                        <td class="p-3">History of monthly default assignments showing group and role per segment.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Upcoming Time Off</td>
+                                        <td class="p-3">List of scheduled time-off entries with dates, times, and reasons.</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-semibold">Flex Time (Recurring Time Away)</td>
+                                        <td class="p-3">Configure recurring weekly time-off patterns. Select a weekday (Mon-Fri), start/end times, and an optional reason. Active flex time entries are automatically applied as time-off on matching days. Useful for regular appointments, classes, or part-time schedules.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
@@ -1248,6 +1304,11 @@
                                     <td class="p-3">Various priority rules</td>
                                 </tr>
                                 <tr>
+                                    <td class="p-3 font-semibold">Auto-Fill Priority Logic</td>
+                                    <td class="p-3">Advanced configuration for auto-fill behavior: enable/disable rules (prefer trained, pull from overstaffed groups, respect segment availability, exclude high time-off overlap), and set the priority order for pulling people from groups.</td>
+                                    <td class="p-3">Toggle rules, drag-to-reorder group priorities</td>
+                                </tr>
+                                <tr>
                                     <td class="p-3 font-semibold">Week Calculation Settings</td>
                                     <td class="p-3">Choose how week numbers are calculated for week-by-week overrides in Monthly Defaults. "First Monday" mode starts Week 1 on the first Monday; "First Day" mode starts Week 1 on the 1st of the month.</td>
                                     <td class="p-3">First Monday (default), First Day</td>
@@ -1256,6 +1317,11 @@
                                     <td class="p-3 font-semibold">Time-Off Threshold Settings</td>
                                     <td class="p-3">Set the percentage of time-off overlap that blocks scheduling. If overlap is below this threshold, you'll be prompted for confirmation instead of being blocked. Changes apply immediately.</td>
                                     <td class="p-3">25% - 75% (default: 50%)</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Teams Webhook Settings</td>
+                                    <td class="p-3">Configure the Microsoft Teams webhook URL for the "Send to Teams" feature on the Daily Run Board. Paste the Incoming Webhook URL from your Teams channel connector configuration.</td>
+                                    <td class="p-3">Webhook URL (stored in database)</td>
                                 </tr>
                             </tbody>
                         </table>

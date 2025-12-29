@@ -9,12 +9,18 @@ import {
   makeStyles,
   Divider,
   tokens,
+  Input,
+  Dropdown,
+  Option,
+  Switch,
 } from "@fluentui/react-components";
+import { AddRegular, DeleteRegular } from "@fluentui/react-icons";
 
 interface PersonProfileModalProps {
   personId: number;
   onClose: () => void;
   all: (sql: string, params?: any[]) => any[];
+  run?: (sql: string, params?: any[]) => void;
 }
 
 const useStyles = makeStyles({
@@ -50,6 +56,26 @@ const useStyles = makeStyles({
     justifyContent: "space-between",
   },
   divider: { margin: `${tokens.spacingVerticalM} 0` },
+  flexRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalS,
+    marginBottom: tokens.spacingVerticalXS,
+  },
+  flexGrid: {
+    display: "grid",
+    gridTemplateColumns: "auto 80px 80px auto auto",
+    columnGap: tokens.spacingHorizontalS,
+    rowGap: tokens.spacingVerticalXS,
+    alignItems: "center",
+    marginTop: tokens.spacingVerticalXS,
+  },
+  flexInput: {
+    width: "80px",
+  },
+  addBtn: {
+    marginTop: tokens.spacingVerticalS,
+  },
 });
 
 function fmtAvail(v: string) {
@@ -66,7 +92,19 @@ function fmtAvail(v: string) {
   }
 }
 
-export default function PersonProfileModal({ personId, onClose, all }: PersonProfileModalProps) {
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+interface FlexTimeEntry {
+  id?: number;
+  person_id: number;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  reason: string;
+  active: number;
+}
+
+export default function PersonProfileModal({ personId, onClose, all, run }: PersonProfileModalProps) {
   const s = useStyles();
 
   const person = all('SELECT * FROM person WHERE id=?', [personId])[0];
@@ -77,6 +115,44 @@ export default function PersonProfileModal({ personId, onClose, all }: PersonPro
   );
 
   const [showAllDefaults, setShowAllDefaults] = React.useState(false);
+
+  // Flex Time state
+  const [flexEntries, setFlexEntries] = React.useState<FlexTimeEntry[]>(() =>
+    all('SELECT * FROM recurring_timeoff WHERE person_id=? ORDER BY weekday, start_time', [personId])
+  );
+  const [newFlexEntry, setNewFlexEntry] = React.useState<Omit<FlexTimeEntry, 'id' | 'person_id'>>({
+    weekday: 0,
+    start_time: "09:00",
+    end_time: "17:00",
+    reason: "",
+    active: 1,
+  });
+
+  const reloadFlexEntries = () => {
+    setFlexEntries(all('SELECT * FROM recurring_timeoff WHERE person_id=? ORDER BY weekday, start_time', [personId]));
+  };
+
+  const handleAddFlexEntry = () => {
+    if (!run) return;
+    run(
+      'INSERT INTO recurring_timeoff (person_id, weekday, start_time, end_time, reason, active) VALUES (?, ?, ?, ?, ?, ?)',
+      [personId, newFlexEntry.weekday, newFlexEntry.start_time, newFlexEntry.end_time, newFlexEntry.reason, newFlexEntry.active]
+    );
+    reloadFlexEntries();
+    setNewFlexEntry({ weekday: 0, start_time: "09:00", end_time: "17:00", reason: "", active: 1 });
+  };
+
+  const handleDeleteFlexEntry = (id: number) => {
+    if (!run) return;
+    run('DELETE FROM recurring_timeoff WHERE id=?', [id]);
+    reloadFlexEntries();
+  };
+
+  const handleToggleFlexActive = (id: number, active: boolean) => {
+    if (!run) return;
+    run('UPDATE recurring_timeoff SET active=? WHERE id=?', [active ? 1 : 0, id]);
+    reloadFlexEntries();
+  };
 
   const defaults = all(
     'SELECT md.month, md.segment, r.name as role_name, g.name as group_name ' +
@@ -181,6 +257,76 @@ export default function PersonProfileModal({ personId, onClose, all }: PersonPro
               ))}
               {timeOff.length === 0 && <div className={s.cell}>No upcoming time off.</div>}
             </ul>
+          </div>
+          <Divider className={s.divider} />
+          <div>
+            <div className={s.sectionTitle}>Flex Time (Recurring Time Away)</div>
+            {flexEntries.length === 0 && <div className={s.cell}>No recurring time away configured.</div>}
+            {flexEntries.length > 0 && (
+              <div className={s.flexGrid}>
+                {flexEntries.map((entry: FlexTimeEntry) => (
+                  <React.Fragment key={entry.id}>
+                    <span className={s.cell}>{WEEKDAYS[entry.weekday]}</span>
+                    <span className={s.cell}>{entry.start_time}</span>
+                    <span className={s.cell}>{entry.end_time}</span>
+                    <Switch
+                      checked={!!entry.active}
+                      onChange={(_, data) => handleToggleFlexActive(entry.id!, data.checked)}
+                      label={entry.active ? "Active" : "Inactive"}
+                    />
+                    <Button
+                      icon={<DeleteRegular />}
+                      appearance="subtle"
+                      size="small"
+                      onClick={() => handleDeleteFlexEntry(entry.id!)}
+                      aria-label="Delete"
+                    />
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+            {run && (
+              <>
+                <div className={s.sectionTitle} style={{ marginTop: tokens.spacingVerticalM }}>Add New Flex Time</div>
+                <div className={s.flexRow}>
+                  <Dropdown
+                    value={WEEKDAYS[newFlexEntry.weekday]}
+                    onOptionSelect={(_, data) => setNewFlexEntry({ ...newFlexEntry, weekday: WEEKDAYS.indexOf(data.optionValue as string) })}
+                    style={{ minWidth: "110px" }}
+                  >
+                    {WEEKDAYS.map((day, idx) => (
+                      <Option key={idx} value={day}>{day}</Option>
+                    ))}
+                  </Dropdown>
+                  <Input
+                    type="time"
+                    value={newFlexEntry.start_time}
+                    onChange={(_, data) => setNewFlexEntry({ ...newFlexEntry, start_time: data.value })}
+                    className={s.flexInput}
+                  />
+                  <span>to</span>
+                  <Input
+                    type="time"
+                    value={newFlexEntry.end_time}
+                    onChange={(_, data) => setNewFlexEntry({ ...newFlexEntry, end_time: data.value })}
+                    className={s.flexInput}
+                  />
+                  <Input
+                    placeholder="Reason (optional)"
+                    value={newFlexEntry.reason}
+                    onChange={(_, data) => setNewFlexEntry({ ...newFlexEntry, reason: data.value })}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    icon={<AddRegular />}
+                    appearance="primary"
+                    onClick={handleAddFlexEntry}
+                  >
+                    Add
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </DialogBody>
         <DialogActions>
