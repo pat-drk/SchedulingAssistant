@@ -10,8 +10,7 @@ import "../styles/scrollbar.css";
 import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
 import { exportDailyScheduleXlsx } from "../excel/export-one-sheet";
-import { getEffectiveMonth, getWeekOfMonth, type WeekStartMode } from "../utils/weekCalculation";
-import { formatTime12h as formatTime12hWebhook } from "../services/teamsWebhook";
+import { getWeekOfMonth, type WeekStartMode } from "../utils/weekCalculation";
 import {
   Button,
   Dropdown,
@@ -258,23 +257,74 @@ const useStyles = makeStyles({
   },
 });
 
-// Component to display today's moves
-function TodaysMovesList({ date, all, allRoles, people }: { date: string; all: (sql: string, params?: any[]) => any[]; allRoles: any[]; people: any[] }) {
+// Component to display today's moves (compares current assignments with monthly defaults)
+function TodaysMovesList({ 
+  date, 
+  segment,
+  all, 
+  allRoles, 
+  loadMonthlyDefaultsForMonth 
+}: { 
+  date: string; 
+  segment: string;
+  all: (sql: string, params?: any[]) => any[]; 
+  allRoles: any[];
+  loadMonthlyDefaultsForMonth: (month: string) => { defaults: any[]; overrides: any[]; weekOverrides: any[] };
+}) {
   const moves = React.useMemo(() => {
-    // Get moves from the last week for cleanup display, but focus on today
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const oneWeekAgoStr = `${oneWeekAgo.getFullYear()}-${String(oneWeekAgo.getMonth() + 1).padStart(2, '0')}-${String(oneWeekAgo.getDate()).padStart(2, '0')}`;
-    
-    return all(
-      `SELECT cl.*, p.first_name, p.last_name 
-       FROM change_log cl 
-       JOIN person p ON p.id = cl.person_id 
-       WHERE cl.date = ? AND cl.action = 'move'
-       ORDER BY cl.created_at DESC`,
-      [date]
+    // Get current assignments for this date and segment
+    const currentAssignments = all(
+      `SELECT a.*, p.first_name, p.last_name 
+       FROM assignment a 
+       JOIN person p ON p.id = a.person_id 
+       WHERE a.date = ? AND a.segment = ?`,
+      [date, segment]
     );
-  }, [all, date]);
+    
+    // Get monthly defaults for comparison
+    const month = date.slice(0, 7); // "YYYY-MM"
+    const { defaults, overrides, weekOverrides } = loadMonthlyDefaultsForMonth(month);
+    
+    // Calculate expected role for each person based on defaults + overrides
+    const dateObj = new Date(date + 'T00:00:00');
+    const weekday = dateObj.getDay(); // 0=Sun, 1=Mon, etc.
+    const weekNum = Math.ceil(dateObj.getDate() / 7); // Week 1-5
+    
+    const getExpectedRole = (personId: number): number | null => {
+      // Check day-of-week override first (e.g., "Every Monday")
+      const dayOverride = overrides.find(
+        (o: any) => o.person_id === personId && o.segment === segment && o.weekday === weekday
+      );
+      if (dayOverride) return dayOverride.role_id;
+      
+      // Check week override (e.g., "Week 2")
+      const weekOverride = weekOverrides.find(
+        (o: any) => o.person_id === personId && o.segment === segment && o.week_number === weekNum
+      );
+      if (weekOverride) return weekOverride.role_id;
+      
+      // Fall back to base default
+      const baseDefault = defaults.find(
+        (d: any) => d.person_id === personId && d.segment === segment
+      );
+      return baseDefault ? baseDefault.role_id : null;
+    };
+    
+    // Find assignments where current role differs from expected
+    const movedAssignments: any[] = [];
+    for (const a of currentAssignments) {
+      const expectedRoleId = getExpectedRole(a.person_id);
+      if (expectedRoleId !== null && expectedRoleId !== a.role_id) {
+        movedAssignments.push({
+          ...a,
+          from_role_id: expectedRoleId,
+          to_role_id: a.role_id
+        });
+      }
+    }
+    
+    return movedAssignments;
+  }, [all, date, segment, loadMonthlyDefaultsForMonth]);
   
   const getRoleName = (roleId: number) => {
     const role = allRoles.find((r: any) => r.id === roleId);
@@ -282,7 +332,7 @@ function TodaysMovesList({ date, all, allRoles, people }: { date: string; all: (
   };
   
   if (moves.length === 0) {
-    return <Text>No moves recorded for this date.</Text>;
+    return <Text>No moves for this segment.</Text>;
   }
   
   return (
@@ -290,9 +340,8 @@ function TodaysMovesList({ date, all, allRoles, people }: { date: string; all: (
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Person</TableHeaderCell>
-          <TableHeaderCell>From</TableHeaderCell>
-          <TableHeaderCell>To</TableHeaderCell>
-          <TableHeaderCell>Segment</TableHeaderCell>
+          <TableHeaderCell>Default Role</TableHeaderCell>
+          <TableHeaderCell>Current Role</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -301,7 +350,6 @@ function TodaysMovesList({ date, all, allRoles, people }: { date: string; all: (
             <TableCell>{m.first_name} {m.last_name}</TableCell>
             <TableCell>{getRoleName(m.from_role_id)}</TableCell>
             <TableCell>{getRoleName(m.to_role_id)}</TableCell>
-            <TableCell>{m.segment}</TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -516,18 +564,47 @@ export default function DailyRunBoard({
   // assignedIdSet was unused; removed to keep build warnings clean
   void assignedIdSet;
 
-  // Track which person_id + role_id combinations were moved to for showing "Moved" badge
+  // Track which person_id + role_id combinations differ from monthly defaults ("Moved" badge)
   const movedToMap = useMemo(() => {
-    const moves = all(
-      `SELECT person_id, to_role_id FROM change_log WHERE date=? AND segment=? AND action='move'`,
-      [ymd(selectedDateObj), seg]
+    const dateStr = ymd(selectedDateObj);
+    const month = dateStr.slice(0, 7);
+    const { defaults, overrides, weekOverrides } = loadMonthlyDefaultsForMonth(month);
+    
+    const weekday = selectedDateObj.getDay();
+    const weekNum = Math.ceil(selectedDateObj.getDate() / 7);
+    
+    const getExpectedRole = (personId: number): number | null => {
+      const dayOverride = overrides.find(
+        (o: any) => o.person_id === personId && o.segment === seg && o.weekday === weekday
+      );
+      if (dayOverride) return dayOverride.role_id;
+      
+      const weekOverride = weekOverrides.find(
+        (o: any) => o.person_id === personId && o.segment === seg && o.week_number === weekNum
+      );
+      if (weekOverride) return weekOverride.role_id;
+      
+      const baseDefault = defaults.find(
+        (d: any) => d.person_id === personId && d.segment === seg
+      );
+      return baseDefault ? baseDefault.role_id : null;
+    };
+    
+    // Get current assignments
+    const currentAssignments = all(
+      `SELECT person_id, role_id FROM assignment WHERE date=? AND segment=?`,
+      [dateStr, seg]
     );
+    
     const map = new Map<string, boolean>();
-    for (const m of moves) {
-      map.set(`${m.person_id}:${m.to_role_id}`, true);
+    for (const a of currentAssignments) {
+      const expectedRoleId = getExpectedRole(a.person_id);
+      if (expectedRoleId !== null && expectedRoleId !== a.role_id) {
+        map.set(`${a.person_id}:${a.role_id}`, true);
+      }
     }
     return map;
-  }, [all, selectedDateObj, seg, ymd]);
+  }, [all, selectedDateObj, seg, ymd, loadMonthlyDefaultsForMonth]);
 
   // Get all unassigned but available people for this segment
   const unassignedAvailable = useMemo(() => {
@@ -1052,7 +1129,7 @@ export default function DailyRunBoard({
       const personSegTimes = getSegTimesForPersonTop(a.person_id);
       const segStart = personSegTimes[seg]?.start || segTimesTop[seg]?.start;
       const startTimeStr = segStart 
-        ? formatTime12hWebhook(`${segStart.getHours().toString().padStart(2, '0')}:${segStart.getMinutes().toString().padStart(2, '0')}`)
+        ? formatTime12h(`${segStart.getHours().toString().padStart(2, '0')}:${segStart.getMinutes().toString().padStart(2, '0')}`)
         : '';
       
       roleList.push({
@@ -1879,7 +1956,6 @@ export default function DailyRunBoard({
     // Capture values before clearing state to avoid race conditions
     const assignmentId = moveContext.assignment.id;
     const personId = moveContext.assignment.person_id;
-    const fromRoleId = moveContext.assignment.role_id;
     const toRoleId = chosen.role.id;
     const dateStr = ymd(selectedDateObj);
     const currentSeg = seg;
@@ -1888,13 +1964,8 @@ export default function DailyRunBoard({
     setMoveContext(null);
     setMoveTargetId(null);
     
-    // Log the move to change_log table
-    run(
-      `INSERT INTO change_log (date, person_id, segment, from_role_id, to_role_id, action) VALUES (?,?,?,?,?,?)`,
-      [dateStr, personId, currentSeg, fromRoleId, toRoleId, 'move']
-    );
-    
     // Delete old assignment and insert new one directly (bypass addAssignment checks for moves)
+    // Moves are detected by comparing current assignments with monthly defaults, no need to log
     run(`DELETE FROM assignment WHERE id=?`, [assignmentId]);
     run(`INSERT INTO assignment (date, person_id, role_id, segment) VALUES (?,?,?,?)`, [dateStr, personId, toRoleId, currentSeg]);
     refreshCaches();
@@ -2189,9 +2260,9 @@ export default function DailyRunBoard({
         <Dialog open={showMovesModal} onOpenChange={(_, d) => { if (!d.open) setShowMovesModal(false); }}>
           <DialogSurface>
             <DialogBody>
-              <DialogTitle>Today's Moves</DialogTitle>
+              <DialogTitle>Moves for {seg}</DialogTitle>
               <DialogContent>
-                <TodaysMovesList date={ymd(selectedDateObj)} all={all} allRoles={allRoles} people={people} />
+                <TodaysMovesList date={ymd(selectedDateObj)} segment={seg} all={all} allRoles={allRoles} loadMonthlyDefaultsForMonth={loadMonthlyDefaultsForMonth} />
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setShowMovesModal(false)}>Close</Button>
