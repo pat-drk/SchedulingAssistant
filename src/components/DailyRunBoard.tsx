@@ -1871,7 +1871,7 @@ export default function DailyRunBoard({
     );
   });
 
-  async function confirmMove() {
+  function confirmMove() {
     if (!moveContext || moveTargetId == null) return;
     const chosen = moveContext.targets.find((t) => t.role.id === moveTargetId);
     if (!chosen) return;
@@ -1882,6 +1882,7 @@ export default function DailyRunBoard({
     const fromRoleId = moveContext.assignment.role_id;
     const toRoleId = chosen.role.id;
     const dateStr = ymd(selectedDateObj);
+    const currentSeg = seg;
     
     // Clear state BEFORE DB operations to prevent dialog re-opening
     setMoveContext(null);
@@ -1890,11 +1891,13 @@ export default function DailyRunBoard({
     // Log the move to change_log table
     run(
       `INSERT INTO change_log (date, person_id, segment, from_role_id, to_role_id, action) VALUES (?,?,?,?,?,?)`,
-      [dateStr, personId, seg, fromRoleId, toRoleId, 'move']
+      [dateStr, personId, currentSeg, fromRoleId, toRoleId, 'move']
     );
     
-    deleteAssignment(assignmentId);
-    addAssignment(selectedDate, personId, toRoleId, seg);
+    // Delete old assignment and insert new one directly (bypass addAssignment checks for moves)
+    run(`DELETE FROM assignment WHERE id=?`, [assignmentId]);
+    run(`INSERT INTO assignment (date, person_id, role_id, segment) VALUES (?,?,?,?)`, [dateStr, personId, toRoleId, currentSeg]);
+    refreshCaches();
   }
 
   function cancelMove() {

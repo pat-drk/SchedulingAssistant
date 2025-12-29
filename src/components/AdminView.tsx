@@ -84,16 +84,6 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, groups, 
   const [showAutoFillPrioritySettings, setShowAutoFillPrioritySettings] = React.useState(false);
   const [showWeekCalcSettings, setShowWeekCalcSettings] = React.useState(false);
   const [showTimeOffThresholdSettings, setShowTimeOffThresholdSettings] = React.useState(false);
-  const [showWebhookSettings, setShowWebhookSettings] = React.useState(false);
-  const [webhookUrl, setWebhookUrl] = React.useState('');
-  
-  // Load webhook URL on mount
-  React.useEffect(() => {
-    try {
-      const rows = all(`SELECT value FROM meta WHERE key='teams_webhook_url'`);
-      setWebhookUrl(rows[0]?.value || '');
-    } catch {}
-  }, [all]);
   
   return (
     <div className={s.root}>
@@ -113,9 +103,6 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, groups, 
             </Button>
             <Button appearance="outline" onClick={() => setShowTimeOffThresholdSettings(true)}>
               Time-Off Threshold Settings
-            </Button>
-            <Button appearance="outline" onClick={() => setShowWebhookSettings(true)}>
-              Teams Webhook Settings
             </Button>
           </div>
         </Card>
@@ -215,52 +202,6 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, groups, 
           run={run}
           onThresholdChange={onTimeOffThresholdChange}
         />
-      )}
-      
-      {showWebhookSettings && (
-        <Dialog open onOpenChange={(_, d) => { if (!d.open) setShowWebhookSettings(false); }}>
-          <DialogSurface>
-            <DialogBody>
-              <DialogTitle>Teams Webhook Settings</DialogTitle>
-              <DialogContent>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalM }}>
-                  <Text>
-                    Enter your Microsoft Teams incoming webhook URL to enable sending schedule updates directly to a Teams channel.
-                  </Text>
-                  <div>
-                    <Label htmlFor="webhook-url">Webhook URL</Label>
-                    <Input
-                      id="webhook-url"
-                      value={webhookUrl}
-                      onChange={(_, d) => setWebhookUrl(d.value)}
-                      placeholder="https://outlook.office.com/webhook/..."
-                      style={{ width: '100%' }}
-                    />
-                  </div>
-                  <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
-                    To create a webhook, go to your Teams channel &rarr; Connectors &rarr; Incoming Webhook &rarr; Configure.
-                  </Text>
-                </div>
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setShowWebhookSettings(false)}>Cancel</Button>
-                <Button 
-                  appearance="primary" 
-                  onClick={() => {
-                    run(
-                      `INSERT INTO meta (key, value) VALUES ('teams_webhook_url', ?)
-                       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-                      [webhookUrl]
-                    );
-                    setShowWebhookSettings(false);
-                  }}
-                >
-                  Save
-                </Button>
-              </DialogActions>
-            </DialogBody>
-          </DialogSurface>
-        </Dialog>
       )}
     </div>
   );
