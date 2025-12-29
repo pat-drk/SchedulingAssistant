@@ -1009,7 +1009,7 @@ export default function DailyRunBoard({
     // Get assignments for current segment only
     const dateStr = ymd(selectedDateObj);
     const assigns = all(
-      `SELECT a.id, a.segment, a.role_id, p.first_name, p.last_name, r.name as role_name, g.name as group_name
+      `SELECT a.id, a.segment, a.role_id, a.person_id, p.first_name, p.last_name, r.name as role_name, g.name as group_name
        FROM assignment a
        JOIN person p ON p.id = a.person_id
        JOIN role r ON r.id = a.role_id
@@ -1024,10 +1024,6 @@ export default function DailyRunBoard({
       return;
     }
     
-    // Get segment start time
-    const segTimes = segTimesTop[seg];
-    const startTime = segTimes ? formatTime12hWebhook(`${segTimes.start.getHours().toString().padStart(2, '0')}:${segTimes.start.getMinutes().toString().padStart(2, '0')}`) : '';
-    
     // Format date for display
     const dateObj = new Date(dateStr + 'T00:00:00');
     const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
@@ -1035,11 +1031,16 @@ export default function DailyRunBoard({
     const dayNum = dateObj.getDate();
     
     // Group assignments by group and role, sorted by role
-    const byGroupRole = new Map<string, Map<string, string[]>>();
+    // Store person info including their individual start time
+    interface PersonEntry {
+      name: string;
+      startTime: string;
+    }
+    const byGroupRole = new Map<string, Map<string, PersonEntry[]>>();
     for (const a of assigns) {
       let groupMap = byGroupRole.get(a.group_name);
       if (!groupMap) {
-        groupMap = new Map<string, string[]>();
+        groupMap = new Map<string, PersonEntry[]>();
         byGroupRole.set(a.group_name, groupMap);
       }
       let roleList = groupMap.get(a.role_name);
@@ -1047,12 +1048,21 @@ export default function DailyRunBoard({
         roleList = [];
         groupMap.set(a.role_name, roleList);
       }
-      // Format name with @ for Teams tagging
-      roleList.push(`@${a.first_name} ${a.last_name}`);
+      // Get individual start time for this person
+      const personSegTimes = getSegTimesForPersonTop(a.person_id);
+      const segStart = personSegTimes[seg]?.start || segTimesTop[seg]?.start;
+      const startTimeStr = segStart 
+        ? formatTime12hWebhook(`${segStart.getHours().toString().padStart(2, '0')}:${segStart.getMinutes().toString().padStart(2, '0')}`)
+        : '';
+      
+      roleList.push({
+        name: `@${a.first_name} ${a.last_name}`,
+        startTime: startTimeStr,
+      });
     }
     
     // Build the draft text, sorted by role within each group
-    let draft = `📅 **${dayName}, ${monthName} ${dayNum}** — ${seg} (${startTime})\n\n`;
+    let draft = `📅 **${dayName}, ${monthName} ${dayNum}** — ${seg}\n\n`;
     
     for (const [groupName, roleMap] of byGroupRole) {
       draft += `**${groupName}**\n`;
@@ -1062,7 +1072,9 @@ export default function DailyRunBoard({
         // Simplify role label
         const roleLabel = roleName === groupName ? '' : (roleName.startsWith(groupName + ' ') ? roleName.slice(groupName.length + 1) : roleName);
         const rolePrefix = roleLabel ? `${roleLabel}: ` : '';
-        draft += `• ${rolePrefix}${people.join(', ')}\n`;
+        // Format each person with their individual start time
+        const peopleFormatted = people.map(p => `${p.name} (${p.startTime})`).join(', ');
+        draft += `• ${rolePrefix}${peopleFormatted}\n`;
       }
       draft += '\n';
     }
@@ -1864,16 +1876,6 @@ export default function DailyRunBoard({
     const chosen = moveContext.targets.find((t) => t.role.id === moveTargetId);
     if (!chosen) return;
     
-    // Check for partial time-off overlap
-    const overlapInfo = getTimeOffOverlapInfo(moveContext.assignment.person_id, selectedDateObj, seg);
-    let message = `Move ${moveContext.assignment.last_name}, ${moveContext.assignment.first_name} to ${chosen.group.name} - ${chosen.role.name}?`;
-    if (overlapInfo.hasOverlap && overlapInfo.overlapPercent > 0) {
-      message += `\n\nNote: This person has ${overlapInfo.overlapPercent}% time-off overlap during this segment.`;
-    }
-    
-    const confirmed = await dialogs.showConfirm(message, "Confirm Move");
-    if (!confirmed) return;
-    
     // Capture values before clearing state to avoid race conditions
     const assignmentId = moveContext.assignment.id;
     const personId = moveContext.assignment.person_id;
@@ -2199,7 +2201,7 @@ export default function DailyRunBoard({
       {/* Teams Draft Modal */}
       {showTeamsDraft && (
         <Dialog open={showTeamsDraft} onOpenChange={(_, d) => { if (!d.open) setShowTeamsDraft(false); }}>
-          <DialogSurface style={{ maxWidth: '600px' }}>
+          <DialogSurface style={{ maxWidth: '700px', width: '90vw' }}>
             <DialogBody>
               <DialogTitle>Teams Message Draft</DialogTitle>
               <DialogContent>
@@ -2209,7 +2211,7 @@ export default function DailyRunBoard({
                 <Textarea
                   value={teamsDraftText}
                   readOnly
-                  style={{ width: '100%', minHeight: '300px', fontFamily: 'monospace' }}
+                  style={{ width: '100%', minHeight: '400px', fontFamily: 'monospace', fontSize: '14px' }}
                   resize="vertical"
                 />
               </DialogContent>

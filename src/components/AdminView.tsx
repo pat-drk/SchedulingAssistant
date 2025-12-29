@@ -30,7 +30,7 @@ import ExportGroupEditor from "./ExportGroupEditor";
 import type { SegmentRow } from "../services/segments";
 import TimeOffManager from "./TimeOffManager";
 import AvailabilityOverrideManager from "./AvailabilityOverrideManager";
-import AutoFillSettings, { AutoFillPrioritySettings } from "./AutoFillSettings";
+import { AutoFillPrioritySettings } from "./AutoFillSettings";
 import SkillsEditor from "./SkillsEditor";
 import WeekCalculationSettings from "./WeekCalculationSettings";
 import TimeOffThresholdSettings from "./TimeOffThresholdSettings";
@@ -81,7 +81,6 @@ interface AdminViewProps {
 export default function AdminView({ sqlDb, all, run, refresh, segments, groups, onTimeOffThresholdChange }: AdminViewProps) {
   const s = useAdminViewStyles();
   const [showOverrides, setShowOverrides] = React.useState(false);
-  const [showAutoFillSettings, setShowAutoFillSettings] = React.useState(false);
   const [showAutoFillPrioritySettings, setShowAutoFillPrioritySettings] = React.useState(false);
   const [showWeekCalcSettings, setShowWeekCalcSettings] = React.useState(false);
   const [showTimeOffThresholdSettings, setShowTimeOffThresholdSettings] = React.useState(false);
@@ -106,11 +105,8 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, groups, 
         </div>
         <Card className={s.card}>
           <div className={s.buttonRow}>
-            <Button appearance="outline" onClick={() => setShowAutoFillSettings(true)}>
-              Auto-Fill Settings
-            </Button>
             <Button appearance="outline" onClick={() => setShowAutoFillPrioritySettings(true)}>
-              Auto-Fill Priority Logic
+              Auto-Fill Priority
             </Button>
             <Button appearance="outline" onClick={() => setShowWeekCalcSettings(true)}>
               Week Calculation Settings
@@ -190,10 +186,6 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, groups, 
             </DialogBody>
           </DialogSurface>
         </Dialog>
-      )}
-      
-      {showAutoFillSettings && (
-        <AutoFillSettings open={showAutoFillSettings} onClose={() => setShowAutoFillSettings(false)} />
       )}
       
       {showAutoFillPrioritySettings && (
