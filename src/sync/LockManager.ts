@@ -38,7 +38,9 @@ export class LockManager {
   private currentUser: string = '';
   private machineId: string = '';
   private ourLockFilename: string | null = null;
+  private ourLastSeenLock: string | null = null; // Track what we saw when acquiring
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private conflictCheckInterval: NodeJS.Timeout | null = null;
   
   // Settings - optimized for SharePoint/OneDrive sync latency
   private readonly LOCK_FILE_PREFIX = 'lock-';
@@ -46,6 +48,8 @@ export class LockManager {
   private readonly STALE_THRESHOLD_MS = 1000 * 300; // 5 minutes
   private readonly HEARTBEAT_MS = 1000 * 30; // 30 seconds
   private readonly SYNC_WAIT_MS = 3000; // Wait for OneDrive sync before verifying
+  private readonly EXTENDED_CONFLICT_CHECK_MS = 10000; // Continue checking for conflicts
+  private readonly EXTENDED_CONFLICT_CHECK_COUNT = 3; // Number of extended checks (10s, 20s, 30s)
 
   constructor() {
     this.machineId = Math.random().toString(36).substring(2, 15);
@@ -58,6 +62,7 @@ export class LockManager {
     this.dbFolderHandle = dbFolderHandle;
     this.currentUser = userEmail;
     this.ourLockFilename = null;
+    this.ourLastSeenLock = null;
   }
 
   /**
@@ -132,8 +137,12 @@ export class LockManager {
       // 8. Cleanup stale locks
       await this.cleanupStaleLocks(afterSyncLocks);
 
-      // 9. Success! Start heartbeat
+      // 9. Store lastSeenLock for ongoing conflict detection
+      this.ourLastSeenLock = lastSeenLock;
+
+      // 10. Success! Start heartbeat and extended conflict checking
       this.startHeartbeat();
+      this.startExtendedConflictChecking();
       return { success: true };
 
     } catch (e: any) {
@@ -201,6 +210,12 @@ export class LockManager {
         console.warn('[LockManager] Someone else has an older valid lock');
         return false;
       }
+
+      // Check for late-arriving conflicts (files that synced after we acquired)
+      if (this.detectConflict(locks, this.ourLastSeenLock)) {
+        console.warn('[LockManager] Late conflict detected - lock files appeared after acquisition');
+        return false;
+      }
       
       return true;
     } catch (e) {
@@ -214,11 +229,13 @@ export class LockManager {
    */
   async releaseLock() {
     this.stopHeartbeat();
+    this.stopExtendedConflictChecking();
     if (!this.dbFolderHandle || !this.ourLockFilename) return;
 
     try {
       await this.deleteLockFile(this.ourLockFilename);
       this.ourLockFilename = null;
+      this.ourLastSeenLock = null;
     } catch (e) {
       console.warn('[LockManager] Failed to release lock:', e);
     }
@@ -272,6 +289,48 @@ export class LockManager {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+    }
+  }
+
+  /**
+   * Extended conflict checking - continues checking for late-syncing lock files
+   * that may indicate we acquired the lock when we shouldn't have.
+   * Runs a few times after initial acquisition (10s, 20s, 30s).
+   */
+  private startExtendedConflictChecking() {
+    this.stopExtendedConflictChecking();
+    
+    let checksRemaining = this.EXTENDED_CONFLICT_CHECK_COUNT;
+    
+    this.conflictCheckInterval = setInterval(async () => {
+      checksRemaining--;
+      
+      if (checksRemaining <= 0) {
+        this.stopExtendedConflictChecking();
+        console.log('[LockManager] Extended conflict checking complete - no conflicts found');
+        return;
+      }
+      
+      try {
+        const locks = await this.scanLockFiles();
+        const conflictDetected = this.detectConflict(locks, this.ourLastSeenLock);
+        
+        if (conflictDetected) {
+          console.warn('[LockManager] Late conflict detected - lock should be rescinded');
+          // Notify via verifyOwnLock returning false
+          // The periodic check in useSync will catch this
+          this.stopExtendedConflictChecking();
+        }
+      } catch (e) {
+        console.error('[LockManager] Error in extended conflict check:', e);
+      }
+    }, this.EXTENDED_CONFLICT_CHECK_MS);
+  }
+
+  private stopExtendedConflictChecking() {
+    if (this.conflictCheckInterval) {
+      clearInterval(this.conflictCheckInterval);
+      this.conflictCheckInterval = null;
     }
   }
 

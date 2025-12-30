@@ -441,12 +441,14 @@
                             <li><strong>1. User Identification:</strong> When you open a file, enter your email to identify yourself as the editor.</li>
                             <li><strong>2. Lock Acquisition:</strong> The app creates a timestamped lock file in the database folder. This design works reliably with OneDrive/SharePoint sync.</li>
                             <li><strong>3. Conflict Detection:</strong> After creating a lock, the app waits for cloud sync and rescans. If another lock file appeared that was created earlier, the older lock wins and yours is rescinded.</li>
-                            <li><strong>4. Read-Only Mode:</strong> If another user has the lock, you'll open in read-only mode with their email displayed.</li>
-                            <li><strong>5. Heartbeat:</strong> The lock is refreshed automatically every 30 seconds. Stale locks (&gt;5 minutes) are automatically cleaned up.</li>
-                            <li><strong>6. Saving:</strong> Saving writes your changes but keeps the lock—you can continue editing. Before saving, the app verifies you still own the lock and the file hasn't been modified externally.</li>
-                            <li><strong>7. Release Lock:</strong> Click the "Release Lock" button to voluntarily give up your edit lock so others can edit. You'll enter read-only mode.</li>
-                            <li><strong>8. Close Warning:</strong> If you try to close the browser while holding a lock, you'll be prompted to confirm—the lock is released when you leave.</li>
-                            <li><strong>9. Lock Monitoring:</strong> The app periodically verifies you still own the lock. If lost, you'll be prompted to reload.</li>
+                            <li><strong>4. Extended Checking:</strong> Even after acquiring the lock, the app continues checking for 30 seconds in case lock files sync late. If a conflict is found later, your lock is revoked.</li>
+                            <li><strong>5. Read-Only Mode:</strong> If another user has the lock, you'll open in read-only mode with their email displayed.</li>
+                            <li><strong>6. Heartbeat:</strong> The lock is refreshed automatically every 30 seconds. Stale locks (&gt;5 minutes) are automatically cleaned up.</li>
+                            <li><strong>7. Auto-Backup:</strong> Before each save, a timestamped backup is created. Backups older than 24 hours are automatically deleted.</li>
+                            <li><strong>8. Saving:</strong> Saving writes your changes but keeps the lock—you can continue editing. Before saving, the app verifies you still own the lock and the file hasn't been modified externally.</li>
+                            <li><strong>9. Release Lock:</strong> Click the "Release Lock" button to voluntarily give up your edit lock so others can edit. You'll enter read-only mode.</li>
+                            <li><strong>10. Close Warning:</strong> If you try to close the browser while holding a lock, you'll be prompted to confirm—the lock is released when you leave.</li>
+                            <li><strong>11. Lock Monitoring:</strong> The app periodically verifies you still own the lock. If lost, you'll be prompted to reload.</li>
                         </ol>
                     </div>
 

@@ -774,6 +774,66 @@ export default function App() {
     return next;
   }
 
+  // Backup helpers - create timestamped backup before each save
+  const BACKUP_PREFIX = '.backup-';
+  const BACKUP_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+  async function createBackup(dirHandle: FileSystemDirectoryHandle, dbHandle: FileSystemFileHandle): Promise<void> {
+    try {
+      // Get current db filename
+      const dbFilename = dbHandle.name;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupFilename = `${BACKUP_PREFIX}${timestamp}-${dbFilename}`;
+
+      // Read current file content
+      const file = await dbHandle.getFile();
+      const buffer = await file.arrayBuffer();
+
+      // Write backup
+      const backupHandle = await dirHandle.getFileHandle(backupFilename, { create: true });
+      const writable = await (backupHandle as any).createWritable();
+      await writable.write(buffer);
+      await writable.close();
+
+      console.log(`[Backup] Created: ${backupFilename}`);
+    } catch (e) {
+      console.error('[Backup] Failed to create backup:', e);
+      // Don't throw - backup failure shouldn't block save
+    }
+  }
+
+  async function cleanupOldBackups(dirHandle: FileSystemDirectoryHandle): Promise<void> {
+    try {
+      const now = Date.now();
+      const toDelete: string[] = [];
+
+      for await (const [name, handle] of (dirHandle as any).entries()) {
+        if (handle.kind === 'file' && name.startsWith(BACKUP_PREFIX)) {
+          // Parse timestamp from filename: .backup-2025-12-30T14-30-45-123Z-database.db
+          const match = name.match(/^\.backup-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-/);
+          if (match) {
+            const isoString = match[1].replace(/-(\d{2})-(\d{2})-(\d{3})Z$/, ':$1:$2.$3Z');
+            const backupTime = new Date(isoString).getTime();
+            if (now - backupTime > BACKUP_RETENTION_MS) {
+              toDelete.push(name);
+            }
+          }
+        }
+      }
+
+      for (const filename of toDelete) {
+        try {
+          await dirHandle.removeEntry(filename);
+          console.log(`[Backup] Cleaned up old backup: ${filename}`);
+        } catch (e) {
+          console.warn(`[Backup] Failed to delete ${filename}:`, e);
+        }
+      }
+    } catch (e) {
+      console.error('[Backup] Failed to cleanup old backups:', e);
+    }
+  }
+
   async function createNewDb() {
     if (!SQL) return;
     const db = new SQL.Database();
@@ -893,9 +953,9 @@ export default function App() {
     }
     
     // Check if file was modified externally since we opened it
-    if (dirHandleRef.current && dbOpenVersion !== null) {
-      const currentVersion = await getDbVersion(dirHandleRef.current);
-      if (currentVersion !== null && currentVersion !== dbOpenVersion) {
+    if (sqlDb && dbOpenVersion !== null) {
+      const currentVersion = getDbVersion(sqlDb);
+      if (currentVersion !== dbOpenVersion) {
         setAlertDialog({
           title: "File Modified Externally",
           message: "The database file has been modified by another user since you opened it.\n\nYour changes cannot be saved without overwriting their work.\n\nPlease reload the application to get the latest version.",
@@ -907,18 +967,25 @@ export default function App() {
       }
     }
     
+    // Create backup before saving (if we have the folder handle)
+    if (dirHandleRef.current) {
+      await createBackup(dirHandleRef.current, handle);
+      // Cleanup old backups (runs in background, non-blocking)
+      cleanupOldBackups(dirHandleRef.current).catch(e => 
+        console.warn('[Backup] Cleanup error:', e)
+      );
+    }
+    
+    // Increment version before export
+    if (sqlDb) {
+      const newVersion = incrementDbVersion(sqlDb);
+      setDbOpenVersion(newVersion);
+    }
+    
     const data = sqlDb.export();
     const writable = await (handle as any).createWritable();
     await writable.write(data);
     await writable.close();
-    
-    // Increment the version file after successful save
-    if (dirHandleRef.current) {
-      const newVersion = await incrementDbVersion(dirHandleRef.current);
-      if (newVersion !== null) {
-        setDbOpenVersion(newVersion);
-      }
-    }
     
     setStatus("Saved.");
     toast.showSuccess("Database saved");
