@@ -10,6 +10,8 @@ interface TopBarProps {
   ready: boolean;
   sqlDb: any;
   canSave: boolean;
+  hasLock: boolean;
+  onReleaseLock?: () => void;
   createNewDb: () => void;
   openDbFromFile: () => void;
   saveDb: () => void;
@@ -97,7 +99,7 @@ const useStyles = makeStyles({
   },
 });
 
-export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, createNewDb, openDbFromFile, saveDb, saveDbAs, status, isReadOnly, lockedBy, onForceUnlock }: TopBarProps){
+export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, hasLock, onReleaseLock, createNewDb, openDbFromFile, saveDb, saveDbAs, status, isReadOnly, lockedBy, onForceUnlock }: TopBarProps){
   const s = useStyles();
   const isEdge = isEdgeBrowser();
   
@@ -156,6 +158,17 @@ export default function TopBar({ appName = 'Scheduler', ready, sqlDb, canSave, c
                         style={{ color: tokens.colorPaletteRedForeground1 }}
                       >
                         Force Unlock
+                      </ToolbarButton>
+                    </Tooltip>
+                  )}
+                  
+                  {!isReadOnly && hasLock && onReleaseLock && (
+                    <Tooltip content="Release your edit lock so others can edit (you'll need to reload to edit again)" relationship="label">
+                      <ToolbarButton 
+                        icon={<LockOpen20Regular />} 
+                        onClick={onReleaseLock}
+                      >
+                        Release Lock
                       </ToolbarButton>
                     </Tooltip>
                   )}

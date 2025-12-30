@@ -7,14 +7,19 @@
  * 3. If absent, creates `lock.json` to claim access.
  * 4. Updates timestamp periodically (Heartbeat).
  * 5. Deletes `lock.json` on release.
+ * 
+ * SharePoint Optimizations:
+ * - 5 minute stale threshold (tolerates slow sync)
+ * - 30 second heartbeat (reduces sync churn)
+ * - Random delay + double-verify on acquisition (mitigates race conditions)
+ * - Sequence number to detect lock theft
  */
-
-import { FileSystemUtils } from './FileSystemUtils';
 
 export interface LockInfo {
   user: string;
   timestamp: string;
   machineId: string;
+  sequence: number;
 }
 
 export class LockManager {
@@ -22,11 +27,14 @@ export class LockManager {
   private currentUser: string = '';
   private machineId: string = '';
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private currentSequence: number = 0;
   
-  // Settings
+  // Settings - optimized for SharePoint sync latency
   private readonly LOCK_FILE_NAME = 'lock.json';
-  private readonly STALE_THRESHOLD_MS = 1000 * 120; // 120 seconds (2 minutes) to tolerate slow sync
-  private readonly HEARTBEAT_MS = 1000 * 5; // 5 seconds
+  private readonly STALE_THRESHOLD_MS = 1000 * 300; // 5 minutes to tolerate slow SharePoint sync
+  private readonly HEARTBEAT_MS = 1000 * 30; // 30 seconds to reduce sync churn
+  private readonly ACQUIRE_DELAY_MS = 2000; // Wait before verifying lock acquisition
+  private readonly RANDOM_DELAY_MAX_MS = 1500; // Random delay to reduce race conditions
 
   constructor() {
     this.machineId = Math.random().toString(36).substring(2, 15);
@@ -54,6 +62,7 @@ export class LockManager {
       if (currentLock) {
         // Check if it's our own lock (maybe from a reload)
         if (currentLock.user === this.currentUser && currentLock.machineId === this.machineId) {
+          this.currentSequence = currentLock.sequence;
           this.startHeartbeat();
           return { success: true };
         }
@@ -70,13 +79,18 @@ export class LockManager {
         }
       }
 
-      // 2. Write our lock
+      // 2. Add random delay to reduce race conditions with other users
+      const randomDelay = Math.random() * this.RANDOM_DELAY_MAX_MS;
+      await new Promise(r => setTimeout(r, randomDelay));
+
+      // 3. Write our lock
+      this.currentSequence = 1;
       await this.writeLockFile();
 
-      // 3. Double-check (Race Condition Mitigation)
-      // Wait a moment and check if we are still the winner. 
-      // In a robust system, we'd wait longer (e.g., 5s), but for UX we'll check immediately
-      // and rely on the heartbeat to maintain it.
+      // 4. Wait for SharePoint sync before verifying
+      await new Promise(r => setTimeout(r, this.ACQUIRE_DELAY_MS));
+
+      // 5. Double-check we are still the winner
       const verifyLock = await this.readLockFile();
       if (verifyLock && verifyLock.machineId !== this.machineId) {
         return { success: false, lockedBy: verifyLock.user };
@@ -88,6 +102,31 @@ export class LockManager {
     } catch (e: any) {
       console.error('[LockManager] Error acquiring lock:', e);
       return { success: false, error: e.message };
+    }
+  }
+
+  /**
+   * Verify we still own the lock (for pre-save checks and periodic validation)
+   */
+  async verifyOwnLock(): Promise<boolean> {
+    if (!this.dbFolderHandle) return false;
+    
+    try {
+      const currentLock = await this.readLockFile();
+      if (!currentLock) {
+        console.warn('[LockManager] Lock file missing - lock was lost');
+        return false;
+      }
+      
+      if (currentLock.machineId !== this.machineId) {
+        console.warn('[LockManager] Lock owned by different machine - lock was stolen');
+        return false;
+      }
+      
+      return true;
+    } catch (e) {
+      console.error('[LockManager] Error verifying lock:', e);
+      return false;
     }
   }
 
@@ -141,7 +180,10 @@ export class LockManager {
 
   private startHeartbeat() {
     this.stopHeartbeat();
-    this.heartbeatInterval = setInterval(() => this.writeLockFile(), this.HEARTBEAT_MS);
+    this.heartbeatInterval = setInterval(() => {
+      this.currentSequence++;
+      this.writeLockFile();
+    }, this.HEARTBEAT_MS);
   }
 
   private stopHeartbeat() {
@@ -169,11 +211,10 @@ export class LockManager {
       const lockData: LockInfo = {
         user: this.currentUser,
         timestamp: new Date().toISOString(),
-        machineId: this.machineId
+        machineId: this.machineId,
+        sequence: this.currentSequence
       };
       
-      // Use the FileSystemUtils helper if available, or direct API
-      // We'll implement a simple write here to avoid dependency cycle if utils not perfect
       const fileHandle = await this.dbFolderHandle.getFileHandle(this.LOCK_FILE_NAME, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(JSON.stringify(lockData, null, 2));

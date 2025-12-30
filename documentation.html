@@ -441,9 +441,11 @@
                             <li><strong>1. User Identification:</strong> When you open a file, enter your email to identify yourself as the editor.</li>
                             <li><strong>2. Lock Acquisition:</strong> The app attempts to acquire an exclusive lock on the database folder.</li>
                             <li><strong>3. Read-Only Mode:</strong> If another user has the lock, you'll open in read-only mode with their email displayed.</li>
-                            <li><strong>4. Heartbeat:</strong> The lock is refreshed automatically every 5 seconds. Stale locks (>2 minutes) can be broken.</li>
-                            <li><strong>5. Saving:</strong> Saving writes your changes but keeps the lock—you can continue editing.</li>
-                            <li><strong>6. Close Warning:</strong> If you try to close the browser while holding a lock, you'll be prompted to confirm—the lock is released when you leave.</li>
+                            <li><strong>4. Heartbeat:</strong> The lock is refreshed automatically every 30 seconds. Stale locks (&gt;5 minutes) can be broken by other users.</li>
+                            <li><strong>5. Saving:</strong> Saving writes your changes but keeps the lock—you can continue editing. Before saving, the app verifies you still own the lock and the file hasn't been modified externally.</li>
+                            <li><strong>6. Release Lock:</strong> Click the "Release Lock" button to voluntarily give up your edit lock so others can edit. You'll enter read-only mode.</li>
+                            <li><strong>7. Close Warning:</strong> If you try to close the browser while holding a lock, you'll be prompted to confirm—the lock is released when you leave.</li>
+                            <li><strong>8. Lock Monitoring:</strong> The app periodically verifies you still own the lock. If lost, you'll be prompted to reload.</li>
                         </ol>
                     </div>
 
@@ -1829,7 +1831,7 @@
                         </div>
                         <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
                             <h5 class="font-bold text-sm text-[#242424] mb-1">File locked by another user</h5>
-                            <p class="text-xs text-[#616161]">If someone else is editing the file, you'll open in read-only mode. Wait for them to save, or use the "Force Unlock" button if their lock is stale (they forgot to save or closed their browser).</p>
+                            <p class="text-xs text-[#616161]">If someone else is editing the file, you'll open in read-only mode. Wait for them to finish (they can click "Release Lock" to let you in), or use the "Force Unlock" button if their lock is stale (hasn't been updated in 5+ minutes—they may have closed their browser without releasing it).</p>
                         </div>
                         <div class="p-5 border border-[#e0e0e0] rounded-lg bg-[#fdfdfd]">
                             <h5 class="font-bold text-sm text-[#242424] mb-1">Trainee not appearing in training dashboard</h5>

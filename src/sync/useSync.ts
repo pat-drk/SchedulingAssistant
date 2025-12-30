@@ -9,16 +9,46 @@ export interface UseSyncResult {
   isReadOnly: boolean;
   lockedBy: string | null;
   hasLock: boolean;
+  lockLost: boolean;
   checkLock: (folderHandle: FileSystemDirectoryHandle, email: string) => Promise<boolean>;
   releaseLock: () => Promise<void>;
   forceUnlock: () => Promise<void>;
+  verifyLock: () => Promise<boolean>;
+  clearLockLost: () => void;
 }
+
+// Check lock status every 30 seconds
+const LOCK_CHECK_INTERVAL_MS = 30000;
 
 export function useSync(): UseSyncResult {
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [lockedBy, setLockedBy] = useState<string | null>(null);
   const [hasLock, setHasLock] = useState(false);
+  const [lockLost, setLockLost] = useState(false);
   const lockManager = useRef(new LockManager());
+  const lockCheckInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Periodic lock verification - detect if lock was stolen
+  useEffect(() => {
+    if (hasLock && !lockLost) {
+      lockCheckInterval.current = setInterval(async () => {
+        const stillValid = await lockManager.current.verifyOwnLock();
+        if (!stillValid) {
+          console.warn('[useSync] Lock lost - another user may have taken over');
+          setLockLost(true);
+          setHasLock(false);
+          setIsReadOnly(true);
+        }
+      }, LOCK_CHECK_INTERVAL_MS);
+      
+      return () => {
+        if (lockCheckInterval.current) {
+          clearInterval(lockCheckInterval.current);
+          lockCheckInterval.current = null;
+        }
+      };
+    }
+  }, [hasLock, lockLost]);
 
   // Handle beforeunload - warn user if they have an active lock
   useEffect(() => {
@@ -90,15 +120,27 @@ export function useSync(): UseSyncResult {
       setIsReadOnly(false);
       setLockedBy(null);
       setHasLock(true);
+      setLockLost(false);
     }
+  }, []);
+
+  const verifyLock = useCallback(async () => {
+    return await lockManager.current.verifyOwnLock();
+  }, []);
+
+  const clearLockLost = useCallback(() => {
+    setLockLost(false);
   }, []);
 
   return {
     isReadOnly,
     lockedBy,
     hasLock,
+    lockLost,
     checkLock,
     releaseLock,
-    forceUnlock
+    forceUnlock,
+    verifyLock,
+    clearLockLost
   };
 }

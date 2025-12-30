@@ -1,6 +1,6 @@
 import React from "react";
 import { Button, Tab, TabList, Tooltip, Spinner, Text, Switch, Toolbar as FluentToolbar, ToolbarButton, ToolbarDivider, makeStyles, tokens } from "@fluentui/react-components";
-import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular } from "@fluentui/react-icons";
+import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular, LockClosed20Regular } from "@fluentui/react-icons";
 
 type TabKey = "RUN" | "PEOPLE" | "NEEDS" | "EXPORT" | "MONTHLY" | "HISTORY" | "ADMIN";
 
@@ -8,6 +8,8 @@ interface ToolbarProps {
   ready: boolean;
   sqlDb: any;
   canSave: boolean;
+  hasLock: boolean;
+  onReleaseLock: () => void;
   createNewDb: () => void;
   openDbFromFile: () => void;
   saveDb: () => void;
@@ -61,6 +63,8 @@ export default function Toolbar({
   ready,
   sqlDb,
   canSave,
+  hasLock,
+  onReleaseLock,
   createNewDb,
   openDbFromFile,
   saveDb,
@@ -92,6 +96,14 @@ export default function Toolbar({
           <Tooltip content="Save As" relationship="label">
             <ToolbarButton icon={<SaveCopy20Regular />} onClick={saveDbAs} disabled={!sqlDb}>Save As</ToolbarButton>
           </Tooltip>
+          {hasLock && (
+            <>
+              <ToolbarDivider />
+              <Tooltip content="Release your edit lock so others can edit" relationship="label">
+                <ToolbarButton icon={<LockClosed20Regular />} onClick={onReleaseLock}>Release Lock</ToolbarButton>
+              </Tooltip>
+            </>
+          )}
   </FluentToolbar>
       </div>
 

@@ -539,6 +539,8 @@ export default function App() {
 
   const [ready, setReady] = useState(false);
   const [sqlDb, setSqlDb] = useState<any | null>(null);
+  const [dbOpenVersion, setDbOpenVersion] = useState<number>(0); // Track version when we opened the file
+  const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null); // For re-reading file to check version
 
   useEffect(() => {
     (window as any).sqlDb = sqlDb;
@@ -595,7 +597,7 @@ export default function App() {
   const toast = useToast();
 
   // Alert and Confirm dialogs
-  const [alertDialog, setAlertDialog] = useState<{ title?: string; message: string } | null>(null);
+  const [alertDialog, setAlertDialog] = useState<{ title?: string; message: string; onClose?: () => void } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     title?: string;
     message: string;
@@ -618,7 +620,21 @@ export default function App() {
   const [personToDelete, setPersonToDelete] = useState<number | null>(null);
 
   // Sync system
-  const { isReadOnly, lockedBy, hasLock, checkLock, releaseLock, forceUnlock } = useSync();
+  const { isReadOnly, lockedBy, hasLock, lockLost, checkLock, releaseLock, forceUnlock, verifyLock, clearLockLost } = useSync();
+
+  // Handle lock lost - prompt user to reload
+  useEffect(() => {
+    if (lockLost) {
+      setAlertDialog({
+        title: "Edit Lock Lost",
+        message: "Your edit lock has been lost. Another user may have taken over editing, or the lock file was deleted.\n\nTo avoid losing your changes or creating conflicts, please reload the application.\n\nAny unsaved changes will be lost.",
+        onClose: () => {
+          // Force reload
+          window.location.reload();
+        }
+      });
+    }
+  }, [lockLost]);
 
   const handleForceUnlock = () => {
     if (!lockedBy) return;
@@ -634,6 +650,23 @@ export default function App() {
           setConfirmDialog(null);
         } catch (e: any) {
           toast.showError(`Failed to force unlock: ${e.message}`);
+        }
+      }
+    });
+  };
+
+  const handleReleaseLock = () => {
+    setConfirmDialog({
+      title: "Release Edit Lock?",
+      message: "Are you sure you want to release your edit lock?\n\nThis will allow others to edit the database, but you will be in READ ONLY mode.\n\nTo edit again, you will need to reload the page and acquire the lock.",
+      onConfirm: async () => {
+        try {
+          await releaseLock();
+          toast.showSuccess("Lock released. You are now in read-only mode.");
+          setStatus("Read Only (Lock Released)");
+          setConfirmDialog(null);
+        } catch (e: any) {
+          toast.showError(`Failed to release lock: ${e.message}`);
         }
       }
     });
@@ -723,6 +756,24 @@ export default function App() {
     return rows;
   }
 
+  // Database version helpers for conflict detection
+  function getDbVersion(db: any): number {
+    try {
+      const rows = db.exec(`SELECT value FROM meta WHERE key='db_version'`);
+      if (rows && rows[0] && rows[0].values[0] && rows[0].values[0][0]) {
+        return parseInt(String(rows[0].values[0][0])) || 0;
+      }
+    } catch {}
+    return 0;
+  }
+
+  function incrementDbVersion(db: any): number {
+    const current = getDbVersion(db);
+    const next = current + 1;
+    db.run(`INSERT INTO meta (key, value) VALUES ('db_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value;`, [String(next)]);
+    return next;
+  }
+
   async function createNewDb() {
     if (!SQL) return;
     const db = new SQL.Database();
@@ -764,6 +815,11 @@ export default function App() {
       const buf = await file.arrayBuffer();
       const db = new SQL.Database(new Uint8Array(buf));
       applyMigrations(db);
+
+      // Track the version when we opened (for conflict detection)
+      const openVersion = getDbVersion(db);
+      setDbOpenVersion(openVersion);
+      dirHandleRef.current = dirHandle;
 
       setSqlDb(db);
       fileHandleRef.current = fileHandle;
@@ -821,10 +877,48 @@ export default function App() {
   }
 
   async function writeDbToHandle(handle: FileSystemFileHandle) {
+    // Verify we still have the lock before saving
+    if (hasLock) {
+      const stillHaveLock = await verifyLock();
+      if (!stillHaveLock) {
+        setAlertDialog({
+          title: "Cannot Save",
+          message: "Your edit lock has been lost. Another user may have taken over editing.\n\nSave aborted to prevent overwriting their changes.\n\nPlease reload the application.",
+          onClose: () => {
+            window.location.reload();
+          }
+        });
+        return;
+      }
+    }
+    
+    // Check if file was modified externally since we opened it
+    if (dirHandleRef.current && dbOpenVersion !== null) {
+      const currentVersion = await getDbVersion(dirHandleRef.current);
+      if (currentVersion !== null && currentVersion !== dbOpenVersion) {
+        setAlertDialog({
+          title: "File Modified Externally",
+          message: "The database file has been modified by another user since you opened it.\n\nYour changes cannot be saved without overwriting their work.\n\nPlease reload the application to get the latest version.",
+          onClose: () => {
+            window.location.reload();
+          }
+        });
+        return;
+      }
+    }
+    
     const data = sqlDb.export();
     const writable = await (handle as any).createWritable();
     await writable.write(data);
     await writable.close();
+    
+    // Increment the version file after successful save
+    if (dirHandleRef.current) {
+      const newVersion = await incrementDbVersion(dirHandleRef.current);
+      if (newVersion !== null) {
+        setDbOpenVersion(newVersion);
+      }
+    }
     
     setStatus("Saved.");
     toast.showSuccess("Database saved");
@@ -2558,6 +2652,8 @@ function PeopleEditor(){
         ready={ready}
         sqlDb={sqlDb}
         canSave={!!sqlDb}
+        hasLock={hasLock}
+        onReleaseLock={handleReleaseLock}
         createNewDb={createNewDb}
         openDbFromFile={openDbFromFile}
         saveDb={saveDb}
@@ -2769,7 +2865,12 @@ function PeopleEditor(){
           open={true}
           title={alertDialog.title}
           message={alertDialog.message}
-          onClose={() => setAlertDialog(null)}
+          onClose={() => {
+            if (alertDialog.onClose) {
+              alertDialog.onClose();
+            }
+            setAlertDialog(null);
+          }}
         />
       )}
       
