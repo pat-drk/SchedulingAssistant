@@ -442,7 +442,8 @@
                             <li><strong>2. Lock Acquisition:</strong> The app attempts to acquire an exclusive lock on the database folder.</li>
                             <li><strong>3. Read-Only Mode:</strong> If another user has the lock, you'll open in read-only mode with their email displayed.</li>
                             <li><strong>4. Heartbeat:</strong> The lock is refreshed automatically every 5 seconds. Stale locks (>2 minutes) can be broken.</li>
-                            <li><strong>5. Release on Save:</strong> When you save, the lock is released so others can edit.</li>
+                            <li><strong>5. Close Warning:</strong> If you try to close the browser while holding a lock, you'll be prompted to confirm—this helps remind you to save and release the lock for others.</li>
+                            <li><strong>6. Release on Save:</strong> When you save, the lock is released so others can edit.</li>
                         </ol>
                     </div>
 

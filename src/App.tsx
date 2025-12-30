@@ -618,7 +618,7 @@ export default function App() {
   const [personToDelete, setPersonToDelete] = useState<number | null>(null);
 
   // Sync system
-  const { isReadOnly, lockedBy, checkLock, releaseLock, forceUnlock } = useSync();
+  const { isReadOnly, lockedBy, hasLock, checkLock, releaseLock, forceUnlock } = useSync();
 
   const handleForceUnlock = () => {
     if (!lockedBy) return;
