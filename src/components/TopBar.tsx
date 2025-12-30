@@ -4,7 +4,6 @@ import { Add20Regular, FolderOpen20Regular, Save20Regular, SaveCopy20Regular, Qu
 import { isEdgeBrowser } from "../utils/edgeBrowser";
 import CopilotHelper from "./CopilotHelper";
 import CopilotPromptMenu from "./CopilotPromptMenu";
-// import SyncStatusIndicator from "./SyncStatusIndicator"; // Removed
 
 interface TopBarProps {
   appName?: string;

@@ -23,7 +23,6 @@ import PeopleFiltersBar, { filterPeopleList, PeopleFiltersState, usePersistentFi
 import { isInTrainingPeriod, weeksRemainingInTraining } from "./utils/trainingConstants";
 import { useSync } from "./sync/useSync";
 import { FileSystemUtils } from "./sync/FileSystemUtils";
-import { Conflict, ConflictResolution } from "./sync/types";
 import { getWeekOfMonth, type WeekStartMode } from "./utils/weekCalculation";
 import AlertDialog from "./components/AlertDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
