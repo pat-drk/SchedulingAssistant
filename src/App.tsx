@@ -1225,11 +1225,38 @@ export default function App() {
   function listTimeOffIntervals(personId: number, date: Date): Array<{start: Date; end: Date; reason?: string}> {
     const startDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0,0,0,0);
     const endDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23,59,59,999);
+    
+    // Regular time-off entries
     const rows = all(`SELECT start_ts, end_ts, reason FROM timeoff WHERE person_id=?`, [personId]);
-    return rows
+    const regularTimeOff = rows
       .map((r) => ({ start: new Date(r.start_ts), end: new Date(r.end_ts), reason: r.reason }))
       .filter((r) => r.end >= startDay && r.start <= endDay)
       .map((r) => ({ start: r.start < startDay ? startDay : r.start, end: r.end > endDay ? endDay : r.end, reason: r.reason }));
+
+    // Recurring time-off (Flex Time) entries
+    // Convert Date's getDay() (0=Sun..6=Sat) to our weekday (0=Mon..4=Fri)
+    const jsWeekday = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const weekday = jsWeekday >= 1 && jsWeekday <= 5 ? jsWeekday - 1 : -1; // 0=Mon..4=Fri, -1 for weekend
+    
+    const recurringTimeOff: Array<{start: Date; end: Date; reason?: string}> = [];
+    if (weekday >= 0) {
+      const recurringRows = all(
+        `SELECT start_time, end_time, reason FROM recurring_timeoff WHERE person_id=? AND weekday=? AND active=1`,
+        [personId, weekday]
+      );
+      for (const r of recurringRows) {
+        // Parse HH:MM format times and create Date objects for the given date
+        const [startH, startM] = (r.start_time as string).split(':').map(Number);
+        const [endH, endM] = (r.end_time as string).split(':').map(Number);
+        recurringTimeOff.push({
+          start: new Date(date.getFullYear(), date.getMonth(), date.getDate(), startH, startM, 0, 0),
+          end: new Date(date.getFullYear(), date.getMonth(), date.getDate(), endH, endM, 0, 0),
+          reason: r.reason || 'Flex Time',
+        });
+      }
+    }
+
+    return [...regularTimeOff, ...recurringTimeOff];
   }
 
 
@@ -1716,7 +1743,20 @@ async function exportShifts() {
     // Group logic: Breakfast forces Dining Room, otherwise from role
     const group = a.segment === "Early" ? "Dining Room" : a.group_name;
     const themeColor = groups.find((g) => g.name === group)?.theme || "";
-    const customLabel = a.role_name; // per user: Plain Name
+    
+    // Simplify role label to remove redundant group name prefix
+    // e.g., if group is "Dining Room" and role is "Dining Room", label is blank
+    // If role is "Dining Room Coordinator", label is "Coordinator"
+    const simplifyRole = (role: string, groupName: string): string => {
+      if (role === groupName) return '';
+      const prefix = groupName + ' ';
+      if (role.startsWith(prefix)) {
+        return role.slice(prefix.length);
+      }
+      return role;
+    };
+    const customLabel = simplifyRole(a.role_name, group);
+    
     const unpaidBreak = 0; // per user
     
     // Format time for notes (e.g., "8-12" or "1-5")
@@ -1986,6 +2026,11 @@ function PeopleEditor(){
   const [bulkPeople,setBulkPeople] = useState<Set<number>>(new Set());
   const [bulkRoles,setBulkRoles] = useState<Set<number>>(new Set());
   const [filters, setFilters] = usePersistentFilters('peopleEditorFilters');
+  
+  // Flex Time state
+  const [flexEntries, setFlexEntries] = useState<Array<{id: number; weekday: number; start_time: string; end_time: string; reason: string; active: number}>>([]);
+  const [newFlexEntry, setNewFlexEntry] = useState({ weekday: 0, start_time: '09:00', end_time: '17:00', reason: '', active: 1 });
+  const FLEX_WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
   // Query all people, including inactive entries, so they can be edited
   const people = all(`SELECT * FROM person ORDER BY last_name, first_name`);
@@ -1995,10 +2040,35 @@ function PeopleEditor(){
     if(editing){
       const rows = all(`SELECT role_id FROM training WHERE person_id=? AND status='Qualified'`, [editing.id]);
       setQualifications(new Set(rows.map((r:any)=>r.role_id)));
+      // Load flex time entries
+      const flexRows = all(`SELECT id, weekday, start_time, end_time, reason, active FROM recurring_timeoff WHERE person_id=? ORDER BY weekday, start_time`, [editing.id]);
+      setFlexEntries(flexRows);
     } else {
       setQualifications(new Set());
+      setFlexEntries([]);
     }
   },[editing]);
+  
+  function addFlexEntry() {
+    if (!editing) return;
+    run(
+      `INSERT INTO recurring_timeoff (person_id, weekday, start_time, end_time, reason, active) VALUES (?, ?, ?, ?, ?, ?)`,
+      [editing.id, newFlexEntry.weekday, newFlexEntry.start_time, newFlexEntry.end_time, newFlexEntry.reason, newFlexEntry.active]
+    );
+    const flexRows = all(`SELECT id, weekday, start_time, end_time, reason, active FROM recurring_timeoff WHERE person_id=? ORDER BY weekday, start_time`, [editing.id]);
+    setFlexEntries(flexRows);
+    setNewFlexEntry({ weekday: 0, start_time: '09:00', end_time: '17:00', reason: '', active: 1 });
+  }
+  
+  function deleteFlexEntry(id: number) {
+    run(`DELETE FROM recurring_timeoff WHERE id=?`, [id]);
+    setFlexEntries(flexEntries.filter(e => e.id !== id));
+  }
+  
+  function toggleFlexActive(id: number, active: boolean) {
+    run(`UPDATE recurring_timeoff SET active=? WHERE id=?`, [active ? 1 : 0, id]);
+    setFlexEntries(flexEntries.map(e => e.id === id ? {...e, active: active ? 1 : 0} : e));
+  }
 
   function openModal(p?:any){
     if(p){
@@ -2261,7 +2331,7 @@ function PeopleEditor(){
                 </div>
                 <div className={s.checkboxRow}>
                   <Checkbox label="Commuter" checked={!!form.commuter} onChange={(_,data)=>setForm({...form,commuter:!!data.checked})} />
-                  <Checkbox label="Active" checked={form.active!==false} onChange={(_,data)=>setForm({...form,active:!!data.checked})} />
+                  <Checkbox label="Active" checked={!!form.active} onChange={(_,data)=>setForm({...form,active:!!data.checked})} />
                 </div>
               </div>
 
@@ -2348,6 +2418,89 @@ function PeopleEditor(){
                 }
                 return null;
               })()}
+              
+              {/* Flex Time Section - only show when editing */}
+              {editing && (
+                <div className={s.section}>
+                  <div className={s.sectionTitle}>Flex Time (Recurring Time Away)</div>
+                  {flexEntries.length === 0 && (
+                    <div style={{ fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3, marginBottom: tokens.spacingVerticalS }}>
+                      No recurring time away configured.
+                    </div>
+                  )}
+                  {flexEntries.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalXS, marginBottom: tokens.spacingVerticalM }}>
+                      {flexEntries.map((entry) => (
+                        <div 
+                          key={entry.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: tokens.spacingHorizontalS,
+                            padding: tokens.spacingHorizontalS,
+                            backgroundColor: entry.active ? tokens.colorNeutralBackground3 : tokens.colorNeutralBackground2,
+                            borderRadius: tokens.borderRadiusMedium,
+                            opacity: entry.active ? 1 : 0.6,
+                          }}
+                        >
+                          <span style={{ minWidth: '80px', fontWeight: tokens.fontWeightSemibold }}>{FLEX_WEEKDAYS[entry.weekday]}</span>
+                          <span>{entry.start_time} - {entry.end_time}</span>
+                          {entry.reason && <span style={{ color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 }}>({entry.reason})</span>}
+                          <div style={{ marginLeft: 'auto', display: 'flex', gap: tokens.spacingHorizontalXS }}>
+                            <Checkbox 
+                              checked={!!entry.active} 
+                              onChange={(_, data) => toggleFlexActive(entry.id, !!data.checked)}
+                              label="Active"
+                            />
+                            <Button size="small" appearance="subtle" onClick={() => deleteFlexEntry(entry.id)}>✕</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: tokens.spacingHorizontalS, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: '100px' }}>
+                      <div className={s.smallLabel}>Day</div>
+                      <Dropdown
+                        value={FLEX_WEEKDAYS[newFlexEntry.weekday]}
+                        selectedOptions={[String(newFlexEntry.weekday)]}
+                        onOptionSelect={(_, d) => setNewFlexEntry({...newFlexEntry, weekday: Number(d.optionValue)})}
+                      >
+                        {FLEX_WEEKDAYS.map((day, idx) => (
+                          <Option key={idx} value={String(idx)} text={day}>{day}</Option>
+                        ))}
+                      </Dropdown>
+                    </div>
+                    <div style={{ minWidth: '100px' }}>
+                      <div className={s.smallLabel}>Start</div>
+                      <Input 
+                        type="time" 
+                        value={newFlexEntry.start_time} 
+                        onChange={(_, d) => setNewFlexEntry({...newFlexEntry, start_time: d.value})}
+                        style={{ minWidth: '100px' }}
+                      />
+                    </div>
+                    <div style={{ minWidth: '100px' }}>
+                      <div className={s.smallLabel}>End</div>
+                      <Input 
+                        type="time" 
+                        value={newFlexEntry.end_time} 
+                        onChange={(_, d) => setNewFlexEntry({...newFlexEntry, end_time: d.value})}
+                        style={{ minWidth: '100px' }}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: '120px' }}>
+                      <div className={s.smallLabel}>Reason (optional)</div>
+                      <Input 
+                        value={newFlexEntry.reason} 
+                        onChange={(_, d) => setNewFlexEntry({...newFlexEntry, reason: d.value})}
+                        placeholder="e.g., Doctor appointment"
+                      />
+                    </div>
+                    <Button appearance="primary" onClick={addFlexEntry}>Add</Button>
+                  </div>
+                </div>
+              )}
             </DialogContent>
             <DialogActions>
               <Button onClick={closeModal}>Cancel</Button>
@@ -2492,6 +2645,7 @@ function PeopleEditor(){
                   allRoles={roles}
                   availabilityFor={availabilityFor}
                   isSegmentBlockedByTimeOff={isSegmentBlockedByTimeOff}
+                  timeOffThreshold={timeOffThreshold}
                   weekdayName={weekdayName}
                   refreshCaches={refreshCaches}
                   setStatus={setStatus}
@@ -2576,7 +2730,7 @@ function PeopleEditor(){
           )}
           {activeTab === 'ADMIN' && (
             <Suspense fallback={<div className="p-4 text-slate-600">Loading Admin…</div>}>
-              <AdminView sqlDb={sqlDb} all={all} run={run} refresh={refreshCaches} segments={segments} onTimeOffThresholdChange={setTimeOffThreshold} />
+              <AdminView sqlDb={sqlDb} all={all} run={run} refresh={refreshCaches} segments={segments} groups={groups} onTimeOffThresholdChange={setTimeOffThreshold} />
             </Suspense>
           )}
         </>

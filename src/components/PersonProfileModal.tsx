@@ -9,6 +9,7 @@ import {
   makeStyles,
   Divider,
   tokens,
+  Badge,
 } from "@fluentui/react-components";
 
 interface PersonProfileModalProps {
@@ -50,6 +51,14 @@ const useStyles = makeStyles({
     justifyContent: "space-between",
   },
   divider: { margin: `${tokens.spacingVerticalM} 0` },
+  flexGrid: {
+    display: "grid",
+    gridTemplateColumns: "auto 80px 80px auto auto",
+    columnGap: tokens.spacingHorizontalS,
+    rowGap: tokens.spacingVerticalXS,
+    alignItems: "center",
+    marginTop: tokens.spacingVerticalXS,
+  },
 });
 
 function fmtAvail(v: string) {
@@ -66,6 +75,8 @@ function fmtAvail(v: string) {
   }
 }
 
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
 export default function PersonProfileModal({ personId, onClose, all }: PersonProfileModalProps) {
   const s = useStyles();
 
@@ -77,6 +88,9 @@ export default function PersonProfileModal({ personId, onClose, all }: PersonPro
   );
 
   const [showAllDefaults, setShowAllDefaults] = React.useState(false);
+
+  // Flex Time state (read-only)
+  const flexEntries = all('SELECT * FROM recurring_timeoff WHERE person_id=? ORDER BY weekday, start_time', [personId]);
 
   const defaults = all(
     'SELECT md.month, md.segment, r.name as role_name, g.name as group_name ' +
@@ -181,6 +195,26 @@ export default function PersonProfileModal({ personId, onClose, all }: PersonPro
               ))}
               {timeOff.length === 0 && <div className={s.cell}>No upcoming time off.</div>}
             </ul>
+          </div>
+          <Divider className={s.divider} />
+          <div>
+            <div className={s.sectionTitle}>Flex Time (Recurring Time Away)</div>
+            {flexEntries.length === 0 && <div className={s.cell}>No recurring time away configured.</div>}
+            {flexEntries.length > 0 && (
+              <div className={s.flexGrid}>
+                {flexEntries.map((entry: any) => (
+                  <React.Fragment key={entry.id}>
+                    <span className={s.cell}>{WEEKDAYS[entry.weekday]}</span>
+                    <span className={s.cell}>{entry.start_time}</span>
+                    <span className={s.cell}>{entry.end_time}</span>
+                    <span className={s.cell}>{entry.reason || '-'}</span>
+                    <Badge appearance={entry.active ? "filled" : "outline"} color={entry.active ? "success" : "warning"}>
+                      {entry.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
           </div>
         </DialogBody>
         <DialogActions>

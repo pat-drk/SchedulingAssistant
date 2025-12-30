@@ -103,6 +103,10 @@ export default function CopilotContext({
           <li>People are filtered by availability and training status</li>
           <li>Warnings appear for untrained assignments or scheduling conflicts</li>
           <li>The "Needs" button shows required staffing levels</li>
+          <li>"Moved" badge shows when someone was manually moved from their default assignment</li>
+          <li>"View Moves" button shows a summary of all moved people for the day</li>
+          <li>"Send to Teams" button posts the schedule to a configured Teams channel via webhook</li>
+          <li>Floating indicator shows count of people who are available but unassigned</li>
         </ul>
 
         <h2>5. PEOPLE MANAGEMENT</h2>
@@ -115,6 +119,9 @@ export default function CopilotContext({
           <li>Mark if they are a Commuter</li>
           <li>Set their weekly availability pattern (AM, PM, Both, or Unavailable for each weekday)</li>
           <li>Assign role qualifications/training</li>
+          <li>Click a person's name to view their Profile Modal</li>
+          <li>Profile Modal shows: Info, Availability, Training, Monthly Defaults, Time Off, and Flex Time</li>
+          <li>Flex Time: Configure recurring weekly time-off (e.g., every Tuesday 9-11 AM for appointments)</li>
         </ul>
 
         <h2>6. TRAINING MATRIX</h2>
@@ -260,10 +267,16 @@ export default function CopilotContext({
           <li>Training tracking: Ensure staff are qualified for assigned roles with manual override capability</li>
           <li>Availability management: Track when staff are available (AM, PM, Both, or Unavailable)</li>
           <li>Time-off integration: Import and respect time-off requests</li>
+          <li>Flex Time: Configure recurring weekly time-off patterns for regular appointments or classes</li>
           <li>Conflict detection: Warns about scheduling conflicts and availability issues</li>
           <li>Monthly templates: Set default assignments with weekday and week-by-week overrides</li>
           <li>AI Actions menu: Tutorial and troubleshooting prompts to help navigate the app</li>
           <li>Teams export: Generate XLSX files for Microsoft Teams Shifts import</li>
+          <li>Teams webhook: Send schedule to Teams channel via Adaptive Card message</li>
+          <li>Auto-fill priority: Configure priority rules and group order for auto-fill suggestions</li>
+          <li>Moved tracking: See who was moved from their default assignment with summary view</li>
+          <li>Unassigned indicator: See who is available but not assigned</li>
+          <li>Notes in XLSX export: Monthly default notes included in export</li>
           <li>Local database: All data stored locally in SQLite for privacy and control</li>
         </ul>
       </div>

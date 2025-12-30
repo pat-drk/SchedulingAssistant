@@ -10,7 +10,7 @@ import "../styles/scrollbar.css";
 import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
 import { exportDailyScheduleXlsx } from "../excel/export-one-sheet";
-import { getEffectiveMonth, getWeekOfMonth, type WeekStartMode } from "../utils/weekCalculation";
+import { getWeekOfMonth, type WeekStartMode } from "../utils/weekCalculation";
 import {
   Button,
   Dropdown,
@@ -37,6 +37,14 @@ import {
   MessageBar,
   MessageBarBody,
   MessageBarTitle,
+  Table,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  TableBody,
+  TableCell,
+  Text,
+  Textarea,
 } from "@fluentui/react-components";
 import { Navigation20Regular, CalendarMonth20Regular } from "@fluentui/react-icons";
 import AlertDialog from "./AlertDialog";
@@ -239,7 +247,115 @@ const useStyles = makeStyles({
     columnGap: tokens.spacingHorizontalS,
     flexShrink: 0,
   },
+  movedBadge: {
+    backgroundColor: tokens.colorPaletteYellowBackground2,
+    color: tokens.colorPaletteYellowForeground2,
+    fontSize: tokens.fontSizeBase100,
+    padding: `0 ${tokens.spacingHorizontalXS}`,
+    borderRadius: tokens.borderRadiusSmall,
+    marginLeft: tokens.spacingHorizontalXS,
+  },
 });
+
+// Component to display today's moves (compares current assignments with monthly defaults)
+function TodaysMovesList({ 
+  date, 
+  segment,
+  all, 
+  allRoles, 
+  loadMonthlyDefaultsForMonth 
+}: { 
+  date: string; 
+  segment: string;
+  all: (sql: string, params?: any[]) => any[]; 
+  allRoles: any[];
+  loadMonthlyDefaultsForMonth: (month: string) => { defaults: any[]; overrides: any[]; weekOverrides: any[] };
+}) {
+  const moves = React.useMemo(() => {
+    // Get current assignments for this date and segment
+    const currentAssignments = all(
+      `SELECT a.*, p.first_name, p.last_name 
+       FROM assignment a 
+       JOIN person p ON p.id = a.person_id 
+       WHERE a.date = ? AND a.segment = ?`,
+      [date, segment]
+    );
+    
+    // Get monthly defaults for comparison
+    const month = date.slice(0, 7); // "YYYY-MM"
+    const { defaults, overrides, weekOverrides } = loadMonthlyDefaultsForMonth(month);
+    
+    // Calculate expected role for each person based on defaults + overrides
+    const dateObj = new Date(date + 'T00:00:00');
+    const weekday = dateObj.getDay(); // 0=Sun, 1=Mon, etc.
+    const weekNum = Math.ceil(dateObj.getDate() / 7); // Week 1-5
+    
+    const getExpectedRole = (personId: number): number | null => {
+      // Check day-of-week override first (e.g., "Every Monday")
+      const dayOverride = overrides.find(
+        (o: any) => o.person_id === personId && o.segment === segment && o.weekday === weekday
+      );
+      if (dayOverride) return dayOverride.role_id;
+      
+      // Check week override (e.g., "Week 2")
+      const weekOverride = weekOverrides.find(
+        (o: any) => o.person_id === personId && o.segment === segment && o.week_number === weekNum
+      );
+      if (weekOverride) return weekOverride.role_id;
+      
+      // Fall back to base default
+      const baseDefault = defaults.find(
+        (d: any) => d.person_id === personId && d.segment === segment
+      );
+      return baseDefault ? baseDefault.role_id : null;
+    };
+    
+    // Find assignments where current role differs from expected
+    const movedAssignments: any[] = [];
+    for (const a of currentAssignments) {
+      const expectedRoleId = getExpectedRole(a.person_id);
+      if (expectedRoleId !== null && expectedRoleId !== a.role_id) {
+        movedAssignments.push({
+          ...a,
+          from_role_id: expectedRoleId,
+          to_role_id: a.role_id
+        });
+      }
+    }
+    
+    return movedAssignments;
+  }, [all, date, segment, loadMonthlyDefaultsForMonth]);
+  
+  const getRoleName = (roleId: number) => {
+    const role = allRoles.find((r: any) => r.id === roleId);
+    return role ? role.name : 'Unknown';
+  };
+  
+  if (moves.length === 0) {
+    return <Text>No moves for this segment.</Text>;
+  }
+  
+  return (
+    <Table size="small">
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>Person</TableHeaderCell>
+          <TableHeaderCell>Default Role</TableHeaderCell>
+          <TableHeaderCell>Current Role</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {moves.map((m: any) => (
+          <TableRow key={m.id}>
+            <TableCell>{m.first_name} {m.last_name}</TableCell>
+            <TableCell>{getRoleName(m.from_role_id)}</TableCell>
+            <TableCell>{getRoleName(m.to_role_id)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 interface DailyRunBoardProps {
   activeRunSegment: Segment;
@@ -287,6 +403,7 @@ interface DailyRunBoardProps {
   allRoles: any[];
   availabilityFor: (db: any, personId: number, date: Date) => string;
   isSegmentBlockedByTimeOff: (personId: number, date: Date, segment: Segment) => boolean;
+  timeOffThreshold: number;
   weekdayName: (d: Date) => string;
   refreshCaches: () => void;
   setStatus: (msg: string) => void;
@@ -321,6 +438,7 @@ export default function DailyRunBoard({
   allRoles,
   availabilityFor,
   isSegmentBlockedByTimeOff,
+  timeOffThreshold,
   weekdayName,
   refreshCaches,
   setStatus,
@@ -352,6 +470,10 @@ export default function DailyRunBoard({
   const [autoFillSuggestions, setAutoFillSuggestions] = useState<
     Array<{ role: any; group: any; candidates: Array<{ id: number; label: string }>; selected: number | null }>
   >([]);
+  const [showMovesModal, setShowMovesModal] = useState(false);
+  const [showUnassigned, setShowUnassigned] = useState(false);
+  const [showTeamsDraft, setShowTeamsDraft] = useState(false);
+  const [teamsDraftText, setTeamsDraftText] = useState('');
 
   const moveSelectedLabel = useMemo(() => {
     if (!moveContext || moveTargetId == null) return "";
@@ -441,6 +563,119 @@ export default function DailyRunBoard({
   );
   // assignedIdSet was unused; removed to keep build warnings clean
   void assignedIdSet;
+
+  // Track which person_id + role_id combinations differ from monthly defaults ("Moved" badge)
+  const movedToMap = useMemo(() => {
+    const dateStr = ymd(selectedDateObj);
+    const month = dateStr.slice(0, 7);
+    const { defaults, overrides, weekOverrides } = loadMonthlyDefaultsForMonth(month);
+    
+    const weekday = selectedDateObj.getDay();
+    const weekNum = Math.ceil(selectedDateObj.getDate() / 7);
+    
+    const getExpectedRole = (personId: number): number | null => {
+      const dayOverride = overrides.find(
+        (o: any) => o.person_id === personId && o.segment === seg && o.weekday === weekday
+      );
+      if (dayOverride) return dayOverride.role_id;
+      
+      const weekOverride = weekOverrides.find(
+        (o: any) => o.person_id === personId && o.segment === seg && o.week_number === weekNum
+      );
+      if (weekOverride) return weekOverride.role_id;
+      
+      const baseDefault = defaults.find(
+        (d: any) => d.person_id === personId && d.segment === seg
+      );
+      return baseDefault ? baseDefault.role_id : null;
+    };
+    
+    // Get current assignments
+    const currentAssignments = all(
+      `SELECT person_id, role_id FROM assignment WHERE date=? AND segment=?`,
+      [dateStr, seg]
+    );
+    
+    const map = new Map<string, boolean>();
+    for (const a of currentAssignments) {
+      const expectedRoleId = getExpectedRole(a.person_id);
+      if (expectedRoleId !== null && expectedRoleId !== a.role_id) {
+        map.set(`${a.person_id}:${a.role_id}`, true);
+      }
+    }
+    return map;
+  }, [all, selectedDateObj, seg, ymd, loadMonthlyDefaultsForMonth]);
+
+  // Get all unassigned but available people for this segment
+  const unassignedAvailable = useMemo(() => {
+    const dayName = weekdayName(selectedDateObj);
+    if (dayName === 'Weekend') return [];
+    
+    const availCol = `avail_${dayName.toLowerCase().slice(0, 3)}`;
+    
+    // Get all active people with their availability
+    const allPeople = all(
+      `SELECT id, first_name, last_name, ${availCol} as avail FROM person WHERE active = 1 ORDER BY last_name, first_name`
+    );
+    
+    // Get people assigned in this segment
+    const dateStr = ymd(selectedDateObj);
+    const assignedPeople = new Set(
+      all(`SELECT DISTINCT person_id FROM assignment WHERE date=? AND segment=?`, [dateStr, seg])
+        .map((r: any) => r.person_id)
+    );
+    
+    // Get availability overrides for this date
+    const overrides = all(
+      `SELECT person_id, avail FROM availability_override WHERE date=?`,
+      [dateStr]
+    );
+    const overrideMap = new Map(overrides.map((o: any) => [o.person_id, o.avail]));
+    
+    // Get time-off info for the day
+    const dayStart = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate(), 0, 0, 0, 0);
+    const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1, 0, 0, 0, 0);
+    const timeOffRows = all(
+      `SELECT person_id FROM timeoff WHERE NOT (? >= end_ts OR ? <= start_ts)`,
+      [dayStart.toISOString(), dayEnd.toISOString()]
+    );
+    const timeOffPersonIds = new Set(timeOffRows.map((r: any) => r.person_id));
+    
+    // Get recurring time-off (Flex Time) for this weekday
+    const jsWeekday = selectedDateObj.getDay();
+    const weekday = jsWeekday >= 1 && jsWeekday <= 5 ? jsWeekday - 1 : -1;
+    if (weekday >= 0) {
+      const recurringRows = all(
+        `SELECT person_id FROM recurring_timeoff WHERE weekday=? AND active=1`,
+        [weekday]
+      );
+      for (const r of recurringRows) {
+        timeOffPersonIds.add(r.person_id);
+      }
+    }
+    
+    // Filter to available but unassigned
+    return allPeople.filter((p: any) => {
+      if (assignedPeople.has(p.id)) return false;
+      
+      // Check availability (override takes precedence)
+      const avail = overrideMap.get(p.id) || p.avail || 'U';
+      if (avail === 'U') return false;
+      
+      // Check segment compatibility
+      if (seg === 'AM' || seg === 'Early') {
+        return avail === 'AM' || avail === 'B';
+      } else if (seg === 'PM') {
+        return avail === 'PM' || avail === 'B';
+      } else if (seg === 'Lunch') {
+        return avail !== 'U';
+      }
+      return avail !== 'U';
+    }).map((p: any) => ({
+      ...p,
+      hasTimeOff: timeOffPersonIds.has(p.id),
+    }));
+  }, [all, selectedDateObj, seg, ymd, weekdayName]);
 
   const groupMap = useMemo(() => new Map(groups.map((g: any) => [g.id, g])), [groups]);
 
@@ -847,6 +1082,95 @@ export default function DailyRunBoard({
     }
   }
 
+  function handleSendToTeams() {
+    // Get assignments for current segment only
+    const dateStr = ymd(selectedDateObj);
+    const assigns = all(
+      `SELECT a.id, a.segment, a.role_id, a.person_id, p.first_name, p.last_name, r.name as role_name, g.name as group_name
+       FROM assignment a
+       JOIN person p ON p.id = a.person_id
+       JOIN role r ON r.id = a.role_id
+       JOIN grp g ON g.id = r.group_id
+       WHERE a.date = ? AND a.segment = ?
+       ORDER BY g.name, r.name, p.last_name, p.first_name`,
+      [dateStr, seg]
+    );
+    
+    if (assigns.length === 0) {
+      dialogs.showAlert("No assignments found for this segment.", "No Data");
+      return;
+    }
+    
+    // Format date for display
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+    const monthName = dateObj.toLocaleDateString('en-US', { month: 'long' });
+    const dayNum = dateObj.getDate();
+    
+    // Group assignments by group and role, sorted by role
+    // Store person info including their individual start time
+    interface PersonEntry {
+      name: string;
+      startTime: string;
+    }
+    const byGroupRole = new Map<string, Map<string, PersonEntry[]>>();
+    for (const a of assigns) {
+      let groupMap = byGroupRole.get(a.group_name);
+      if (!groupMap) {
+        groupMap = new Map<string, PersonEntry[]>();
+        byGroupRole.set(a.group_name, groupMap);
+      }
+      let roleList = groupMap.get(a.role_name);
+      if (!roleList) {
+        roleList = [];
+        groupMap.set(a.role_name, roleList);
+      }
+      // Get individual start time for this person
+      const personSegTimes = getSegTimesForPersonTop(a.person_id);
+      const segStart = personSegTimes[seg]?.start || segTimesTop[seg]?.start;
+      const startTimeStr = segStart 
+        ? formatTime12h(`${segStart.getHours().toString().padStart(2, '0')}:${segStart.getMinutes().toString().padStart(2, '0')}`)
+        : '';
+      
+      roleList.push({
+        name: `@${a.first_name} ${a.last_name}`,
+        startTime: startTimeStr,
+      });
+    }
+    
+    // Build the draft text, sorted by role within each group
+    let draft = `📅 **${dayName}, ${monthName} ${dayNum}** — ${seg}\n\n`;
+    
+    for (const [groupName, roleMap] of byGroupRole) {
+      draft += `**${groupName}**\n`;
+      // Sort roles alphabetically within group
+      const sortedRoles = Array.from(roleMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+      for (const [roleName, people] of sortedRoles) {
+        // Simplify role label
+        const roleLabel = roleName === groupName ? '' : (roleName.startsWith(groupName + ' ') ? roleName.slice(groupName.length + 1) : roleName);
+        const rolePrefix = roleLabel ? `${roleLabel}: ` : '';
+        // Format each person with their individual start time
+        const peopleFormatted = people.map(p => `${p.name} (${p.startTime})`).join(', ');
+        draft += `• ${rolePrefix}${peopleFormatted}\n`;
+      }
+      draft += '\n';
+    }
+    
+    draft += `_Total: ${assigns.length} assignments_`;
+    
+    setTeamsDraftText(draft);
+    setShowTeamsDraft(true);
+  }
+  
+  async function handleCopyTeamsDraft() {
+    try {
+      await navigator.clipboard.writeText(teamsDraftText);
+      dialogs.showAlert('Copied to clipboard!', 'Success');
+    } catch (err) {
+      dialogs.showAlert('Failed to copy. Please select and copy manually.', 'Error');
+    }
+  }
+
   // Base segment times for the selected date (without per-person adjustments)
   // Per-person adjustments are calculated in RoleCard for accurate time-off overlap
   const segTimesTop = useMemo(() => {
@@ -976,12 +1300,36 @@ export default function DailyRunBoard({
       [dayStart.toISOString(), dayEnd.toISOString()]
     ) as any[];
     
-    // Group time-off entries by person
-    const timeOffByPerson = new Map<number, { start_ts: string; end_ts: string }[]>();
+    // Also fetch recurring_timeoff (Flex Time) entries for this day
+    // Convert Date's getDay() (0=Sun..6=Sat) to our weekday (0=Mon..4=Fri)
+    const jsWeekday = selectedDateObj.getDay();
+    const weekday = jsWeekday >= 1 && jsWeekday <= 5 ? jsWeekday - 1 : -1;
+    
+    // Group time-off entries by person (using Date objects for easier calculation)
+    const timeOffByPerson = new Map<number, { start: Date; end: Date }[]>();
+    
     for (const t of timeOff) {
       const entries = timeOffByPerson.get(t.person_id) || [];
-      entries.push(t);
+      entries.push({ start: new Date(t.start_ts), end: new Date(t.end_ts) });
       timeOffByPerson.set(t.person_id, entries);
+    }
+    
+    // Add recurring_timeoff entries for weekdays (Mon-Fri)
+    if (weekday >= 0) {
+      const recurringRows = all(
+        `SELECT person_id, start_time, end_time FROM recurring_timeoff WHERE weekday=? AND active=1`,
+        [weekday]
+      ) as any[];
+      for (const r of recurringRows) {
+        const [startH, startM] = (r.start_time as string).split(':').map(Number);
+        const [endH, endM] = (r.end_time as string).split(':').map(Number);
+        const entries = timeOffByPerson.get(r.person_id) || [];
+        entries.push({
+          start: new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate(), startH, startM, 0, 0),
+          end: new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate(), endH, endM, 0, 0),
+        });
+        timeOffByPerson.set(r.person_id, entries);
+      }
     }
     
     const assigns = all(`SELECT person_id, role_id FROM assignment WHERE date=? AND segment=?`, [ymd(selectedDateObj), seg]) as any[];
@@ -994,41 +1342,44 @@ export default function DailyRunBoard({
       const en = personSegTimes[seg]?.end || baseEn;
       const segStart = st.getTime();
       const segEnd = en.getTime();
-      const half = Math.ceil((segEnd - segStart) / 2);
+      const segDuration = segEnd - segStart;
+      // Use configurable threshold instead of hardcoded 50%
+      const thresholdMs = Math.ceil(segDuration * (timeOffThreshold / 100));
       
       // Calculate overlap for this person
       const personTimeOff = timeOffByPerson.get(a.person_id) || [];
       let ovl = 0;
       for (const t of personTimeOff) {
-        const s = new Date(t.start_ts).getTime();
-        const e = new Date(t.end_ts).getTime();
+        const s = t.start.getTime();
+        const e = t.end.getTime();
         ovl += Math.max(0, Math.min(e, segEnd) - Math.max(s, segStart));
       }
       
-      const heavy = ovl >= half;
+      const heavy = ovl >= thresholdMs;
       if (heavy) continue;
       map.set(a.role_id, (map.get(a.role_id) || 0) + 1);
     }
     return map;
-  }, [all, roles, seg, segTimesTop, selectedDateObj, ymd, assignedCountMap, getSegTimesForPersonTop]);
+  }, [all, roles, seg, segTimesTop, selectedDateObj, ymd, assignedCountMap, getSegTimesForPersonTop, timeOffThreshold]);
 
   const GroupCard = React.memo(function GroupCard({ group, isDraggable }: { group: any; isDraggable: boolean }) {
     const rolesForGroup = roles.filter((r) => r.group_id === group.id);
     
     // Calculate total filled and total required for the group
+    // Use effectiveCount which accounts for time-off overlaps
     let totalFilled = 0;
     let totalRequired = 0;
     for (const r of rolesForGroup) {
-      const assignedCount = assignedCountMap.get(r.id) || 0;
+      const effectiveCount = assignedEffectiveCountMap.get(r.id) || 0;
       const req = getRequiredFor(selectedDateObj, group.id, r.id, seg);
-      totalFilled += assignedCount;
+      totalFilled += effectiveCount;
       totalRequired += req;
     }
     
     const groupNeedsMet = rolesForGroup.every((r: any) => {
-      const assignedCount = assignedCountMap.get(r.id) || 0;
+      const effectiveCount = assignedEffectiveCountMap.get(r.id) || 0;
       const req = getRequiredFor(selectedDateObj, group.id, r.id, seg);
-      return assignedCount >= req;
+      return effectiveCount >= req;
     });
     // Use more subtle accent colors
     const groupAccent = groupNeedsMet
@@ -1267,8 +1618,42 @@ export default function DailyRunBoard({
         [dayStart.toISOString(), dayEnd.toISOString()]
       );
       
+      // Also fetch recurring_timeoff (Flex Time) entries for this day
+      // Convert Date's getDay() (0=Sun..6=Sat) to our weekday (0=Mon..4=Fri)
+      const jsWeekday = selectedDateObj.getDay();
+      const weekday = jsWeekday >= 1 && jsWeekday <= 5 ? jsWeekday - 1 : -1;
+      
+      // Combine regular timeoff and recurring timeoff into one array
+      interface TimeOffEntry { person_id: number; start: Date; end: Date; }
+      const allTimeOff: TimeOffEntry[] = [];
+      
       for (const r of rows as any[]) {
-        const pid = r.person_id as number;
+        allTimeOff.push({
+          person_id: r.person_id,
+          start: new Date(r.start_ts),
+          end: new Date(r.end_ts),
+        });
+      }
+      
+      // Add recurring_timeoff entries for weekdays (Mon-Fri)
+      if (weekday >= 0) {
+        const recurringRows = all(
+          `SELECT person_id, start_time, end_time FROM recurring_timeoff WHERE weekday=? AND active=1`,
+          [weekday]
+        );
+        for (const r of recurringRows as any[]) {
+          const [startH, startM] = (r.start_time as string).split(':').map(Number);
+          const [endH, endM] = (r.end_time as string).split(':').map(Number);
+          allTimeOff.push({
+            person_id: r.person_id,
+            start: new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate(), startH, startM, 0, 0),
+            end: new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate(), endH, endM, 0, 0),
+          });
+        }
+      }
+      
+      for (const r of allTimeOff) {
+        const pid = r.person_id;
         
         // Get this person's adjusted segment times
         const personSegTimes = getSegTimesForPerson(pid);
@@ -1279,8 +1664,8 @@ export default function DailyRunBoard({
         const segEnd = en.getTime();
         const segMinutes = Math.max(0, Math.round((segEnd - segStart) / 60000));
         
-        const s = new Date(r.start_ts).getTime();
-        const e = new Date(r.end_ts).getTime();
+        const s = r.start.getTime();
+        const e = r.end.getTime();
         const ovl = Math.max(0, Math.min(e, segEnd) - Math.max(s, segStart));
         if (ovl <= 0) continue;
         const prev = map.get(pid)?.minutes || 0;
@@ -1505,6 +1890,11 @@ export default function DailyRunBoard({
                   {a.last_name}, {a.first_name}
                   {!trainedBefore.has(a.person_id) && " (Untrained)"}
                 </PersonName>
+                {movedToMap.has(`${a.person_id}:${role.id}`) && (
+                  <Tooltip content="This person was moved to this role" relationship="label">
+                    <span className={s.movedBadge}>Moved</span>
+                  </Tooltip>
+                )}
         {(() => {
                   const info = overlapByPerson.get(a.person_id);
                   if (!info) return null;
@@ -1558,24 +1948,27 @@ export default function DailyRunBoard({
     );
   });
 
-  async function confirmMove() {
+  function confirmMove() {
     if (!moveContext || moveTargetId == null) return;
     const chosen = moveContext.targets.find((t) => t.role.id === moveTargetId);
     if (!chosen) return;
     
-    // Check for partial time-off overlap
-    const overlapInfo = getTimeOffOverlapInfo(moveContext.assignment.person_id, selectedDateObj, seg);
-    let message = `Move ${moveContext.assignment.last_name}, ${moveContext.assignment.first_name} to ${chosen.group.name} - ${chosen.role.name}?`;
-    if (overlapInfo.hasOverlap && overlapInfo.overlapPercent > 0) {
-      message += `\n\nNote: This person has ${overlapInfo.overlapPercent}% time-off overlap during this segment.`;
-    }
+    // Capture values before clearing state to avoid race conditions
+    const assignmentId = moveContext.assignment.id;
+    const personId = moveContext.assignment.person_id;
+    const toRoleId = chosen.role.id;
+    const dateStr = ymd(selectedDateObj);
+    const currentSeg = seg;
     
-    const confirmed = await dialogs.showConfirm(message, "Confirm Move");
-    if (!confirmed) return;
-    deleteAssignment(moveContext.assignment.id);
-    addAssignment(selectedDate, moveContext.assignment.person_id, chosen.role.id, seg);
+    // Clear state BEFORE DB operations to prevent dialog re-opening
     setMoveContext(null);
     setMoveTargetId(null);
+    
+    // Delete old assignment and insert new one directly (bypass addAssignment checks for moves)
+    // Moves are detected by comparing current assignments with monthly defaults, no need to log
+    run(`DELETE FROM assignment WHERE id=?`, [assignmentId]);
+    run(`INSERT INTO assignment (date, person_id, role_id, segment) VALUES (?,?,?,?)`, [dateStr, personId, toRoleId, currentSeg]);
+    refreshCaches();
   }
 
   function cancelMove() {
@@ -1615,6 +2008,8 @@ export default function DailyRunBoard({
           </TabList>
         </div>
         <div className={s.headerRight}>
+          <Button appearance="secondary" onClick={() => setShowMovesModal(true)}>View Moves</Button>
+          <Button appearance="secondary" onClick={handleSendToTeams}>Send to Teams</Button>
           <Button appearance="secondary" onClick={handleExportDaily}>Export</Button>
           <Button appearance="secondary" onClick={handleAutoFill}>Auto Fill</Button>
           <Button appearance="secondary" onClick={handleCopyDefaults}>Copy Defaults</Button>
@@ -1672,6 +2067,60 @@ export default function DailyRunBoard({
               </MessageBar>
             );
           })}
+        </div>
+      )}
+
+      {/* Unassigned Available People Indicator */}
+      {unassignedAvailable.length > 0 && (
+        <div 
+          style={{ 
+            marginBottom: tokens.spacingVerticalM,
+            padding: tokens.spacingHorizontalS,
+            backgroundColor: tokens.colorNeutralBackground3,
+            borderRadius: tokens.borderRadiusMedium,
+            border: `1px solid ${tokens.colorNeutralStroke2}`,
+          }}
+        >
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+            }}
+            onClick={() => setShowUnassigned(!showUnassigned)}
+          >
+            <Text weight="semibold" size={200}>
+              📋 {unassignedAvailable.length} available but unassigned
+            </Text>
+            <Button size="small" appearance="subtle">
+              {showUnassigned ? 'Hide' : 'Show'}
+            </Button>
+          </div>
+          {showUnassigned && (
+            <div style={{ 
+              marginTop: tokens.spacingVerticalS,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: tokens.spacingHorizontalXS,
+            }}>
+              {unassignedAvailable.map((p: any) => (
+                <Tooltip 
+                  key={p.id} 
+                  content={p.hasTimeOff ? "Has time off during this day" : "Available"} 
+                  relationship="label"
+                >
+                  <Badge 
+                    appearance={p.hasTimeOff ? "tint" : "outline"} 
+                    color={p.hasTimeOff ? "warning" : "brand"}
+                    size="small"
+                  >
+                    {p.hasTimeOff && "⏰ "}{p.first_name} {p.last_name}
+                  </Badge>
+                </Tooltip>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1804,6 +2253,49 @@ export default function DailyRunBoard({
           onConfirm={() => dialogs.handleConfirm(true)}
           onCancel={() => dialogs.handleConfirm(false)}
         />
+      )}
+      
+      {/* Today's Moves Summary Modal */}
+      {showMovesModal && (
+        <Dialog open={showMovesModal} onOpenChange={(_, d) => { if (!d.open) setShowMovesModal(false); }}>
+          <DialogSurface>
+            <DialogBody>
+              <DialogTitle>Moves for {seg}</DialogTitle>
+              <DialogContent>
+                <TodaysMovesList date={ymd(selectedDateObj)} segment={seg} all={all} allRoles={allRoles} loadMonthlyDefaultsForMonth={loadMonthlyDefaultsForMonth} />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowMovesModal(false)}>Close</Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+      )}
+      
+      {/* Teams Draft Modal */}
+      {showTeamsDraft && (
+        <Dialog open={showTeamsDraft} onOpenChange={(_, d) => { if (!d.open) setShowTeamsDraft(false); }}>
+          <DialogSurface style={{ maxWidth: '700px', width: '90vw' }}>
+            <DialogBody>
+              <DialogTitle>Teams Message Draft</DialogTitle>
+              <DialogContent>
+                <Text size={200} style={{ marginBottom: tokens.spacingVerticalS, display: 'block' }}>
+                  Copy this message and paste it into your Teams channel:
+                </Text>
+                <Textarea
+                  value={teamsDraftText}
+                  readOnly
+                  style={{ width: '100%', minHeight: '400px', fontFamily: 'monospace', fontSize: '14px' }}
+                  resize="vertical"
+                />
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowTeamsDraft(false)}>Close</Button>
+                <Button appearance="primary" onClick={handleCopyTeamsDraft}>Copy to Clipboard</Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
       )}
     </div>
   );

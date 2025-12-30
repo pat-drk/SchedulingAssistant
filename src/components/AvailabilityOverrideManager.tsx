@@ -20,6 +20,7 @@ import {
   type Availability,
 } from "../services/availabilityOverrides";
 import AlertDialog from "./AlertDialog";
+import ConfirmDialog from "./ConfirmDialog";
 import { useDialogs } from "../hooks/useDialogs";
 
 interface AvailabilityOverrideManagerProps {
@@ -106,6 +107,63 @@ export default function AvailabilityOverrideManager({
     Availability | null
   )[]>([null, null, null, null, null]);
   const [rev, setRev] = React.useState(0);
+  
+  // Pending changes for person/date selection when there are unsaved changes
+  const [pendingPersonId, setPendingPersonId] = React.useState<number | null>(null);
+  const [pendingWeekDate, setPendingWeekDate] = React.useState<string | null>(null);
+  const [showUnsavedWarning, setShowUnsavedWarning] = React.useState(false);
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = React.useMemo(() => {
+    for (let i = 0; i < 5; i++) {
+      const current = weekAvail[i];
+      const original = origOverrides[i] ?? defaultAvail[i];
+      if (current !== original) return true;
+    }
+    return false;
+  }, [weekAvail, origOverrides, defaultAvail]);
+
+  // Handle person change with unsaved warning
+  const handlePersonChange = (newPersonId: number) => {
+    if (hasUnsavedChanges) {
+      setPendingPersonId(newPersonId);
+      setPendingWeekDate(null);
+      setShowUnsavedWarning(true);
+    } else {
+      setPersonId(newPersonId);
+    }
+  };
+
+  // Handle date change with unsaved warning
+  const handleDateChange = (newDate: string) => {
+    if (hasUnsavedChanges) {
+      setPendingWeekDate(newDate);
+      setPendingPersonId(null);
+      setShowUnsavedWarning(true);
+    } else {
+      setWeekDate(newDate);
+    }
+  };
+
+  // Confirm discard changes
+  const confirmDiscardChanges = () => {
+    if (pendingPersonId != null) {
+      setPersonId(pendingPersonId);
+    }
+    if (pendingWeekDate != null) {
+      setWeekDate(pendingWeekDate);
+    }
+    setPendingPersonId(null);
+    setPendingWeekDate(null);
+    setShowUnsavedWarning(false);
+  };
+
+  // Cancel discard
+  const cancelDiscardChanges = () => {
+    setPendingPersonId(null);
+    setPendingWeekDate(null);
+    setShowUnsavedWarning(false);
+  };
 
   const selectedPersonLabel = React.useMemo(() => {
     if (personId == null) return '';
@@ -250,7 +308,7 @@ export default function AvailabilityOverrideManager({
           placeholder="Select person..."
           selectedOptions={personId != null ? [String(personId)] : []}
           value={selectedPersonLabel}
-          onOptionSelect={(_, d) => setPersonId(Number(d.optionValue))}
+          onOptionSelect={(_, d) => handlePersonChange(Number(d.optionValue))}
         >
           {people.map((p: any) => {
             const label = `${p.first_name} ${p.last_name}`;
@@ -265,7 +323,7 @@ export default function AvailabilityOverrideManager({
           className={s.dateCol}
           type="date"
           value={weekDate}
-          onChange={(_, d) => setWeekDate(d.value)}
+          onChange={(_, d) => handleDateChange(d.value)}
         />
       </div>
       <Table size="small" className={s.weekTable}>
@@ -352,6 +410,18 @@ export default function AvailabilityOverrideManager({
           title={dialogs.alertState.title}
           message={dialogs.alertState.message}
           onClose={dialogs.closeAlert}
+        />
+      )}
+      
+      {showUnsavedWarning && (
+        <ConfirmDialog
+          open={true}
+          title="Unsaved Changes"
+          message="You have unsaved changes. Do you want to discard them?"
+          confirmLabel="Discard"
+          cancelLabel="Go Back"
+          onConfirm={confirmDiscardChanges}
+          onCancel={cancelDiscardChanges}
         />
       )}
     </div>

@@ -12,6 +12,8 @@ import {
   Divider,
   Card,
   tokens,
+  Input,
+  Label,
 } from "@fluentui/react-components";
 import {
   Settings20Regular,
@@ -28,7 +30,7 @@ import ExportGroupEditor from "./ExportGroupEditor";
 import type { SegmentRow } from "../services/segments";
 import TimeOffManager from "./TimeOffManager";
 import AvailabilityOverrideManager from "./AvailabilityOverrideManager";
-import AutoFillSettings from "./AutoFillSettings";
+import { AutoFillPrioritySettings } from "./AutoFillSettings";
 import SkillsEditor from "./SkillsEditor";
 import WeekCalculationSettings from "./WeekCalculationSettings";
 import TimeOffThresholdSettings from "./TimeOffThresholdSettings";
@@ -72,13 +74,14 @@ interface AdminViewProps {
   run: (sql: string, params?: any[]) => void;
   refresh: () => void;
   segments: SegmentRow[];
+  groups: any[];
   onTimeOffThresholdChange?: (threshold: number) => void;
 }
 
-export default function AdminView({ sqlDb, all, run, refresh, segments, onTimeOffThresholdChange }: AdminViewProps) {
+export default function AdminView({ sqlDb, all, run, refresh, segments, groups, onTimeOffThresholdChange }: AdminViewProps) {
   const s = useAdminViewStyles();
   const [showOverrides, setShowOverrides] = React.useState(false);
-  const [showAutoFillSettings, setShowAutoFillSettings] = React.useState(false);
+  const [showAutoFillPrioritySettings, setShowAutoFillPrioritySettings] = React.useState(false);
   const [showWeekCalcSettings, setShowWeekCalcSettings] = React.useState(false);
   const [showTimeOffThresholdSettings, setShowTimeOffThresholdSettings] = React.useState(false);
   
@@ -92,8 +95,8 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, onTimeOf
         </div>
         <Card className={s.card}>
           <div className={s.buttonRow}>
-            <Button appearance="outline" onClick={() => setShowAutoFillSettings(true)}>
-              Auto-Fill Settings
+            <Button appearance="outline" onClick={() => setShowAutoFillPrioritySettings(true)}>
+              Auto-Fill Priority
             </Button>
             <Button appearance="outline" onClick={() => setShowWeekCalcSettings(true)}>
               Week Calculation Settings
@@ -172,8 +175,14 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, onTimeOf
         </Dialog>
       )}
       
-      {showAutoFillSettings && (
-        <AutoFillSettings open={showAutoFillSettings} onClose={() => setShowAutoFillSettings(false)} />
+      {showAutoFillPrioritySettings && (
+        <AutoFillPrioritySettings 
+          open={showAutoFillPrioritySettings} 
+          onClose={() => setShowAutoFillPrioritySettings(false)}
+          all={all}
+          run={run}
+          groups={groups}
+        />
       )}
       
       {showWeekCalcSettings && (
