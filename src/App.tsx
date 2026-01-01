@@ -1029,26 +1029,32 @@ export default function App() {
             // Parse the row data object
             const rowData = JSON.parse(rowJson) as Record<string, any>;
             
-            // Build WHERE clause to match this row by its content (excluding id for matching)
-            const conditions: string[] = [];
-            const values: any[] = [];
-            
-            for (const [col, val] of Object.entries(rowData)) {
-              if (col.toLowerCase() === 'id') continue; // Skip id for matching
-              if (val === null) {
-                conditions.push(`${col} IS NULL`);
-              } else {
-                conditions.push(`${col} = ?`);
-                values.push(val);
-              }
-            }
-            
-            if (conditions.length > 0) {
-              sqlDb.run(
-                `DELETE FROM ${table} WHERE ${conditions.join(' AND ')} LIMIT 1`,
-                values
-              );
+            // Use the id column if available (most reliable), otherwise match by content
+            if (rowData.id !== undefined) {
+              sqlDb.run(`DELETE FROM ${table} WHERE id = ?`, [rowData.id]);
               removedCount++;
+            } else {
+              // Fallback: Build WHERE clause to match this row by its content
+              const conditions: string[] = [];
+              const values: any[] = [];
+              
+              for (const [col, val] of Object.entries(rowData)) {
+                if (val === null) {
+                  conditions.push(`${col} IS NULL`);
+                } else {
+                  conditions.push(`${col} = ?`);
+                  values.push(val);
+                }
+              }
+              
+              if (conditions.length > 0) {
+                // Note: SQLite doesn't support LIMIT in DELETE, use subquery instead
+                sqlDb.run(
+                  `DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE ${conditions.join(' AND ')} LIMIT 1)`,
+                  values
+                );
+                removedCount++;
+              }
             }
           } catch (e) {
             console.warn(`[Merge] Could not remove row from ${table}:`, e);
