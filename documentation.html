@@ -387,7 +387,7 @@
                                 </tr>
                                 <tr>
                                     <td class="p-3 font-semibold">Open DB</td>
-                                    <td class="p-3">Loads an existing <code>.db</code> file for editing.</td>
+                                    <td class="p-3">Loads the newest <code>.db</code> file from a folder. Checks for conflicts with other files saved concurrently.</td>
                                     <td class="p-3">Regular daily use to modify schedules.</td>
                                 </tr>
                             </tbody>
@@ -398,25 +398,25 @@
                         <i class="fas fa-save text-[#0078d4]"></i>
                         Saving Data
                     </h3>
-                    <p class="text-sm text-[#616161] mb-4">Changes are held in memory until you explicitly save them.</p>
+                    <p class="text-sm text-[#616161] mb-4">Each save creates a new timestamped file to prevent conflicts and enable version history.</p>
                     
                     <div class="grid md:grid-cols-2 gap-6 mb-8">
                         <div class="p-6 bg-[#fdfdfd] border border-[#e0e0e0] rounded-lg shadow-sm">
                             <h4 class="font-bold text-[#242424] mb-2 text-sm">Save (Ctrl+S)</h4>
-                            <p class="text-xs text-[#616161] mb-3">Writes all changes back to the currently opened file and releases the lock.</p>
+                            <p class="text-xs text-[#616161] mb-3">Creates a new timestamped file (e.g., <code>schedule-2026-01-01T10-30-00-username.db</code>).</p>
                             <ul class="text-xs text-[#616161] space-y-1">
-                                <li>• Requires write permission on the file</li>
-                                <li>• Releases the edit lock so others can edit</li>
-                                <li>• Use frequently to avoid data loss</li>
+                                <li>• Never overwrites existing files—always creates new</li>
+                                <li>• Detects if others saved since you opened</li>
+                                <li>• Auto-cleans old files (keeps 10 or 24h worth)</li>
                             </ul>
                         </div>
                         <div class="p-6 bg-[#f0f7ff] border border-[#0078d4] rounded-lg shadow-sm">
-                            <h4 class="font-bold text-[#0078d4] mb-2 text-sm">Save As</h4>
-                            <p class="text-xs text-[#005a9e] mb-3">Creates a new copy of the database at a different location.</p>
+                            <h4 class="font-bold text-[#0078d4] mb-2 text-sm">Conflict Detection</h4>
+                            <p class="text-xs text-[#005a9e] mb-3">If another user saved while you were editing, you'll be prompted.</p>
                             <ul class="text-xs text-[#005a9e] space-y-1">
-                                <li>• Use to create backups</li>
-                                <li>• Prompts for new file location</li>
-                                <li>• Switches to editing the new file</li>
+                                <li>• See what tables have differences</li>
+                                <li>• Choose to merge or save anyway</li>
+                                <li>• Merged files marked with "-merged"</li>
                             </ul>
                         </div>
                     </div>
@@ -444,8 +444,8 @@
                             <li><strong>4. Extended Checking:</strong> Even after acquiring the lock, the app continues checking for 30 seconds in case lock files sync late. If a conflict is found later, your lock is revoked.</li>
                             <li><strong>5. Read-Only Mode:</strong> If another user has the lock, you'll open in read-only mode with their email displayed.</li>
                             <li><strong>6. Heartbeat:</strong> The lock is refreshed automatically every 30 seconds. Stale locks (&gt;5 minutes) are automatically cleaned up.</li>
-                            <li><strong>7. Auto-Backup:</strong> Before each save, a timestamped backup is created. Backups older than 24 hours are automatically deleted.</li>
-                            <li><strong>8. Saving:</strong> Saving writes your changes but keeps the lock—you can continue editing. Before saving, the app verifies you still own the lock and the file hasn't been modified externally.</li>
+                            <li><strong>7. Timestamped Saves:</strong> Each save creates a new uniquely-named file, preventing overwrite conflicts. Old files are automatically cleaned up.</li>
+                            <li><strong>8. Session Tracking:</strong> When opening a file, the app checks if other files were saved after that file's editing session began—indicating concurrent edits. When saving, it checks for new files since you opened. Either way, you're prompted to merge or proceed.</li>
                             <li><strong>9. Release Lock:</strong> Click the "Release Lock" button to voluntarily give up your edit lock so others can edit. You'll enter read-only mode.</li>
                             <li><strong>10. Close Warning:</strong> If you try to close the browser while holding a lock, you'll be prompted to confirm—the lock is released when you leave.</li>
                             <li><strong>11. Lock Monitoring:</strong> The app periodically verifies you still own the lock. If lost, you'll be prompted to reload.</li>
@@ -1328,6 +1328,17 @@
                                     <td class="p-3 font-semibold">Teams Webhook Settings</td>
                                     <td class="p-3">Configure the Microsoft Teams webhook URL for the "Send to Teams" feature on the Daily Run Board. Paste the Incoming Webhook URL from your Teams channel connector configuration.</td>
                                     <td class="p-3">Webhook URL (stored in database)</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-semibold">Version History</td>
+                                    <td class="p-3">View, restore, and merge previous database versions. Each save creates a new timestamped file (e.g., <code>schedule-2026-01-01T10-30-00-username.db</code>) so saves never overwrite each other. Files are retained for 24 hours or the last 10 versions, whichever keeps more. Features include:
+                                        <ul class="mt-2 ml-4 list-disc text-xs">
+                                            <li><strong>Restore:</strong> Load a previous version, discarding current unsaved changes</li>
+                                            <li><strong>Merge:</strong> Combine your changes with another version, choosing which data to keep for each table</li>
+                                            <li><strong>Conflict Detection:</strong> When saving, the system automatically detects if another user saved changes since you opened the file and prompts you to merge or save anyway</li>
+                                        </ul>
+                                    </td>
+                                    <td class="p-3">View files, restore, merge with conflict resolution</td>
                                 </tr>
                             </tbody>
                         </table>

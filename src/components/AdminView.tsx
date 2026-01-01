@@ -20,6 +20,7 @@ import {
   CalendarLtr20Regular,
   CalendarMonth20Regular,
   DatabaseLightning20Regular,
+  History20Regular,
 } from "@fluentui/react-icons";
 import SegmentEditor from "./SegmentEditor";
 import DepartmentEventManager from "./DepartmentEventManager";
@@ -34,6 +35,7 @@ import { AutoFillPrioritySettings } from "./AutoFillSettings";
 import SkillsEditor from "./SkillsEditor";
 import WeekCalculationSettings from "./WeekCalculationSettings";
 import TimeOffThresholdSettings from "./TimeOffThresholdSettings";
+import VersionHistory from "./VersionHistory";
 
 const useAdminViewStyles = makeStyles({
   root: {
@@ -76,14 +78,23 @@ interface AdminViewProps {
   segments: SegmentRow[];
   groups: any[];
   onTimeOffThresholdChange?: (threshold: number) => void;
+  dirHandle: FileSystemDirectoryHandle | null;
+  currentFilename: string;
+  onRestoreVersion: (filename: string) => void;
+  onMergeVersion: (filename: string) => void;
+  SQL: any;
 }
 
-export default function AdminView({ sqlDb, all, run, refresh, segments, groups, onTimeOffThresholdChange }: AdminViewProps) {
+export default function AdminView({ 
+  sqlDb, all, run, refresh, segments, groups, onTimeOffThresholdChange,
+  dirHandle, currentFilename, onRestoreVersion, onMergeVersion, SQL
+}: AdminViewProps) {
   const s = useAdminViewStyles();
   const [showOverrides, setShowOverrides] = React.useState(false);
   const [showAutoFillPrioritySettings, setShowAutoFillPrioritySettings] = React.useState(false);
   const [showWeekCalcSettings, setShowWeekCalcSettings] = React.useState(false);
   const [showTimeOffThresholdSettings, setShowTimeOffThresholdSettings] = React.useState(false);
+  const [showVersionHistory, setShowVersionHistory] = React.useState(false);
   
   return (
     <div className={s.root}>
@@ -103,6 +114,9 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, groups, 
             </Button>
             <Button appearance="outline" onClick={() => setShowTimeOffThresholdSettings(true)}>
               Time-Off Threshold Settings
+            </Button>
+            <Button appearance="outline" icon={<History20Regular />} onClick={() => setShowVersionHistory(true)}>
+              Version History
             </Button>
           </div>
         </Card>
@@ -201,6 +215,18 @@ export default function AdminView({ sqlDb, all, run, refresh, segments, groups, 
           all={all}
           run={run}
           onThresholdChange={onTimeOffThresholdChange}
+        />
+      )}
+      
+      {showVersionHistory && (
+        <VersionHistory
+          open={showVersionHistory}
+          onClose={() => setShowVersionHistory(false)}
+          dirHandle={dirHandle}
+          currentFilename={currentFilename}
+          onRestore={onRestoreVersion}
+          onMerge={onMergeVersion}
+          SQL={SQL}
         />
       )}
     </div>

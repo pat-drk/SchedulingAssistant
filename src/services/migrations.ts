@@ -412,6 +412,20 @@ export const migrate33AddAutofillGroupSourcePriority: Migration = (db) => {
   console.log('Migration 33 complete - added autofill_group_source_priority table');
 };
 
+// 34. Add db_snapshots table for version history
+export const migrate34AddDbSnapshots: Migration = (db) => {
+  db.run(`CREATE TABLE IF NOT EXISTS db_snapshot (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    user_email TEXT,
+    description TEXT,
+    data BLOB NOT NULL,
+    size_bytes INTEGER NOT NULL
+  );`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_db_snapshot_timestamp ON db_snapshot(timestamp);`);
+  console.log('Migration 34 complete - added db_snapshot table for version history');
+};
+
 export const migrate6AddExportGroup: Migration = (db) => {
   db.run(`CREATE TABLE IF NOT EXISTS export_group (
       group_id INTEGER PRIMARY KEY,
@@ -934,6 +948,7 @@ const migrations: Record<number, Migration> = {
   31: migrate31AddAutofillPriority,
   32: migrate32AddTeamsWebhook,
   33: migrate33AddAutofillGroupSourcePriority,
+  34: migrate34AddDbSnapshots,
 };
 
 export function addMigration(version: number, fn: Migration) {

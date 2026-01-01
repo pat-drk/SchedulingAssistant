@@ -27,6 +27,8 @@ import { getWeekOfMonth, type WeekStartMode } from "./utils/weekCalculation";
 import AlertDialog from "./components/AlertDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 import EmailInputDialog from "./components/EmailInputDialog";
+import ConflictDialog from "./components/ConflictDialog";
+import MergeDialog from "./components/MergeDialog";
 import { ToastContainer, useToast } from "./components/Toast";
 import { logger } from "./utils/logger";
 import { MOBILE_NAV_HEIGHT, BREAKPOINTS } from "./styles/breakpoints";
@@ -96,6 +98,28 @@ function weekdayName(d: Date): Weekday | "Weekend" {
     case 5: return "Friday";
     default: return "Weekend";
   }
+}
+
+// Types for file-based version history and conflict detection
+interface FileVersionInfo {
+  filename: string;
+  savedAt: string;
+  savedBy: string;
+  sessionStartedAt: string;
+  sizeBytes: number;
+}
+
+interface ConflictDetail {
+  table: string;
+  description: string;
+  countA: number;
+  countB: number;
+  differences: number;
+}
+
+interface ConflictInfo {
+  conflictingFiles: FileVersionInfo[];
+  conflictDetails: ConflictDetail[];
 }
 
 // SQL.js
@@ -539,8 +563,11 @@ export default function App() {
 
   const [ready, setReady] = useState(false);
   const [sqlDb, setSqlDb] = useState<any | null>(null);
-  const [dbOpenVersion, setDbOpenVersion] = useState<number>(0); // Track version when we opened the file
-  const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null); // For re-reading file to check version
+  const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null); // When user opened the file
+  const [currentFilename, setCurrentFilename] = useState<string>(""); // Current open file name
+  const [pendingConflicts, setPendingConflicts] = useState<ConflictInfo | null>(null); // Detected conflicts before save
+  const [mergeTarget, setMergeTarget] = useState<{ filename: string; db: any } | null>(null); // File being merged
+  const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null); // For file operations
 
   useEffect(() => {
     (window as any).sqlDb = sqlDb;
@@ -756,81 +783,257 @@ export default function App() {
     return rows;
   }
 
-  // Database version helpers for conflict detection
-  function getDbVersion(db: any): number {
-    try {
-      const rows = db.exec(`SELECT value FROM meta WHERE key='db_version'`);
-      if (rows && rows[0] && rows[0].values[0] && rows[0].values[0][0]) {
-        return parseInt(String(rows[0].values[0][0])) || 0;
+  // File-based version history helpers
+
+  // Sanitize username for filename
+  function sanitizeForFilename(str: string): string {
+    return str.replace(/[^a-zA-Z0-9]/g, '-').substring(0, 20);
+  }
+
+  // Generate timestamped filename
+  function generateSaveFilename(email: string, isMerge: boolean = false): string {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const user = sanitizeForFilename(email || 'unknown');
+    const suffix = isMerge ? '-merged' : '';
+    return `schedule-${timestamp}-${user}${suffix}.db`;
+  }
+
+  // Set metadata in database before saving
+  function setSessionMetadata(db: any, email: string, sessionStarted: string): void {
+    const savedAt = new Date().toISOString();
+    db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('session_started_at', ?)`, [sessionStarted]);
+    db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('saved_at', ?)`, [savedAt]);
+    db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('saved_by', ?)`, [email]);
+  }
+
+  // Get metadata from a database
+  function getFileMetadata(db: any): { sessionStartedAt: string | null; savedAt: string | null; savedBy: string | null } {
+    const getVal = (key: string): string | null => {
+      try {
+        const rows = db.exec(`SELECT value FROM meta WHERE key='${key}'`);
+        return (rows[0]?.values[0]?.[0] as string) || null;
+      } catch { return null; }
+    };
+    return {
+      sessionStartedAt: getVal('session_started_at'),
+      savedAt: getVal('saved_at'),
+      savedBy: getVal('saved_by')
+    };
+  }
+
+  // Scan folder for all schedule-*.db files with metadata
+  async function scanScheduleFiles(dirHandle: FileSystemDirectoryHandle): Promise<FileVersionInfo[]> {
+    const files: FileVersionInfo[] = [];
+    
+    for await (const entry of (dirHandle as any).values()) {
+      if (entry.kind === 'file' && entry.name.startsWith('schedule-') && entry.name.endsWith('.db')) {
+        try {
+          const file = await entry.getFile();
+          const buf = await file.arrayBuffer();
+          const tempDb = new SQL.Database(new Uint8Array(buf));
+          const meta = getFileMetadata(tempDb);
+          tempDb.close();
+          
+          files.push({
+            filename: entry.name,
+            savedAt: meta.savedAt || '',
+            savedBy: meta.savedBy || 'Unknown',
+            sessionStartedAt: meta.sessionStartedAt || '',
+            sizeBytes: file.size
+          });
+        } catch (e) {
+          console.warn(`[VersionHistory] Failed to read metadata from ${entry.name}:`, e);
+        }
       }
-    } catch {}
-    return 0;
-  }
-
-  function incrementDbVersion(db: any): number {
-    const current = getDbVersion(db);
-    const next = current + 1;
-    db.run(`INSERT INTO meta (key, value) VALUES ('db_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value;`, [String(next)]);
-    return next;
-  }
-
-  // Backup helpers - create timestamped backup before each save
-  const BACKUP_PREFIX = '.backup-';
-  const BACKUP_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-  async function createBackup(dirHandle: FileSystemDirectoryHandle, dbHandle: FileSystemFileHandle): Promise<void> {
-    try {
-      // Get current db filename
-      const dbFilename = dbHandle.name;
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupFilename = `${BACKUP_PREFIX}${timestamp}-${dbFilename}`;
-
-      // Read current file content
-      const file = await dbHandle.getFile();
-      const buffer = await file.arrayBuffer();
-
-      // Write backup
-      const backupHandle = await dirHandle.getFileHandle(backupFilename, { create: true });
-      const writable = await (backupHandle as any).createWritable();
-      await writable.write(buffer);
-      await writable.close();
-
-      console.log(`[Backup] Created: ${backupFilename}`);
-    } catch (e) {
-      console.error('[Backup] Failed to create backup:', e);
-      // Don't throw - backup failure shouldn't block save
     }
+    
+    // Sort by savedAt descending (newest first)
+    files.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+    return files;
   }
 
-  async function cleanupOldBackups(dirHandle: FileSystemDirectoryHandle): Promise<void> {
-    try {
-      const now = Date.now();
-      const toDelete: string[] = [];
+  // Find files saved between session start and now (conflicts)
+  function findConflictingFiles(files: FileVersionInfo[], sessionStart: string, currentFile: string): FileVersionInfo[] {
+    const sessionStartTime = new Date(sessionStart).getTime();
+    const now = Date.now();
+    
+    return files.filter(f => {
+      if (!f.savedAt || f.filename === currentFile) return false;
+      const savedAtTime = new Date(f.savedAt).getTime();
+      return savedAtTime > sessionStartTime && savedAtTime < now;
+    });
+  }
 
-      for await (const [name, handle] of (dirHandle as any).entries()) {
-        if (handle.kind === 'file' && name.startsWith(BACKUP_PREFIX)) {
-          // Parse timestamp from filename: .backup-2025-12-30T14-30-45-123Z-database.db
-          const match = name.match(/^\.backup-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)-/);
-          if (match) {
-            const isoString = match[1].replace(/-(\d{2})-(\d{2})-(\d{3})Z$/, ':$1:$2.$3Z');
-            const backupTime = new Date(isoString).getTime();
-            if (now - backupTime > BACKUP_RETENTION_MS) {
-              toDelete.push(name);
-            }
+  // Compare two databases for conflicts in high-conflict tables
+  function detectConflictDetails(myDb: any, theirDb: any): ConflictDetail[] {
+    const highConflictTables = [
+      'assignment',
+      'timeoff',
+      'availability_override',
+      'monthly_default',
+      'monthly_default_day',
+      'monthly_default_week',
+    ];
+    
+    const conflicts: ConflictDetail[] = [];
+    
+    for (const table of highConflictTables) {
+      try {
+        const myRows = myDb.exec(`SELECT COUNT(*) FROM ${table}`);
+        const theirRows = theirDb.exec(`SELECT COUNT(*) FROM ${table}`);
+        
+        const countA = (myRows[0]?.values[0]?.[0] as number) || 0;
+        const countB = (theirRows[0]?.values[0]?.[0] as number) || 0;
+        
+        if (countA !== countB) {
+          conflicts.push({
+            table,
+            description: `Row count differs`,
+            countA,
+            countB,
+            differences: Math.abs(countA - countB)
+          });
+        }
+      } catch (e) {
+        // Table might not exist
+      }
+    }
+    
+    return conflicts;
+  }
+
+  // Cleanup old files (keep last 10 OR last 24 hours, whichever is more generous)
+  async function cleanupOldFiles(dirHandle: FileSystemDirectoryHandle, currentFile: string): Promise<void> {
+    try {
+      const files = await scanScheduleFiles(dirHandle);
+      const now = Date.now();
+      const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+      
+      // Files to keep
+      const filesToKeep = new Set<string>();
+      
+      // Keep the 10 most recent
+      files.slice(0, 10).forEach(f => filesToKeep.add(f.filename));
+      
+      // Also keep anything from last 24 hours
+      files.forEach(f => {
+        if (f.savedAt && new Date(f.savedAt).getTime() > twentyFourHoursAgo) {
+          filesToKeep.add(f.filename);
+        }
+      });
+      
+      // Always keep current file
+      filesToKeep.add(currentFile);
+      
+      // Delete the rest
+      for (const file of files) {
+        if (!filesToKeep.has(file.filename)) {
+          try {
+            await dirHandle.removeEntry(file.filename);
+            console.log(`[Cleanup] Deleted old file: ${file.filename}`);
+          } catch (e) {
+            console.warn(`[Cleanup] Failed to delete ${file.filename}:`, e);
           }
         }
       }
+    } catch (e) {
+      console.error('[Cleanup] Failed to cleanup old files:', e);
+    }
+  }
 
-      for (const filename of toDelete) {
-        try {
-          await dirHandle.removeEntry(filename);
-          console.log(`[Backup] Cleaned up old backup: ${filename}`);
-        } catch (e) {
-          console.warn(`[Backup] Failed to delete ${filename}:`, e);
+  // Restore a version from file
+  async function handleRestoreVersion(filename: string): Promise<void> {
+    if (!SQL || !dirHandleRef.current) {
+      setStatus('Cannot restore - no folder open');
+      return;
+    }
+    
+    try {
+      const fileHandle = await dirHandleRef.current.getFileHandle(filename);
+      const file = await fileHandle.getFile();
+      const buf = await file.arrayBuffer();
+      const newDb = new SQL.Database(new Uint8Array(buf));
+      
+      applyMigrations(newDb);
+      
+      setSqlDb(newDb);
+      setCurrentFilename(filename);
+      setSessionStartedAt(new Date().toISOString());
+      fileHandleRef.current = fileHandle;
+      refreshCaches(newDb);
+      
+      setStatus(`Restored ${filename}`);
+      toast.showSuccess('Version restored');
+    } catch (e) {
+      console.error('[Restore] Failed:', e);
+      setStatus('Failed to restore: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // Open merge dialog for a specific file
+  async function handleStartMerge(filename: string): Promise<void> {
+    if (!SQL || !dirHandleRef.current) {
+      setStatus('Cannot merge - no folder open');
+      return;
+    }
+    
+    try {
+      const fileHandle = await dirHandleRef.current.getFileHandle(filename);
+      const file = await fileHandle.getFile();
+      const buf = await file.arrayBuffer();
+      const theirDb = new SQL.Database(new Uint8Array(buf));
+      
+      setMergeTarget({ filename, db: theirDb });
+    } catch (e) {
+      console.error('[Merge] Failed to load file:', e);
+      setStatus('Failed to load file for merge: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // Execute merge with user's choices
+  async function executeMerge(choices: Array<{ table: string; choice: 'mine' | 'theirs' }>): Promise<void> {
+    if (!sqlDb || !mergeTarget || !dirHandleRef.current) {
+      setStatus('Cannot complete merge');
+      return;
+    }
+    
+    try {
+      const theirDb = mergeTarget.db;
+      
+      // For each table where user chose 'theirs', replace our data
+      for (const { table, choice } of choices) {
+        if (choice === 'theirs') {
+          // Delete our rows and copy theirs
+          sqlDb.run(`DELETE FROM ${table}`);
+          
+          // Get their data and insert it
+          const stmt = theirDb.prepare(`SELECT * FROM ${table}`);
+          while (stmt.step()) {
+            const row = stmt.getAsObject();
+            const columns = Object.keys(row);
+            const values = Object.values(row);
+            const placeholders = columns.map(() => '?').join(', ');
+            sqlDb.run(
+              `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`,
+              values
+            );
+          }
+          stmt.free();
         }
       }
+      
+      theirDb.close();
+      setMergeTarget(null);
+      setPendingConflicts(null);
+      
+      // Save as merged file
+      await performSave(true);
+      refreshCaches(sqlDb);
+      
+      toast.showSuccess('Merge completed');
     } catch (e) {
-      console.error('[Backup] Failed to cleanup old backups:', e);
+      console.error('[Merge] Failed:', e);
+      setStatus('Merge failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -857,17 +1060,41 @@ export default function App() {
         startIn: 'documents'
       });
 
-      // Step 2: Find DB file
-      let fileHandle: FileSystemFileHandle | null = null;
+      // Step 2: Find the LATEST schedule-*.db file by metadata
+      let latestFile: { handle: FileSystemFileHandle; savedAt: string; filename: string } | null = null;
+      let fallbackHandle: FileSystemFileHandle | null = null;
+
       for await (const entry of (dirHandle as any).values()) {
-        if (entry.kind === 'file' && (entry.name.endsWith('.db') || entry.name.endsWith('.sqlite'))) {
-          fileHandle = entry;
-          break; // Just take the first one for now
+        if (entry.kind === 'file' && entry.name.endsWith('.db')) {
+          // Check for schedule-*.db pattern (new format)
+          if (entry.name.startsWith('schedule-')) {
+            try {
+              const file = await entry.getFile();
+              const buf = await file.arrayBuffer();
+              const tempDb = new SQL.Database(new Uint8Array(buf));
+              const meta = getFileMetadata(tempDb);
+              tempDb.close();
+              
+              const savedAt = meta.savedAt || '';
+              if (!latestFile || savedAt > latestFile.savedAt) {
+                latestFile = { handle: entry, savedAt, filename: entry.name };
+              }
+            } catch (e) {
+              console.warn(`Failed to read ${entry.name}, skipping`);
+            }
+          } else if (!fallbackHandle) {
+            // Fallback: any .db file for migration from old format
+            fallbackHandle = entry;
+          }
         }
       }
 
+      // Use latest schedule file, or fallback to old format
+      const fileHandle = latestFile?.handle || fallbackHandle;
+      const filename = latestFile?.filename || (fallbackHandle ? (fallbackHandle as any).name : '');
+
       if (!fileHandle) {
-        throw new Error("No .db or .sqlite file found in this folder.");
+        throw new Error("No .db file found in this folder.");
       }
 
       // Step 3: Load DB
@@ -876,15 +1103,62 @@ export default function App() {
       const db = new SQL.Database(new Uint8Array(buf));
       applyMigrations(db);
 
-      // Track the version when we opened (for conflict detection)
-      const openVersion = getDbVersion(db);
-      setDbOpenVersion(openVersion);
+      // Get the file's session_started_at to check for conflicts
+      const fileMetadata = getFileMetadata(db);
+      const fileSessionStart = fileMetadata.sessionStartedAt || fileMetadata.savedAt || '';
+
+      // Track NEW session start time for this editing session
+      const sessionStart = new Date().toISOString();
+      setSessionStartedAt(sessionStart);
+      setCurrentFilename(filename);
       dirHandleRef.current = dirHandle;
 
       setSqlDb(db);
       fileHandleRef.current = fileHandle;
-      setStatus(`Opened ${file.name}`);
+      setStatus(`Opened ${filename}`);
       refreshCaches(db);
+
+      // Step 3.5: Check for conflicts on open
+      // If the chosen file's session_started_at is earlier than other files' saved_at,
+      // those files represent concurrent work that might need to be merged
+      if (fileSessionStart) {
+        const allFiles = await scanScheduleFiles(dirHandle);
+        const conflictingOnOpen = allFiles.filter(f => {
+          if (!f.savedAt || f.filename === filename) return false;
+          // Files saved after the chosen file's session started are conflicts
+          return f.savedAt > fileSessionStart;
+        });
+
+        if (conflictingOnOpen.length > 0) {
+          // Show conflict dialog - there are newer files that may contain changes
+          const conflictDetails = await (async () => {
+            // Compare with the most recent conflicting file
+            const mostRecent = conflictingOnOpen[0]; // Already sorted by savedAt desc
+            try {
+              for await (const entry of (dirHandle as any).values()) {
+                if (entry.kind === 'file' && entry.name === mostRecent.filename) {
+                  const conflictFile = await entry.getFile();
+                  const conflictBuf = await conflictFile.arrayBuffer();
+                  const conflictDb = new SQL.Database(new Uint8Array(conflictBuf));
+                  const details = detectConflictDetails(db, conflictDb);
+                  conflictDb.close();
+                  return details;
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to detect conflict details:', e);
+            }
+            return [];
+          })();
+
+          setPendingConflicts({
+            conflictingFiles: conflictingOnOpen,
+            conflictDetails
+          });
+
+          toast.showInfo(`Found ${conflictingOnOpen.length} file(s) with potential conflicts. Review before editing.`);
+        }
+      }
 
       // Step 4: Prompt for Email & Auto-Lock
       // We pass the dirHandle to the submit callback so it can lock immediately
@@ -920,23 +1194,36 @@ export default function App() {
   }
 
   async function saveDbAs() {
-    if (!sqlDb) return;
-    const handle = await (window as any).showSaveFilePicker({
-      suggestedName: `teams-shifts-${Date.now()}.db`,
-      types: [{ description: "SQLite DB", accept: { "application/octet-stream": [".db"] } }],
-    });
-    await writeDbToHandle(handle);
-    fileHandleRef.current = handle;
+    if (!sqlDb || !dirHandleRef.current) {
+      // No folder open yet, use traditional save picker
+      const handle = await (window as any).showSaveFilePicker({
+        suggestedName: `schedule-${new Date().toISOString().replace(/[:.]/g, '-')}.db`,
+        types: [{ description: "SQLite DB", accept: { "application/octet-stream": [".db"] } }],
+      });
+      
+      // Get the directory from the saved file
+      // Note: This won't work perfectly but provides a fallback
+      const data = sqlDb.export();
+      const writable = await (handle as any).createWritable();
+      await writable.write(data);
+      await writable.close();
+      
+      fileHandleRef.current = handle;
+      setCurrentFilename(handle.name);
+      setSessionStartedAt(new Date().toISOString());
+      setStatus("Saved.");
+      toast.showSuccess("Database saved");
+      return;
+    }
+    
+    // With folder open, use the new timestamped save
+    await performSave(false);
   }
 
   async function saveDb() {
     if (!sqlDb) return;
-    if (!fileHandleRef.current) return saveDbAs();
+    if (!dirHandleRef.current) return saveDbAs();
     
-    await writeDbToHandle(fileHandleRef.current);
-  }
-
-  async function writeDbToHandle(handle: FileSystemFileHandle) {
     // Verify we still have the lock before saving
     if (hasLock) {
       const stillHaveLock = await verifyLock();
@@ -944,51 +1231,87 @@ export default function App() {
         setAlertDialog({
           title: "Cannot Save",
           message: "Your edit lock has been lost. Another user may have taken over editing.\n\nSave aborted to prevent overwriting their changes.\n\nPlease reload the application.",
-          onClose: () => {
-            window.location.reload();
-          }
+          onClose: () => window.location.reload()
         });
         return;
       }
     }
     
-    // Check if file was modified externally since we opened it
-    if (sqlDb && dbOpenVersion !== null) {
-      const currentVersion = getDbVersion(sqlDb);
-      if (currentVersion !== dbOpenVersion) {
-        setAlertDialog({
-          title: "File Modified Externally",
-          message: "The database file has been modified by another user since you opened it.\n\nYour changes cannot be saved without overwriting their work.\n\nPlease reload the application to get the latest version.",
-          onClose: () => {
-            window.location.reload();
-          }
-        });
-        return;
+    // Check for conflicting saves (files saved since our session started)
+    if (sessionStartedAt) {
+      const files = await scanScheduleFiles(dirHandleRef.current);
+      const conflicting = findConflictingFiles(files, sessionStartedAt, currentFilename);
+      
+      if (conflicting.length > 0) {
+        // Load the most recent conflicting file to show differences
+        try {
+          const latestConflict = conflicting[0];
+          const conflictHandle = await dirHandleRef.current.getFileHandle(latestConflict.filename);
+          const conflictFile = await conflictHandle.getFile();
+          const conflictBuf = await conflictFile.arrayBuffer();
+          const conflictDb = new SQL.Database(new Uint8Array(conflictBuf));
+          
+          const conflictDetails = detectConflictDetails(sqlDb, conflictDb);
+          conflictDb.close();
+          
+          // Show conflict dialog
+          setPendingConflicts({
+            conflictingFiles: conflicting,
+            conflictDetails
+          });
+          return; // Wait for user to decide
+        } catch (e) {
+          console.error('[Conflict] Failed to analyze conflicts:', e);
+          // Proceed with save anyway if analysis fails
+        }
       }
     }
     
-    // Create backup before saving (if we have the folder handle)
-    if (dirHandleRef.current) {
-      await createBackup(dirHandleRef.current, handle);
-      // Cleanup old backups (runs in background, non-blocking)
-      cleanupOldBackups(dirHandleRef.current).catch(e => 
-        console.warn('[Backup] Cleanup error:', e)
-      );
+    // No conflicts - proceed with save
+    await performSave(false);
+  }
+
+  async function performSave(isMerge: boolean = false): Promise<void> {
+    if (!sqlDb || !dirHandleRef.current) return;
+    
+    try {
+      // Set metadata in the database
+      setSessionMetadata(sqlDb, userEmail || 'Unknown', sessionStartedAt || new Date().toISOString());
+      
+      // Generate new filename
+      const filename = generateSaveFilename(userEmail, isMerge);
+      
+      // Create new file in the folder
+      const newHandle = await dirHandleRef.current.getFileHandle(filename, { create: true });
+      const data = sqlDb.export();
+      const writable = await (newHandle as any).createWritable();
+      await writable.write(data);
+      await writable.close();
+      
+      // Update our references
+      fileHandleRef.current = newHandle;
+      setCurrentFilename(filename);
+      
+      // Update session start to now (we're now based on this save)
+      const newSessionStart = new Date().toISOString();
+      setSessionStartedAt(newSessionStart);
+      
+      // Cleanup old files
+      await cleanupOldFiles(dirHandleRef.current, filename);
+      
+      setStatus(`Saved as ${filename}`);
+      toast.showSuccess("Database saved");
+    } catch (e) {
+      console.error('[Save] Failed:', e);
+      setStatus('Save failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.showError('Save failed');
     }
-    
-    // Increment version before export
-    if (sqlDb) {
-      const newVersion = incrementDbVersion(sqlDb);
-      setDbOpenVersion(newVersion);
-    }
-    
-    const data = sqlDb.export();
-    const writable = await (handle as any).createWritable();
-    await writable.write(data);
-    await writable.close();
-    
-    setStatus("Saved.");
-    toast.showSuccess("Database saved");
+  }
+
+  // Handle user choosing to save anyway (creating a branch)
+  async function handleSaveAnyway(): Promise<void> {
+    setPendingConflicts(null);
+    await performSave(false);
   }
 
   function syncTrainingFromMonthly(db = sqlDb) {
@@ -2889,7 +3212,20 @@ function PeopleEditor(){
           )}
           {activeTab === 'ADMIN' && (
             <Suspense fallback={<div className="p-4 text-slate-600">Loading Admin…</div>}>
-              <AdminView sqlDb={sqlDb} all={all} run={run} refresh={refreshCaches} segments={segments} groups={groups} onTimeOffThresholdChange={setTimeOffThreshold} />
+              <AdminView 
+                sqlDb={sqlDb} 
+                all={all} 
+                run={run} 
+                refresh={refreshCaches} 
+                segments={segments} 
+                groups={groups} 
+                onTimeOffThresholdChange={setTimeOffThreshold} 
+                dirHandle={dirHandleRef.current}
+                currentFilename={currentFilename}
+                onRestoreVersion={handleRestoreVersion}
+                onMergeVersion={handleStartMerge}
+                SQL={SQL}
+              />
             </Suspense>
           )}
         </>
@@ -2978,6 +3314,35 @@ function PeopleEditor(){
             toast.showSuccess("Person deleted successfully");
           }}
           onCancel={() => setPersonToDelete(null)}
+        />
+      )}
+      
+      {/* Conflict detection dialog */}
+      {pendingConflicts && (
+        <ConflictDialog
+          open={true}
+          onClose={() => setPendingConflicts(null)}
+          conflicts={pendingConflicts}
+          onSaveAnyway={handleSaveAnyway}
+          onMerge={(filename) => {
+            setPendingConflicts(null);
+            handleStartMerge(filename);
+          }}
+        />
+      )}
+      
+      {/* Merge dialog */}
+      {mergeTarget && sqlDb && (
+        <MergeDialog
+          open={true}
+          onClose={() => {
+            mergeTarget.db.close();
+            setMergeTarget(null);
+          }}
+          myDb={sqlDb}
+          theirFilename={mergeTarget.filename}
+          theirDb={mergeTarget.db}
+          onMerge={executeMerge}
         />
       )}
         </div>
