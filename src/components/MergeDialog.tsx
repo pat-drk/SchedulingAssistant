@@ -47,7 +47,10 @@ const TABLE_CONFIG: Record<string, {
   person: {
     label: "People",
     description: "Staff members",
-    describeRow: (row) => row.name || `Person #${row.id}`,
+    describeRow: (row) => {
+      const name = `${row.first_name || ''} ${row.last_name || ''}`.trim();
+      return name || `Person #${row.id}`;
+    },
   },
   person_role: {
     label: "Person Roles",
@@ -72,16 +75,20 @@ const TABLE_CONFIG: Record<string, {
     description: "Who's assigned where each day",
     describeRow: (row, db) => {
       const person = getPersonName(db, row.person_id);
-      return `${row.date}: ${person} → ${row.segment}/${row.role}`;
+      const role = getRoleName(db, row.role_id);
+      return `${row.date}: ${person} → ${row.segment} (${role})`;
     },
-    keyColumns: ["date", "segment", "role", "person_id"],
+    keyColumns: ["date", "segment", "role_id", "person_id"],
   },
   timeoff: {
     label: "Time Off",
     description: "Vacation and leave entries",
     describeRow: (row, db) => {
       const person = getPersonName(db, row.person_id);
-      return `${person}: ${row.start_date} to ${row.end_date}`;
+      // Format timestamps to readable dates
+      const startDate = row.start_ts ? new Date(row.start_ts).toLocaleDateString() : 'unknown';
+      const endDate = row.end_ts ? new Date(row.end_ts).toLocaleDateString() : 'unknown';
+      return `${person}: ${startDate} to ${endDate}`;
     },
   },
   availability_override: {
@@ -89,7 +96,8 @@ const TABLE_CONFIG: Record<string, {
     description: "Per-day availability changes",
     describeRow: (row, db) => {
       const person = getPersonName(db, row.person_id);
-      return `${person} on ${row.date}: ${row.availability}`;
+      const availMap: Record<string, string> = { 'U': 'Unavailable', 'AM': 'AM only', 'PM': 'PM only', 'B': 'Both AM & PM' };
+      return `${person} on ${row.date}: ${availMap[row.avail] || row.avail}`;
     },
   },
   monthly_default: {
@@ -97,7 +105,8 @@ const TABLE_CONFIG: Record<string, {
     description: "Default monthly assignments",
     describeRow: (row, db) => {
       const person = getPersonName(db, row.person_id);
-      return `${row.month}: ${person} → ${row.segment}/${row.role}`;
+      const role = getRoleName(db, row.role_id);
+      return `${row.month}: ${person} → ${row.segment} (${role})`;
     },
   },
   monthly_default_day: {
@@ -105,7 +114,10 @@ const TABLE_CONFIG: Record<string, {
     description: "Weekday-specific defaults",
     describeRow: (row, db) => {
       const person = getPersonName(db, row.person_id);
-      return `${row.month} ${row.weekday}: ${person}`;
+      const role = getRoleName(db, row.role_id);
+      const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+      const dayName = weekdays[row.weekday] || `Day ${row.weekday}`;
+      return `${row.month} ${dayName}: ${person} → ${row.segment} (${role})`;
     },
   },
   monthly_default_week: {
@@ -113,7 +125,8 @@ const TABLE_CONFIG: Record<string, {
     description: "Week-specific defaults",
     describeRow: (row, db) => {
       const person = getPersonName(db, row.person_id);
-      return `${row.month} Week ${row.week}: ${person}`;
+      const role = getRoleName(db, row.role_id);
+      return `${row.month} Week ${row.week_number}: ${person} → ${row.segment} (${role})`;
     },
   },
   role: {
@@ -131,7 +144,8 @@ const TABLE_CONFIG: Record<string, {
     description: "Training records",
     describeRow: (row, db) => {
       const person = getPersonName(db, row.person_id);
-      return `${person}: ${row.area} (${row.status})`;
+      const role = getRoleName(db, row.role_id);
+      return `${person}: ${role} (${row.status || 'unknown'})`;
     },
   },
   department_event: {
@@ -139,7 +153,7 @@ const TABLE_CONFIG: Record<string, {
     description: "Department-wide events",
     describeRow: (row) => `${row.date}: ${row.title || row.type}`,
   },
-  groups: {
+  grp: {
     label: "Groups",
     description: "Group definitions",
     describeRow: (row) => row.name || `Group #${row.id}`,
@@ -170,8 +184,11 @@ const DEFAULT_TABLE_CONFIG = {
 // Helper functions to resolve IDs to names
 function getPersonName(db: any, personId: number): string {
   try {
-    const result = db.exec(`SELECT name FROM person WHERE id = ${personId}`);
-    return result[0]?.values[0]?.[0] as string || `Person #${personId}`;
+    const result = db.exec(`SELECT first_name, last_name FROM person WHERE id = ${personId}`);
+    const firstName = result[0]?.values[0]?.[0] as string || '';
+    const lastName = result[0]?.values[0]?.[1] as string || '';
+    const name = `${firstName} ${lastName}`.trim();
+    return name || `Person #${personId}`;
   } catch { return `Person #${personId}`; }
 }
 
@@ -184,7 +201,7 @@ function getRoleName(db: any, roleId: number): string {
 
 function getGroupName(db: any, groupId: number): string {
   try {
-    const result = db.exec(`SELECT name FROM groups WHERE id = ${groupId}`);
+    const result = db.exec(`SELECT name FROM grp WHERE id = ${groupId}`);
     return result[0]?.values[0]?.[0] as string || `Group #${groupId}`;
   } catch { return `Group #${groupId}`; }
 }
