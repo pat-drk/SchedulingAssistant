@@ -2986,90 +2986,29 @@ function PeopleEditor(){
   );
 }
 
-  function NeedsEditor(){
-    const d = selectedDateObj;
-    const ds = useNeedsEditorStyles();
-    
-    // Initialize expanded groups when dialog opens (if empty)
-    React.useEffect(() => {
-      if (showNeedsEditor && expandedNeedsGroups.size === 0 && groups.length > 0) {
-        setExpandedNeedsGroups(new Set(groups.map((g: any) => g.id)));
+  const toggleNeedsGroup = (groupId: number) => {
+    setExpandedNeedsGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
       }
-    }, [showNeedsEditor, groups.length]);
-    
-    const toggleGroup = (groupId: number) => {
-      setExpandedNeedsGroups(prev => {
-        const next = new Set(prev);
-        if (next.has(groupId)) {
-          next.delete(groupId);
-        } else {
-          next.add(groupId);
-        }
-        return next;
-      });
-    };
-    
-    const expandAll = () => setExpandedNeedsGroups(new Set(groups.map((g: any) => g.id)));
-    const collapseAll = () => setExpandedNeedsGroups(new Set());
-    
-    return (
-      <Dialog open={showNeedsEditor} onOpenChange={(_, data)=> setShowNeedsEditor(data.open)}>
-        <DialogSurface className={ds.surface}>
-          <DialogBody className={ds.dialogBody}>
-            <DialogTitle>
-              <div className={ds.header}>
-                <span>Needs for {fmtDateMDY(d)}</span>
-                <div style={{ display: 'flex', gap: tokens.spacingHorizontalS }}>
-                  <Button size="small" appearance="subtle" onClick={expandAll}>Expand All</Button>
-                  <Button size="small" appearance="subtle" onClick={collapseAll}>Collapse All</Button>
-                </div>
-              </div>
-            </DialogTitle>
-            <DialogContent className={ds.content}>
-              <div className={ds.grid}>
-                {groups.map((g: any) => {
-                  const groupRoles = roles.filter((r: any) => r.group_id === g.id);
-                  const isExpanded = expandedNeedsGroups.has(g.id);
-                  return (
-                    <div key={g.id} className={ds.card}>
-                      <div className={ds.cardHeader} onClick={() => toggleGroup(g.id)}>
-                        <div className={ds.cardHeaderLeft}>
-                          <Text weight="semibold">{g.name}</Text>
-                          <span className={ds.statBadge}>{groupRoles.length} roles</span>
-                        </div>
-                        <ChevronDown20Regular className={`${ds.chevron} ${isExpanded ? ds.chevronExpanded : ''}`} />
-                      </div>
-                      {isExpanded && (
-                        <div className={ds.cardContent}>
-                          {groupRoles.map((r: any) => (
-                            <div key={r.id} className={ds.roleCard}>
-                              <div className={ds.subTitle}>{r.name}</div>
-                              <div className={ds.roleGrid}>
-                                {segments.map((seg) => (
-                                  <div key={seg.name}>
-                                    <div className={ds.label}>{seg.name} Required</div>
-                                    <RequiredCell date={d} group={g} role={r} segment={seg.name as Segment} />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setShowNeedsEditor(false)}>Close</Button>
-            </DialogActions>
-          </DialogBody>
-        </DialogSurface>
-      </Dialog>
-    );
-  }
+      return next;
+    });
+  };
+  
+  const expandAllNeedsGroups = () => setExpandedNeedsGroups(new Set(groups.map((g: any) => g.id)));
+  const collapseAllNeedsGroups = () => setExpandedNeedsGroups(new Set());
   const sh = useAppShellStyles();
+  const needsStyles = useNeedsEditorStyles();
+  
+  // Initialize expanded groups when needs dialog opens
+  useEffect(() => {
+    if (showNeedsEditor && expandedNeedsGroups.size === 0 && groups.length > 0) {
+      setExpandedNeedsGroups(new Set(groups.map((g: any) => g.id)));
+    }
+  }, [showNeedsEditor, groups.length, expandedNeedsGroups.size]);
 
   return (
   <FluentProvider theme={themeName === "dark" ? webDarkTheme : webLightTheme}>
@@ -3264,7 +3203,62 @@ function PeopleEditor(){
         </>
       )}
 
-      {showNeedsEditor && <NeedsEditor />}
+      {showNeedsEditor && (
+        <Dialog open={showNeedsEditor} onOpenChange={(_, data)=> setShowNeedsEditor(data.open)}>
+          <DialogSurface className={needsStyles.surface}>
+            <DialogBody className={needsStyles.dialogBody}>
+              <DialogTitle>
+                <div className={needsStyles.header}>
+                  <span>Needs for {fmtDateMDY(selectedDateObj)}</span>
+                  <div style={{ display: 'flex', gap: tokens.spacingHorizontalS }}>
+                    <Button size="small" appearance="subtle" onClick={expandAllNeedsGroups}>Expand All</Button>
+                    <Button size="small" appearance="subtle" onClick={collapseAllNeedsGroups}>Collapse All</Button>
+                  </div>
+                </div>
+              </DialogTitle>
+              <DialogContent className={needsStyles.content}>
+                <div className={needsStyles.grid}>
+                  {groups.map((g: any) => {
+                    const groupRoles = roles.filter((r: any) => r.group_id === g.id);
+                    const isExpanded = expandedNeedsGroups.has(g.id);
+                    return (
+                      <div key={g.id} className={needsStyles.card}>
+                        <div className={needsStyles.cardHeader} onClick={() => toggleNeedsGroup(g.id)}>
+                          <div className={needsStyles.cardHeaderLeft}>
+                            <Text weight="semibold">{g.name}</Text>
+                            <span className={needsStyles.statBadge}>{groupRoles.length} roles</span>
+                          </div>
+                          <ChevronDown20Regular className={`${needsStyles.chevron} ${isExpanded ? needsStyles.chevronExpanded : ''}`} />
+                        </div>
+                        {isExpanded && (
+                          <div className={needsStyles.cardContent}>
+                            {groupRoles.map((r: any) => (
+                              <div key={r.id} className={needsStyles.roleCard}>
+                                <div className={needsStyles.subTitle}>{r.name}</div>
+                                <div className={needsStyles.roleGrid}>
+                                  {segments.map((seg) => (
+                                    <div key={seg.name}>
+                                      <div className={needsStyles.label}>{seg.name} Required</div>
+                                      <RequiredCell date={selectedDateObj} group={g} role={r} segment={seg.name as Segment} />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowNeedsEditor(false)}>Close</Button>
+              </DialogActions>
+            </DialogBody>
+          </DialogSurface>
+        </Dialog>
+      )}
       {profilePersonId !== null && (
         <PersonProfileModal
           personId={profilePersonId}
