@@ -565,6 +565,7 @@ export default function App() {
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null); // When user opened the file
   const [currentFilename, setCurrentFilename] = useState<string>(""); // Current open file name
   const [pendingConflicts, setPendingConflicts] = useState<ConflictInfo | null>(null); // Detected conflicts before save
+  const [needsEmailPrompt, setNeedsEmailPrompt] = useState(false); // Prompt for email after conflict resolution
   const [mergeTarget, setMergeTarget] = useState<{ filename: string; db: any } | null>(null); // File being merged
   const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null); // For file operations
 
@@ -977,10 +978,33 @@ export default function App() {
       refreshCaches(sqlDb);
       
       toast.showSuccess('Merge completed');
+      
+      // If we were in the opening flow and needed email prompt, do it now
+      if (needsEmailPrompt) {
+        setNeedsEmailPrompt(false);
+        promptForEmail();
+      }
     } catch (e) {
       console.error('[Merge] Failed:', e);
       setStatus('Merge failed: ' + (e instanceof Error ? e.message : String(e)));
     }
+  }
+
+  // Helper to prompt for email (used after opening or after conflict resolution)
+  function promptForEmail() {
+    setEmailDialog({
+      onSubmit: async (email: string) => {
+        setUserEmail(email);
+        setEmailDialog(null);
+        toast.showSuccess("Ready to edit!");
+      },
+      onCancel: () => {
+        setEmailDialog(null);
+        // Use a default if they cancel
+        setUserEmail('Unknown');
+        toast.showInfo("Opened without email (saves will be marked as 'Unknown')");
+      }
+    });
   }
 
   async function createNewDb() {
@@ -1100,25 +1124,17 @@ export default function App() {
             conflictingFiles: conflictingOnOpen,
             conflictDetails
           });
+          setNeedsEmailPrompt(true); // Prompt for email after conflict resolution
 
           toast.showInfo(`Found ${conflictingOnOpen.length} file(s) with potential conflicts. Review before editing.`);
+          
+          // Don't show email dialog yet - show it after conflict resolution
+          return;
         }
       }
 
-      // Step 4: Prompt for Email (used for save metadata)
-      setEmailDialog({
-        onSubmit: async (email: string) => {
-          setUserEmail(email);
-          setEmailDialog(null);
-          toast.showSuccess("Database opened. Ready to edit!");
-        },
-        onCancel: () => {
-          setEmailDialog(null);
-          // Use a default if they cancel
-          setUserEmail('Unknown');
-          toast.showInfo("Opened without email (saves will be marked as 'Unknown')");
-        }
-      });
+      // Step 4: Prompt for Email (used for save metadata) - only if no conflicts
+      promptForEmail();
 
     } catch (e:any) {
       if (e.name !== 'AbortError') {
@@ -3238,11 +3254,19 @@ function PeopleEditor(){
       {pendingConflicts && (
         <ConflictDialog
           open={true}
-          onClose={() => setPendingConflicts(null)}
+          onClose={() => {
+            setPendingConflicts(null);
+            // If we need to prompt for email (opening flow), do it now
+            if (needsEmailPrompt) {
+              setNeedsEmailPrompt(false);
+              promptForEmail();
+            }
+          }}
           conflicts={pendingConflicts}
           onSaveAnyway={handleSaveAnyway}
           onMerge={(filename) => {
             setPendingConflicts(null);
+            // Don't prompt for email during merge - will do after merge completes
             handleStartMerge(filename);
           }}
         />
@@ -3255,6 +3279,11 @@ function PeopleEditor(){
           onClose={() => {
             mergeTarget.db.close();
             setMergeTarget(null);
+            // If we need to prompt for email (opening flow), do it now
+            if (needsEmailPrompt) {
+              setNeedsEmailPrompt(false);
+              promptForEmail();
+            }
           }}
           myDb={sqlDb}
           theirFilename={mergeTarget.filename}

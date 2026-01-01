@@ -14,8 +14,12 @@ import {
   makeStyles,
   tokens,
   Badge,
+  Accordion,
+  AccordionItem,
+  AccordionHeader,
+  AccordionPanel,
 } from "@fluentui/react-components";
-import { Merge20Regular, Warning20Regular, Checkmark20Regular } from "@fluentui/react-icons";
+import { Merge20Regular, Warning20Regular, Checkmark20Regular, Info20Regular } from "@fluentui/react-icons";
 
 interface MergeChoice {
   table: string;
@@ -31,38 +35,182 @@ interface MergeDialogProps {
   onMerge: (choices: MergeChoice[]) => void;
 }
 
-// All tables that contain user data (not just "high conflict" - we want to be thorough)
-const ALL_DATA_TABLES = [
-  { name: "person", label: "People", description: "Staff members" },
-  { name: "person_role", label: "Person Roles", description: "Role assignments per person" },
-  { name: "person_group", label: "Person Groups", description: "Group memberships" },
-  { name: "assignment", label: "Daily Assignments", description: "Who's assigned where each day" },
-  { name: "timeoff", label: "Time Off", description: "Vacation and leave entries" },
-  { name: "availability_override", label: "Availability Overrides", description: "Per-day availability changes" },
-  { name: "monthly_default", label: "Monthly Defaults", description: "Default monthly assignments" },
-  { name: "monthly_default_day", label: "Monthly Weekday Overrides", description: "Weekday-specific defaults" },
-  { name: "monthly_default_week", label: "Monthly Week Overrides", description: "Week-specific defaults" },
-  { name: "role", label: "Roles", description: "Role definitions" },
-  { name: "segment", label: "Segments", description: "Time segments (AM, PM, etc.)" },
-  { name: "segment_role", label: "Segment Roles", description: "Roles available per segment" },
-  { name: "segment_adjustment", label: "Segment Adjustments", description: "Segment time adjustments" },
-  { name: "segment_adjustment_condition", label: "Adjustment Conditions", description: "When adjustments apply" },
-  { name: "groups", label: "Groups", description: "Group definitions" },
-  { name: "export_group", label: "Export Groups", description: "Export configurations" },
-  { name: "department_event", label: "Department Events", description: "Department-wide events" },
-  { name: "training", label: "Training", description: "Training records" },
-  { name: "skill", label: "Skills", description: "Skill definitions" },
-  { name: "person_skill", label: "Person Skills", description: "Skills per person" },
-];
+// Tables with human-readable configurations for showing differences
+const TABLE_CONFIG: Record<string, {
+  label: string;
+  description: string;
+  // How to describe a row from this table
+  describeRow: (row: any, db: any) => string;
+  // Key columns to identify unique rows
+  keyColumns?: string[];
+}> = {
+  person: {
+    label: "People",
+    description: "Staff members",
+    describeRow: (row) => row.name || `Person #${row.id}`,
+  },
+  person_role: {
+    label: "Person Roles",
+    description: "Role assignments per person",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      const role = getRoleName(db, row.role_id);
+      return `${person} → ${role}`;
+    },
+  },
+  person_group: {
+    label: "Person Groups",
+    description: "Group memberships",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      const group = getGroupName(db, row.group_id);
+      return `${person} in ${group}`;
+    },
+  },
+  assignment: {
+    label: "Daily Assignments",
+    description: "Who's assigned where each day",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      return `${row.date}: ${person} → ${row.segment}/${row.role}`;
+    },
+    keyColumns: ["date", "segment", "role", "person_id"],
+  },
+  timeoff: {
+    label: "Time Off",
+    description: "Vacation and leave entries",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      return `${person}: ${row.start_date} to ${row.end_date}`;
+    },
+  },
+  availability_override: {
+    label: "Availability Overrides",
+    description: "Per-day availability changes",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      return `${person} on ${row.date}: ${row.availability}`;
+    },
+  },
+  monthly_default: {
+    label: "Monthly Defaults",
+    description: "Default monthly assignments",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      return `${row.month}: ${person} → ${row.segment}/${row.role}`;
+    },
+  },
+  monthly_default_day: {
+    label: "Monthly Weekday Overrides",
+    description: "Weekday-specific defaults",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      return `${row.month} ${row.weekday}: ${person}`;
+    },
+  },
+  monthly_default_week: {
+    label: "Monthly Week Overrides",
+    description: "Week-specific defaults",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      return `${row.month} Week ${row.week}: ${person}`;
+    },
+  },
+  role: {
+    label: "Roles",
+    description: "Role definitions",
+    describeRow: (row) => row.name || `Role #${row.id}`,
+  },
+  segment: {
+    label: "Segments",
+    description: "Time segments (AM, PM, etc.)",
+    describeRow: (row) => row.name || `Segment #${row.id}`,
+  },
+  training: {
+    label: "Training",
+    description: "Training records",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      return `${person}: ${row.area} (${row.status})`;
+    },
+  },
+  department_event: {
+    label: "Department Events",
+    description: "Department-wide events",
+    describeRow: (row) => `${row.date}: ${row.title || row.type}`,
+  },
+  groups: {
+    label: "Groups",
+    description: "Group definitions",
+    describeRow: (row) => row.name || `Group #${row.id}`,
+  },
+  skill: {
+    label: "Skills",
+    description: "Skill definitions",
+    describeRow: (row) => row.name || `Skill #${row.id}`,
+  },
+  person_skill: {
+    label: "Person Skills",
+    description: "Skills per person",
+    describeRow: (row, db) => {
+      const person = getPersonName(db, row.person_id);
+      const skill = getSkillName(db, row.skill_id);
+      return `${person}: ${skill}`;
+    },
+  },
+};
+
+// Fallback for tables not in config
+const DEFAULT_TABLE_CONFIG = {
+  label: "Data",
+  description: "Database records",
+  describeRow: (row: any) => JSON.stringify(row).slice(0, 60) + "...",
+};
+
+// Helper functions to resolve IDs to names
+function getPersonName(db: any, personId: number): string {
+  try {
+    const result = db.exec(`SELECT name FROM person WHERE id = ${personId}`);
+    return result[0]?.values[0]?.[0] as string || `Person #${personId}`;
+  } catch { return `Person #${personId}`; }
+}
+
+function getRoleName(db: any, roleId: number): string {
+  try {
+    const result = db.exec(`SELECT name FROM role WHERE id = ${roleId}`);
+    return result[0]?.values[0]?.[0] as string || `Role #${roleId}`;
+  } catch { return `Role #${roleId}`; }
+}
+
+function getGroupName(db: any, groupId: number): string {
+  try {
+    const result = db.exec(`SELECT name FROM groups WHERE id = ${groupId}`);
+    return result[0]?.values[0]?.[0] as string || `Group #${groupId}`;
+  } catch { return `Group #${groupId}`; }
+}
+
+function getSkillName(db: any, skillId: number): string {
+  try {
+    const result = db.exec(`SELECT name FROM skill WHERE id = ${skillId}`);
+    return result[0]?.values[0]?.[0] as string || `Skill #${skillId}`;
+  } catch { return `Skill #${skillId}`; }
+}
+
+interface SampleDiff {
+  onlyInMine: string[];
+  onlyInTheirs: string[];
+}
 
 interface TableDiff {
   table: string;
   label: string;
+  description: string;
   myCount: number;
   theirCount: number;
   hasDifferences: boolean;
   differenceType: "none" | "count" | "content";
   differenceDetails: string;
+  sampleDiffs: SampleDiff;
 }
 
 const useStyles = makeStyles({
@@ -104,10 +252,6 @@ const useStyles = makeStyles({
     textAlign: "center",
     padding: tokens.spacingVerticalXXL,
   },
-  sameCount: {
-    color: tokens.colorNeutralForeground3,
-    fontStyle: "italic",
-  },
   summary: {
     padding: tokens.spacingVerticalM,
     marginBottom: tokens.spacingVerticalM,
@@ -118,6 +262,31 @@ const useStyles = makeStyles({
   scrollContainer: {
     maxHeight: "400px",
     overflowY: "auto",
+  },
+  sampleList: {
+    fontSize: tokens.fontSizeBase200,
+    marginTop: tokens.spacingVerticalXS,
+    marginBottom: tokens.spacingVerticalS,
+    padding: tokens.spacingHorizontalS,
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderRadius: tokens.borderRadiusSmall,
+  },
+  sampleItem: {
+    padding: `${tokens.spacingVerticalXXS} 0`,
+    display: "flex",
+    alignItems: "flex-start",
+    gap: tokens.spacingHorizontalXS,
+  },
+  sampleLabel: {
+    fontWeight: tokens.fontWeightSemibold,
+    marginBottom: tokens.spacingVerticalXXS,
+    display: "block",
+  },
+  mineLabel: {
+    color: tokens.colorPaletteBlueForeground2,
+  },
+  theirsLabel: {
+    color: tokens.colorPaletteGreenForeground1,
   },
 });
 
@@ -132,6 +301,7 @@ export default function MergeDialog({
   const styles = useStyles();
   const [loading, setLoading] = useState(true);
   const [tableDiffs, setTableDiffs] = useState<TableDiff[]>([]);
+  const [totalTablesScanned, setTotalTablesScanned] = useState(0);
   const [choices, setChoices] = useState<Record<string, "mine" | "theirs">>({});
 
   useEffect(() => {
@@ -144,22 +314,33 @@ export default function MergeDialog({
     return JSON.stringify(row);
   }
 
+  function rowToObject(columns: string[], values: any[]): any {
+    const obj: any = {};
+    columns.forEach((col, i) => obj[col] = values[i]);
+    return obj;
+  }
+
   function analyzeDbDifferences() {
     setLoading(true);
     const diffs: TableDiff[] = [];
     const initialChoices: Record<string, "mine" | "theirs"> = {};
 
-    for (const table of ALL_DATA_TABLES) {
+    const tableNames = Object.keys(TABLE_CONFIG);
+
+    for (const tableName of tableNames) {
+      const config = TABLE_CONFIG[tableName] || DEFAULT_TABLE_CONFIG;
+      
       try {
         // Get row counts
-        const myCountResult = myDb.exec(`SELECT COUNT(*) FROM ${table.name}`);
-        const theirCountResult = theirDb.exec(`SELECT COUNT(*) FROM ${table.name}`);
+        const myCountResult = myDb.exec(`SELECT COUNT(*) FROM ${tableName}`);
+        const theirCountResult = theirDb.exec(`SELECT COUNT(*) FROM ${tableName}`);
         const myCount = (myCountResult[0]?.values[0]?.[0] as number) || 0;
         const theirCount = (theirCountResult[0]?.values[0]?.[0] as number) || 0;
 
         let hasDifferences = false;
         let differenceType: "none" | "count" | "content" = "none";
         let differenceDetails = "";
+        const sampleDiffs: SampleDiff = { onlyInMine: [], onlyInTheirs: [] };
 
         if (myCount !== theirCount) {
           hasDifferences = true;
@@ -168,57 +349,99 @@ export default function MergeDialog({
           differenceDetails = diff > 0 
             ? `Their version has ${diff} more row(s)` 
             : `Your version has ${Math.abs(diff)} more row(s)`;
-        } else if (myCount > 0) {
-          // Same count - check actual content
+        }
+        
+        // Always check content if either has rows
+        if (myCount > 0 || theirCount > 0) {
           try {
-            const myRows = myDb.exec(`SELECT * FROM ${table.name} ORDER BY 1`);
-            const theirRows = theirDb.exec(`SELECT * FROM ${table.name} ORDER BY 1`);
+            const myRows = myDb.exec(`SELECT * FROM ${tableName}`);
+            const theirRows = theirDb.exec(`SELECT * FROM ${tableName}`);
             
-            if (myRows[0] && theirRows[0]) {
-              const myHashes = new Set(myRows[0].values.map(hashRow));
-              const theirHashes = new Set(theirRows[0].values.map(hashRow));
-              
-              // Find differences
-              let onlyInMine = 0;
-              let onlyInTheirs = 0;
-              
-              for (const hash of myHashes) {
-                if (!theirHashes.has(hash)) onlyInMine++;
-              }
-              for (const hash of theirHashes) {
-                if (!myHashes.has(hash)) onlyInTheirs++;
-              }
-              
-              if (onlyInMine > 0 || onlyInTheirs > 0) {
-                hasDifferences = true;
-                differenceType = "content";
-                differenceDetails = `${onlyInMine} row(s) only in yours, ${onlyInTheirs} row(s) only in theirs`;
+            const myColumns = myRows[0]?.columns || [];
+            const theirColumns = theirRows[0]?.columns || [];
+            
+            const myData = myRows[0]?.values || [];
+            const theirData = theirRows[0]?.values || [];
+            
+            // Create hash maps
+            const myHashes = new Map<string, any[]>();
+            const theirHashes = new Map<string, any[]>();
+            
+            for (const row of myData) {
+              myHashes.set(hashRow(row), row);
+            }
+            for (const row of theirData) {
+              theirHashes.set(hashRow(row), row);
+            }
+            
+            // Find differences and collect samples
+            let onlyInMineCount = 0;
+            let onlyInTheirsCount = 0;
+            
+            for (const [hash, row] of myHashes) {
+              if (!theirHashes.has(hash)) {
+                onlyInMineCount++;
+                // Collect up to 3 samples
+                if (sampleDiffs.onlyInMine.length < 3) {
+                  const rowObj = rowToObject(myColumns, row);
+                  try {
+                    sampleDiffs.onlyInMine.push(config.describeRow(rowObj, myDb));
+                  } catch {
+                    sampleDiffs.onlyInMine.push(JSON.stringify(rowObj).slice(0, 50));
+                  }
+                }
               }
             }
+            
+            for (const [hash, row] of theirHashes) {
+              if (!myHashes.has(hash)) {
+                onlyInTheirsCount++;
+                if (sampleDiffs.onlyInTheirs.length < 3) {
+                  const rowObj = rowToObject(theirColumns, row);
+                  try {
+                    sampleDiffs.onlyInTheirs.push(config.describeRow(rowObj, theirDb));
+                  } catch {
+                    sampleDiffs.onlyInTheirs.push(JSON.stringify(rowObj).slice(0, 50));
+                  }
+                }
+              }
+            }
+            
+            if (onlyInMineCount > 0 || onlyInTheirsCount > 0) {
+              hasDifferences = true;
+              if (differenceType === "none") {
+                differenceType = "content";
+              }
+              differenceDetails = `${onlyInMineCount} unique in yours, ${onlyInTheirsCount} unique in theirs`;
+            }
           } catch (e) {
-            // Content comparison failed, fall back to count comparison
-            console.warn(`[Merge] Content comparison failed for ${table.name}:`, e);
+            console.warn(`[Merge] Content comparison failed for ${tableName}:`, e);
           }
         }
 
-        diffs.push({
-          table: table.name,
-          label: table.label,
-          myCount,
-          theirCount,
-          hasDifferences,
-          differenceType,
-          differenceDetails,
-        });
-        
-        // Default to keeping mine
-        initialChoices[table.name] = "mine";
+        if (hasDifferences) {
+          diffs.push({
+            table: tableName,
+            label: config.label,
+            description: config.description,
+            myCount,
+            theirCount,
+            hasDifferences,
+            differenceType,
+            differenceDetails,
+            sampleDiffs,
+          });
+          
+          // Default to keeping mine
+          initialChoices[tableName] = "mine";
+        }
       } catch (e) {
         // Table might not exist in one of the databases
-        console.warn(`[Merge] Could not compare table ${table.name}:`, e);
+        console.warn(`[Merge] Could not compare table ${tableName}:`, e);
       }
     }
 
+    setTotalTablesScanned(tableNames.length);
     setTableDiffs(diffs);
     setChoices(initialChoices);
     setLoading(false);
@@ -235,9 +458,6 @@ export default function MergeDialog({
     }));
     onMerge(mergeChoices);
   }
-
-  const tablesWithDifferences = tableDiffs.filter((t) => t.hasDifferences);
-  const tablesWithoutDifferences = tableDiffs.filter((t) => !t.hasDifferences);
 
   // Extract username from filename
   const theirUser = theirFilename.match(/schedule-[^-]+-[^-]+-([^.]+)\.db/)?.[1]?.replace(/-/g, ' ') || 'Other user';
@@ -268,14 +488,14 @@ export default function MergeDialog({
                     Comparison Summary
                   </Text>
                   <Text size={200} block style={{ marginTop: tokens.spacingVerticalXS }}>
-                    Scanned {tableDiffs.length} tables: {" "}
-                    <Badge color="warning" appearance="filled">{tablesWithDifferences.length} with differences</Badge>
+                    Scanned {totalTablesScanned} tables: {" "}
+                    <Badge color="warning" appearance="filled">{tableDiffs.length} with differences</Badge>
                     {" "}
-                    <Badge color="success" appearance="tint">{tablesWithoutDifferences.length} identical</Badge>
+                    <Badge color="success" appearance="tint">{totalTablesScanned - tableDiffs.length} identical</Badge>
                   </Text>
                 </div>
 
-                {tablesWithDifferences.length === 0 ? (
+                {tableDiffs.length === 0 ? (
                   <div className={styles.noDifferences}>
                     <Checkmark20Regular style={{ color: tokens.colorPaletteGreenForeground1 }} />
                     <Text block style={{ marginTop: tokens.spacingVerticalS }}>
@@ -291,7 +511,7 @@ export default function MergeDialog({
                       Choose which version to keep for each table with differences:
                     </Text>
                     <div className={styles.scrollContainer}>
-                      {tablesWithDifferences.map((table) => (
+                      {tableDiffs.map((table) => (
                         <div 
                           key={table.table} 
                           className={`${styles.tableSection} ${styles.tableSectionDiff}`}
@@ -300,6 +520,9 @@ export default function MergeDialog({
                             <Warning20Regular style={{ color: tokens.colorPaletteYellowForeground1 }} />
                             <Text weight="semibold">{table.label}</Text>
                           </div>
+                          <Text size={200} style={{ color: tokens.colorNeutralForeground3, marginBottom: tokens.spacingVerticalXS }}>
+                            {table.description}
+                          </Text>
                           <Text className={styles.counts}>
                             Your version: {table.myCount} rows | {theirUser}: {table.theirCount} rows
                           </Text>
@@ -308,6 +531,49 @@ export default function MergeDialog({
                               {table.differenceDetails}
                             </Text>
                           )}
+                          
+                          {/* Show sample differences */}
+                          {(table.sampleDiffs.onlyInMine.length > 0 || table.sampleDiffs.onlyInTheirs.length > 0) && (
+                            <div className={styles.sampleList}>
+                              {table.sampleDiffs.onlyInMine.length > 0 && (
+                                <div style={{ marginBottom: tokens.spacingVerticalS }}>
+                                  <Text className={`${styles.sampleLabel} ${styles.mineLabel}`}>
+                                    Only in your version:
+                                  </Text>
+                                  {table.sampleDiffs.onlyInMine.map((item, i) => (
+                                    <div key={i} className={styles.sampleItem}>
+                                      <span>•</span>
+                                      <Text size={200}>{item}</Text>
+                                    </div>
+                                  ))}
+                                  {table.sampleDiffs.onlyInMine.length === 3 && (
+                                    <Text size={200} style={{ fontStyle: 'italic', color: tokens.colorNeutralForeground3 }}>
+                                      ...and more
+                                    </Text>
+                                  )}
+                                </div>
+                              )}
+                              {table.sampleDiffs.onlyInTheirs.length > 0 && (
+                                <div>
+                                  <Text className={`${styles.sampleLabel} ${styles.theirsLabel}`}>
+                                    Only in {theirUser}'s version:
+                                  </Text>
+                                  {table.sampleDiffs.onlyInTheirs.map((item, i) => (
+                                    <div key={i} className={styles.sampleItem}>
+                                      <span>•</span>
+                                      <Text size={200}>{item}</Text>
+                                    </div>
+                                  ))}
+                                  {table.sampleDiffs.onlyInTheirs.length === 3 && (
+                                    <Text size={200} style={{ fontStyle: 'italic', color: tokens.colorNeutralForeground3 }}>
+                                      ...and more
+                                    </Text>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
                           <RadioGroup
                             value={choices[table.table]}
                             onChange={(_, data) => handleChoiceChange(table.table, data.value as "mine" | "theirs")}
@@ -321,12 +587,6 @@ export default function MergeDialog({
                     </div>
                   </>
                 )}
-
-                {tablesWithoutDifferences.length > 0 && tablesWithDifferences.length > 0 && (
-                  <Text size={200} className={styles.sameCount} block style={{ marginTop: tokens.spacingVerticalM }}>
-                    Identical tables (no action needed): {tablesWithoutDifferences.map(t => t.label).join(', ')}
-                  </Text>
-                )}
               </>
             )}
           </DialogContent>
@@ -334,7 +594,7 @@ export default function MergeDialog({
             <Button appearance="secondary" onClick={onClose}>
               Cancel
             </Button>
-            {tablesWithDifferences.length > 0 && (
+            {tableDiffs.length > 0 && (
               <Button
                 appearance="primary"
                 icon={<Merge20Regular />}
