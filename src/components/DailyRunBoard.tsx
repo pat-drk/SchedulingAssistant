@@ -10,7 +10,7 @@ import "../styles/scrollbar.css";
 import PersonName from "./PersonName";
 import { getAutoFillPriority } from "./AutoFillSettings";
 import { exportDailyScheduleXlsx } from "../excel/export-one-sheet";
-import { getWeekOfMonth, type WeekStartMode } from "../utils/weekCalculation";
+import { getWeekOfMonth, getEffectiveMonth, type WeekStartMode } from "../utils/weekCalculation";
 import {
   Button,
   Dropdown,

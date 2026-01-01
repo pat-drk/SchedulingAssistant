@@ -3118,7 +3118,7 @@ function PeopleEditor(){
               setWeekNumberOverride={setWeekNumberOverride}
               setMonthlyNote={setMonthlyNote}
               copyMonthlyDefaults={copyMonthlyDefaults}
-              applyMonthlyDefaults={applyMonthlyDefaults}
+
               exportMonthlyDefaults={exportMonthlyDefaults}
               roleListForSegment={roleListForSegment}
               groups={groups}

@@ -483,7 +483,6 @@ interface MonthlyDefaultsProps {
   setWeekNumberOverride: (personId: number, weekNumber: number, segment: Segment, roleId: number | null) => void;
   setMonthlyNote: (personId: number, note: string | null) => void;
   copyMonthlyDefaults: (fromMonth: string, toMonth: string) => void;
-  applyMonthlyDefaults: (month: string) => Promise<void> | void;
   exportMonthlyDefaults: (month: string) => void;
   roleListForSegment: (segment: Segment) => any[];
   groups: any[];
@@ -511,7 +510,6 @@ export default function MonthlyDefaults({
   setWeekNumberOverride,
   setMonthlyNote,
   copyMonthlyDefaults,
-  applyMonthlyDefaults,
   exportMonthlyDefaults,
   roleListForSegment,
   groups,
@@ -1478,9 +1476,7 @@ export default function MonthlyDefaults({
                 {showDashboard ? 'Hide Dashboard' : 'Dashboard'}
               </Button>
             )}
-            <Button appearance="secondary" onClick={() => void applyMonthlyDefaults(selectedMonth)}>
-              Apply to Month
-            </Button>
+
           </div>
           
           <div className={styles.secondaryActions}>
