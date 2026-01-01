@@ -598,9 +598,15 @@ export default function MergeDialog({
     // Build merge choices based on selected changes
     const choicesByTable = new Map<string, MergeChoice>();
     
+    console.log('[MergeDialog] Building merge choices...');
+    console.log('[MergeDialog] Total changes:', allChanges.length);
+    console.log('[MergeDialog] Selected changes:', selectedChanges.size);
+    
     for (const change of allChanges) {
       const changeId = `${change.table}:${change.source}:${change.rowHash}`;
       const isSelected = selectedChanges.has(changeId);
+      
+      console.log(`[MergeDialog] Change: ${change.table} source=${change.source} selected=${isSelected} desc="${change.description}"`);
       
       if (!choicesByTable.has(change.table)) {
         choicesByTable.set(change.table, {
@@ -624,18 +630,26 @@ export default function MergeDialog({
           }
         }
         choice.rowsToAdd.push({ data: filteredData, columns: filteredColumns });
+        console.log(`[MergeDialog] -> Will ADD: ${change.description}`);
       } else if (change.source === "mine" && !isSelected) {
         // User wants to remove this row from mine (deselected = don't keep)
         // Pass the rowData so we can match by content (not by id)
         choice.rowsToRemove.push(JSON.stringify(change.rowData));
+        console.log(`[MergeDialog] -> Will REMOVE: ${change.description} (id=${change.rowData.id})`);
       }
       // If mine is selected, we keep it (do nothing)
       // If theirs is not selected, we don't add it (do nothing)
     }
     
-    onMerge(Array.from(choicesByTable.values()).filter(
+    const finalChoices = Array.from(choicesByTable.values()).filter(
       c => c.rowsToAdd.length > 0 || c.rowsToRemove.length > 0
-    ));
+    );
+    console.log('[MergeDialog] Final choices:', finalChoices.length, 'tables');
+    for (const c of finalChoices) {
+      console.log(`[MergeDialog]   ${c.table}: add=${c.rowsToAdd.length}, remove=${c.rowsToRemove.length}`);
+    }
+    
+    onMerge(finalChoices);
   }
 
   // Extract username from filename

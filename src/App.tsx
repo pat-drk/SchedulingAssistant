@@ -1003,8 +1003,12 @@ export default function App() {
       let addedCount = 0;
       let removedCount = 0;
       
+      console.log('[Merge] Processing choices:', JSON.stringify(choices, null, 2));
+      
       // Process each table's merge choices
       for (const { table, rowsToAdd, rowsToRemove } of choices) {
+        console.log(`[Merge] Table ${table}: ${rowsToAdd.length} to add, ${rowsToRemove.length} to remove`);
+        
         // Add rows from theirs that user selected
         // Note: columns already exclude 'id' to avoid UNIQUE constraint issues
         for (const { data, columns } of rowsToAdd) {
@@ -1025,9 +1029,19 @@ export default function App() {
         // Remove rows from mine that user deselected
         // rowsToRemove contains JSON-stringified row objects
         for (const rowJson of rowsToRemove) {
+          console.log(`[Merge] Attempting to remove:`, rowJson);
           try {
             // Parse the row data object
             const rowData = JSON.parse(rowJson) as Record<string, any>;
+            console.log(`[Merge] Parsed row data, id=${rowData.id}`);
+            
+            // Use the id column if available (most reliable), otherwise match by content
+            if (rowData.id !== undefined) {
+              console.log(`[Merge] Running: DELETE FROM ${table} WHERE id = ${rowData.id}`);
+              sqlDb.run(`DELETE FROM ${table} WHERE id = ?`, [rowData.id]);
+              removedCount++;
+              console.log(`[Merge] Deleted row with id ${rowData.id}`);
+            } else {
             
             // Use the id column if available (most reliable), otherwise match by content
             if (rowData.id !== undefined) {
