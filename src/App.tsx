@@ -349,9 +349,10 @@ const usePeopleEditorStyles = makeStyles({
   dialogSurface: {
     width: '700px',
     maxWidth: '95vw',
-    maxHeight: '90vh',
+    maxHeight: '85vh',
     display: 'flex',
     flexDirection: 'column',
+    overflow: 'hidden',
     // Full-screen on mobile for better usability
     [`@media ${BREAKPOINTS.mobile.maxQuery}`]: {
       width: '100vw',
@@ -361,11 +362,19 @@ const usePeopleEditorStyles = makeStyles({
       borderRadius: 0,
     },
   },
+  dialogBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    flex: '1 1 auto',
+    minHeight: 0,
+    overflow: 'hidden',
+  },
   dialogContent: {
     overflowY: 'auto',
     overflowX: 'hidden',
     flex: '1 1 auto',
     minHeight: 0,
+    maxHeight: 'calc(85vh - 140px)',
   },
   section: {
     marginBottom: tokens.spacingVerticalL,
@@ -469,16 +478,42 @@ const useNeedsEditorStyles = makeStyles({
   grid: {
     display: 'grid',
     gridTemplateColumns: '1fr',
-    gap: tokens.spacingHorizontalL,
-    ['@media (min-width: 1024px)']: { gridTemplateColumns: 'repeat(2, 1fr)' },
-    ['@media (min-width: 1440px)']: { gridTemplateColumns: 'repeat(3, 1fr)' },
+    gap: tokens.spacingHorizontalM,
   },
   card: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusLarge,
-    padding: tokens.spacingHorizontalL,
     backgroundColor: tokens.colorNeutralBackground1,
     boxShadow: tokens.shadow2,
+    overflow: 'hidden',
+  },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: tokens.spacingHorizontalM,
+    cursor: 'pointer',
+    backgroundColor: tokens.colorNeutralBackground2,
+    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    transition: `background-color ${tokens.durationFast} ${tokens.curveEasyEase}`,
+    ':hover': {
+      backgroundColor: tokens.colorNeutralBackground2Hover,
+    },
+  },
+  cardHeaderLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacingHorizontalM,
+  },
+  statBadge: {
+    fontSize: tokens.fontSizeBase200,
+    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground3,
+    color: tokens.colorNeutralForeground2,
+  },
+  cardContent: {
+    padding: tokens.spacingHorizontalL,
   },
   roleCard: {
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -504,8 +539,27 @@ const useNeedsEditorStyles = makeStyles({
     marginBottom: tokens.spacingVerticalXS,
     fontWeight: tokens.fontWeightSemibold,
   },
-  content: { overflowY: 'auto', overflowX: 'hidden' },
-  surface: { width: '90vw', maxWidth: '1400px', maxHeight: '85vh' },
+  content: { overflowY: 'auto', overflowX: 'hidden', flex: '1 1 auto', minHeight: 0 },
+  surface: { width: '90vw', maxWidth: '1400px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' as const },
+  dialogBody: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    flex: '1 1 auto',
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  chevron: {
+    transition: `transform ${tokens.durationNormal} ${tokens.curveEasyEase}`,
+  },
+  chevronExpanded: {
+    transform: 'rotate(180deg)',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: tokens.spacingVerticalM,
+  },
 });
 
 const useAppShellStyles = makeStyles({
@@ -2701,7 +2755,7 @@ function PeopleEditor(){
 
       <Dialog open={showModal} onOpenChange={(_, d) => setShowModal(d.open)}>
         <DialogSurface className={s.dialogSurface}>
-          <DialogBody>
+          <DialogBody className={s.dialogBody}>
             <DialogTitle>{editing ? 'Edit Person' : 'Add Person'}</DialogTitle>
             <DialogContent className={s.dialogContent}>
               {/* Basic Information Section */}
@@ -2934,35 +2988,74 @@ function PeopleEditor(){
   function NeedsEditor(){
     const d = selectedDateObj;
     const ds = useNeedsEditorStyles();
+    const [expandedGroups, setExpandedGroups] = useState<Set<number>>(() => new Set(groups.map((g: any) => g.id)));
+    
+    const toggleGroup = (groupId: number) => {
+      setExpandedGroups(prev => {
+        const next = new Set(prev);
+        if (next.has(groupId)) {
+          next.delete(groupId);
+        } else {
+          next.add(groupId);
+        }
+        return next;
+      });
+    };
+    
+    const expandAll = () => setExpandedGroups(new Set(groups.map((g: any) => g.id)));
+    const collapseAll = () => setExpandedGroups(new Set());
+    
     return (
       <Dialog open={showNeedsEditor} onOpenChange={(_, data)=> setShowNeedsEditor(data.open)}>
         <DialogSurface className={ds.surface}>
-          <DialogBody>
-            <DialogTitle>Needs for {fmtDateMDY(d)}</DialogTitle>
+          <DialogBody className={ds.dialogBody}>
+            <DialogTitle>
+              <div className={ds.header}>
+                <span>Needs for {fmtDateMDY(d)}</span>
+                <div style={{ display: 'flex', gap: tokens.spacingHorizontalS }}>
+                  <Button size="small" appearance="subtle" onClick={expandAll}>Expand All</Button>
+                  <Button size="small" appearance="subtle" onClick={collapseAll}>Collapse All</Button>
+                </div>
+              </div>
+            </DialogTitle>
             <DialogContent className={ds.content}>
               <div className={ds.grid}>
-                {groups.map((g:any)=> (
-                  <div key={g.id} className={ds.card}>
-                    <div className={ds.subTitle}>{g.name}</div>
-                    {roles.filter((r)=>r.group_id===g.id).map((r:any)=> (
-                      <div key={r.id} className={ds.roleCard}>
-                        <div className={ds.subTitle}>{r.name}</div>
-                        <div className={ds.roleGrid}>
-                          {segments.map((seg) => (
-                            <div key={seg.name}>
-                              <div className={ds.label}>{seg.name} Required</div>
-                              <RequiredCell date={d} group={g} role={r} segment={seg.name as Segment} />
+                {groups.map((g: any) => {
+                  const groupRoles = roles.filter((r: any) => r.group_id === g.id);
+                  const isExpanded = expandedGroups.has(g.id);
+                  return (
+                    <div key={g.id} className={ds.card}>
+                      <div className={ds.cardHeader} onClick={() => toggleGroup(g.id)}>
+                        <div className={ds.cardHeaderLeft}>
+                          <Text weight="semibold">{g.name}</Text>
+                          <span className={ds.statBadge}>{groupRoles.length} roles</span>
+                        </div>
+                        <ChevronDown20Regular className={`${ds.chevron} ${isExpanded ? ds.chevronExpanded : ''}`} />
+                      </div>
+                      {isExpanded && (
+                        <div className={ds.cardContent}>
+                          {groupRoles.map((r: any) => (
+                            <div key={r.id} className={ds.roleCard}>
+                              <div className={ds.subTitle}>{r.name}</div>
+                              <div className={ds.roleGrid}>
+                                {segments.map((seg) => (
+                                  <div key={seg.name}>
+                                    <div className={ds.label}>{seg.name} Required</div>
+                                    <RequiredCell date={d} group={g} role={r} segment={seg.name as Segment} />
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </DialogContent>
             <DialogActions>
-              <Button onClick={()=>setShowNeedsEditor(false)}>Close</Button>
+              <Button onClick={() => setShowNeedsEditor(false)}>Close</Button>
             </DialogActions>
           </DialogBody>
         </DialogSurface>
