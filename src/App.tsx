@@ -106,6 +106,7 @@ interface FileVersionInfo {
   savedBy: string;
   sessionStartedAt: string;
   sizeBytes: number;
+  derivedFrom: string | null;
 }
 
 interface ConflictDetail {
@@ -620,7 +621,7 @@ export default function App() {
   const [currentFilename, setCurrentFilename] = useState<string>(""); // Current open file name
   const [pendingConflicts, setPendingConflicts] = useState<ConflictInfo | null>(null); // Detected conflicts before save
   const [needsEmailPrompt, setNeedsEmailPrompt] = useState(false); // Prompt for email after conflict resolution
-  const [mergeTarget, setMergeTarget] = useState<{ filename: string; db: any } | null>(null); // File being merged
+  const [mergeTarget, setMergeTarget] = useState<{ filename: string; db: any; ancestorFilename: string | null; ancestorDb: any | null } | null>(null); // File being merged with optional ancestor for 3-way
   const dirHandleRef = useRef<FileSystemDirectoryHandle | null>(null); // For file operations
 
   useEffect(() => {
@@ -801,15 +802,19 @@ export default function App() {
   }
 
   // Set metadata in database before saving
-  function setSessionMetadata(db: any, email: string, sessionStarted: string): void {
+  function setSessionMetadata(db: any, email: string, sessionStarted: string, derivedFrom: string | null): void {
     const savedAt = new Date().toISOString();
     db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('session_started_at', ?)`, [sessionStarted]);
     db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('saved_at', ?)`, [savedAt]);
     db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('saved_by', ?)`, [email]);
+    // Track version lineage for three-way merge
+    if (derivedFrom) {
+      db.run(`INSERT OR REPLACE INTO meta (key, value) VALUES ('derived_from', ?)`, [derivedFrom]);
+    }
   }
 
   // Get metadata from a database
-  function getFileMetadata(db: any): { sessionStartedAt: string | null; savedAt: string | null; savedBy: string | null } {
+  function getFileMetadata(db: any): { sessionStartedAt: string | null; savedAt: string | null; savedBy: string | null; derivedFrom: string | null } {
     const getVal = (key: string): string | null => {
       try {
         const rows = db.exec(`SELECT value FROM meta WHERE key='${key}'`);
@@ -819,7 +824,8 @@ export default function App() {
     return {
       sessionStartedAt: getVal('session_started_at'),
       savedAt: getVal('saved_at'),
-      savedBy: getVal('saved_by')
+      savedBy: getVal('saved_by'),
+      derivedFrom: getVal('derived_from')
     };
   }
 
@@ -841,7 +847,8 @@ export default function App() {
             savedAt: meta.savedAt || '',
             savedBy: meta.savedBy || 'Unknown',
             sessionStartedAt: meta.sessionStartedAt || '',
-            sizeBytes: file.size
+            sizeBytes: file.size,
+            derivedFrom: meta.derivedFrom || null
           });
         } catch (e) {
           console.warn(`[VersionHistory] Failed to read metadata from ${entry.name}:`, e);
@@ -904,7 +911,101 @@ export default function App() {
     return conflicts;
   }
 
+  /**
+   * Find common ancestor for two files by tracing their derived_from chains.
+   * Falls back to oldest available file if no common ancestor is found.
+   */
+  function findCommonAncestor(files: FileVersionInfo[], file1: string, file2: string): string | null {
+    // Build ancestry chains for both files
+    const fileMap = new Map<string, FileVersionInfo>();
+    for (const f of files) {
+      fileMap.set(f.filename, f);
+    }
+    
+    const getAncestryChain = (filename: string): Set<string> => {
+      const chain = new Set<string>();
+      let current = filename;
+      const visited = new Set<string>();
+      
+      while (current && !visited.has(current)) {
+        visited.add(current);
+        chain.add(current);
+        const file = fileMap.get(current);
+        if (!file || !file.derivedFrom) break;
+        current = file.derivedFrom;
+      }
+      return chain;
+    };
+    
+    const ancestry1 = getAncestryChain(file1);
+    const ancestry2 = getAncestryChain(file2);
+    
+    // Find the first (most recent) common ancestor
+    // Start from file2's chain and find first match in file1's chain
+    let current = file2;
+    const visited = new Set<string>();
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      if (ancestry1.has(current) && current !== file1 && current !== file2) {
+        return current;
+      }
+      const file = fileMap.get(current);
+      if (!file || !file.derivedFrom) break;
+      current = file.derivedFrom;
+    }
+    
+    // Also check file1's direct ancestry
+    current = file1;
+    visited.clear();
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      if (ancestry2.has(current) && current !== file1 && current !== file2) {
+        return current;
+      }
+      const file = fileMap.get(current);
+      if (!file || !file.derivedFrom) break;
+      current = file.derivedFrom;
+    }
+    
+    // Fallback: return the oldest file that exists (excluding the two being merged)
+    const sortedByAge = [...files].sort((a, b) => a.savedAt.localeCompare(b.savedAt));
+    for (const f of sortedByAge) {
+      if (f.filename !== file1 && f.filename !== file2) {
+        return f.filename;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get all files that are ancestors of any remaining file (for protection during cleanup)
+   */
+  function getAncestorFiles(files: FileVersionInfo[]): Set<string> {
+    const ancestors = new Set<string>();
+    const fileMap = new Map<string, FileVersionInfo>();
+    for (const f of files) {
+      fileMap.set(f.filename, f);
+    }
+    
+    for (const f of files) {
+      let current = f.derivedFrom;
+      const visited = new Set<string>();
+      while (current && !visited.has(current)) {
+        visited.add(current);
+        if (fileMap.has(current)) {
+          ancestors.add(current);
+        }
+        const parent = fileMap.get(current);
+        if (!parent || !parent.derivedFrom) break;
+        current = parent.derivedFrom;
+      }
+    }
+    return ancestors;
+  }
+
   // Cleanup old files (keep last 10 OR last 24 hours, whichever is more generous)
+  // Also protect common ancestors to ensure three-way merge always has a base
   async function cleanupOldFiles(dirHandle: FileSystemDirectoryHandle, currentFile: string): Promise<void> {
     try {
       const files = await scanScheduleFiles(dirHandle);
@@ -926,6 +1027,18 @@ export default function App() {
       
       // Always keep current file
       filesToKeep.add(currentFile);
+      
+      // Protect ancestor files to ensure three-way merge is always possible
+      const ancestorFiles = getAncestorFiles(files.filter(f => filesToKeep.has(f.filename)));
+      for (const ancestor of ancestorFiles) {
+        filesToKeep.add(ancestor);
+      }
+      
+      // Always keep at least one old file as fallback ancestor (the oldest)
+      if (files.length > 0) {
+        const oldest = files[files.length - 1];
+        filesToKeep.add(oldest.filename);
+      }
       
       // Delete the rest
       for (const file of files) {
@@ -980,12 +1093,34 @@ export default function App() {
     }
     
     try {
+      // Load their database
       const fileHandle = await dirHandleRef.current.getFileHandle(filename);
       const file = await fileHandle.getFile();
       const buf = await file.arrayBuffer();
       const theirDb = new SQL.Database(new Uint8Array(buf));
       
-      setMergeTarget({ filename, db: theirDb });
+      // Try to find and load common ancestor for three-way merge
+      let ancestorDb: any = null;
+      let ancestorFilename: string | null = null;
+      
+      try {
+        const files = await scanScheduleFiles(dirHandleRef.current);
+        ancestorFilename = findCommonAncestor(files, currentFilename, filename);
+        
+        if (ancestorFilename) {
+          const ancestorHandle = await dirHandleRef.current.getFileHandle(ancestorFilename);
+          const ancestorFile = await ancestorHandle.getFile();
+          const ancestorBuf = await ancestorFile.arrayBuffer();
+          ancestorDb = new SQL.Database(new Uint8Array(ancestorBuf));
+          console.log(`[Merge] Found common ancestor: ${ancestorFilename}`);
+        } else {
+          console.log('[Merge] No common ancestor found, falling back to two-way merge');
+        }
+      } catch (e) {
+        console.warn('[Merge] Could not load ancestor, falling back to two-way merge:', e);
+      }
+      
+      setMergeTarget({ filename, db: theirDb, ancestorFilename, ancestorDb });
     } catch (e) {
       console.error('[Merge] Failed to load file:', e);
       setStatus('Failed to load file for merge: ' + (e instanceof Error ? e.message : String(e)));
@@ -1071,6 +1206,9 @@ export default function App() {
       }
       
       mergeTarget.db.close();
+      if (mergeTarget.ancestorDb) {
+        mergeTarget.ancestorDb.close();
+      }
       setMergeTarget(null);
       setPendingConflicts(null);
       
@@ -1314,8 +1452,11 @@ export default function App() {
     if (!sqlDb || !dirHandleRef.current) return;
     
     try {
-      // Set metadata in the database
-      setSessionMetadata(sqlDb, userEmail || 'Unknown', sessionStartedAt || new Date().toISOString());
+      // Track lineage: this new save is derived from the current file (if any)
+      const derivedFrom = currentFilename || null;
+      
+      // Set metadata in the database (including lineage)
+      setSessionMetadata(sqlDb, userEmail || 'Unknown', sessionStartedAt || new Date().toISOString(), derivedFrom);
       
       // Generate new filename
       const filename = generateSaveFilename(userEmail, isMerge);
@@ -2160,11 +2301,30 @@ async function exportShifts() {
       return; 
     }
 
+    // Helper to parse HH:MM time string into a Date for a given day
+    const mkTime = (day: Date, t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m, 0, 0);
+    };
+
     const rows: any[] = [];
     let d = new Date(start.getTime());
     while (d <= end) {
       if (weekdayName(d) !== "Weekend") {
         const dYMD = ymd(d);
+        
+        // Query department events for this date - build a map of event title -> time range
+        const deptEvents = all(`SELECT title, start_time, end_time, group_id, role_id FROM department_event WHERE date=?`, [dYMD]);
+        const eventTimeMap = new Map<string, { start_time: string; end_time: string; group_id: number | null; role_id: number | null }>();
+        for (const evt of deptEvents) {
+          eventTimeMap.set(evt.title, { 
+            start_time: evt.start_time, 
+            end_time: evt.end_time,
+            group_id: evt.group_id,
+            role_id: evt.role_id
+          });
+        }
+        
         const assigns = all(`SELECT a.id, a.person_id, a.role_id, a.segment,
                                     p.first_name, p.last_name, p.work_email,
                                     r.name as role_name, r.code as role_code, r.group_id,
@@ -2185,21 +2345,37 @@ async function exportShifts() {
         }
 
         for (const a of assigns) {
-          // Calculate segment times specifically for this person's assignments
-          const personAssigns = assignsByPerson.get(a.person_id) || [];
-          const segMap = segmentTimesForPersonDate(d, personAssigns);
+          // Check if this assignment is for a department event (segment name matches event title)
+          const eventInfo = eventTimeMap.get(a.segment);
           
-          const seg = segMap[a.segment];
+          let seg: { start: Date; end: Date } | undefined;
+          let labelOverride: string | undefined;
+          
+          if (eventInfo) {
+            // This is a department event - use the event's time range
+            seg = { 
+              start: mkTime(d, eventInfo.start_time), 
+              end: mkTime(d, eventInfo.end_time) 
+            };
+            // Use the event title as the label (not the role name)
+            labelOverride = a.segment;
+          } else {
+            // Regular segment assignment - use per-person segment times
+            const personAssigns = assignsByPerson.get(a.person_id) || [];
+            const segMap = segmentTimesForPersonDate(d, personAssigns);
+            seg = segMap[a.segment];
+          }
+          
           if (!seg) continue;
           const windows: Array<{ start: Date; end: Date; label: string; group: string }> = [
-            { start: seg.start, end: seg.end, label: a.role_name, group: a.group_name },
+            { start: seg.start, end: seg.end, label: labelOverride || a.role_name, group: a.group_name },
           ];
 
           // Apply time-off partial splitting rule
           const intervals = listTimeOffIntervals(a.person_id, d);
           for (const w of windows) {
             const split = subtractIntervals(w.start, w.end, intervals);
-            for (const s of split) rows.push(makeShiftRow(a, d, s.start, s.end));
+            for (const s of split) rows.push(makeShiftRow(a, d, s.start, s.end, labelOverride));
           }
         }
       }
@@ -2256,7 +2432,7 @@ async function exportShifts() {
     return segments.filter(x => x.end > x.start);
   }
 
-  function makeShiftRow(a: any, _date: Date, start: Date, end: Date) {
+  function makeShiftRow(a: any, _date: Date, start: Date, end: Date, labelOverride?: string) {
     const member = `${a.last_name}, ${a.first_name}`; // Last, First
     const workEmail = a.work_email;
     // Group logic: Breakfast forces Dining Room, otherwise from role
@@ -2274,7 +2450,8 @@ async function exportShifts() {
       }
       return role;
     };
-    const customLabel = simplifyRole(a.role_name, group);
+    // If labelOverride is provided (for department events), use it directly
+    const customLabel = labelOverride || simplifyRole(a.role_name, group);
     
     const unpaidBreak = 0; // per user
     
@@ -3565,6 +3742,9 @@ function PeopleEditor(){
           open={true}
           onClose={() => {
             mergeTarget.db.close();
+            if (mergeTarget.ancestorDb) {
+              mergeTarget.ancestorDb.close();
+            }
             setMergeTarget(null);
             // If we need to prompt for email (opening flow), do it now
             if (needsEmailPrompt) {
@@ -3575,6 +3755,8 @@ function PeopleEditor(){
           myDb={sqlDb}
           theirFilename={mergeTarget.filename}
           theirDb={mergeTarget.db}
+          ancestorFilename={mergeTarget.ancestorFilename}
+          ancestorDb={mergeTarget.ancestorDb}
           onMerge={executeMerge}
         />
       )}

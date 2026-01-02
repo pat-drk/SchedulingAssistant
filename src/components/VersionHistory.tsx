@@ -18,7 +18,7 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { History20Regular, ArrowUndo20Regular, Merge20Regular } from "@fluentui/react-icons";
+import { History20Regular, ArrowUndo20Regular, Merge20Regular, ArrowRight12Regular } from "@fluentui/react-icons";
 import ConfirmDialog from "./ConfirmDialog";
 
 interface FileVersionInfo {
@@ -27,6 +27,7 @@ interface FileVersionInfo {
   savedBy: string;
   sessionStartedAt: string;
   sizeBytes: number;
+  derivedFrom: string | null;
 }
 
 interface VersionHistoryProps {
@@ -68,6 +69,24 @@ const useStyles = makeStyles({
   actions: {
     display: "flex",
     gap: tokens.spacingHorizontalXS,
+  },
+  lineageRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalXS,
+    marginTop: tokens.spacingVerticalXXS,
+  },
+  lineageLabel: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground3,
+  },
+  lineageLink: {
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorBrandForeground1,
+    cursor: "pointer",
+    "&:hover": {
+      textDecoration: "underline",
+    },
   },
 });
 
@@ -136,6 +155,7 @@ export default function VersionHistory({
               savedBy: getVal('saved_by') || 'Unknown',
               sessionStartedAt: getVal('session_started_at') || '',
               sizeBytes: file.size,
+              derivedFrom: getVal('derived_from') || null,
             });
             
             tempDb.close();
@@ -196,49 +216,66 @@ export default function VersionHistory({
                     <TableRow>
                       <TableHeaderCell>Saved</TableHeaderCell>
                       <TableHeaderCell>User</TableHeaderCell>
-                      <TableHeaderCell>Size</TableHeaderCell>
+                      <TableHeaderCell>Lineage</TableHeaderCell>
                       <TableHeaderCell></TableHeaderCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {files.map((file) => (
-                      <TableRow key={file.filename}>
-                        <TableCell>
-                          <Text className={styles.timestamp}>{formatTimestamp(file.savedAt)}</Text>
-                          {file.filename === currentFilename && (
-                            <span className={styles.currentBadge}>Current</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Text size={200}>{file.savedBy}</Text>
-                        </TableCell>
-                        <TableCell>
-                          <Text className={styles.size}>{formatSize(file.sizeBytes)}</Text>
-                        </TableCell>
-                        <TableCell>
-                          {file.filename !== currentFilename && (
-                            <div className={styles.actions}>
-                              <Button
-                                size="small"
-                                appearance="subtle"
-                                icon={<ArrowUndo20Regular />}
-                                onClick={() => handleRestoreClick(file)}
-                              >
-                                Restore
-                              </Button>
-                              <Button
-                                size="small"
-                                appearance="subtle"
-                                icon={<Merge20Regular />}
-                                onClick={() => onMerge(file.filename)}
-                              >
-                                Merge
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {files.map((file) => {
+                      // Find parent file info for display
+                      const parentFile = file.derivedFrom ? files.find(f => f.filename === file.derivedFrom) : null;
+                      const parentDisplay = parentFile 
+                        ? `${formatTimestamp(parentFile.savedAt)} (${parentFile.savedBy})`
+                        : file.derivedFrom 
+                          ? 'Previous version'
+                          : null;
+                      
+                      return (
+                        <TableRow key={file.filename}>
+                          <TableCell>
+                            <Text className={styles.timestamp}>{formatTimestamp(file.savedAt)}</Text>
+                            {file.filename === currentFilename && (
+                              <span className={styles.currentBadge}>Current</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Text size={200}>{file.savedBy}</Text>
+                          </TableCell>
+                          <TableCell>
+                            {parentDisplay ? (
+                              <div className={styles.lineageRow}>
+                                <ArrowRight12Regular />
+                                <Text className={styles.lineageLabel}>{parentDisplay}</Text>
+                              </div>
+                            ) : (
+                              <Text className={styles.lineageLabel}>Origin</Text>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {file.filename !== currentFilename && (
+                              <div className={styles.actions}>
+                                <Button
+                                  size="small"
+                                  appearance="subtle"
+                                  icon={<ArrowUndo20Regular />}
+                                  onClick={() => handleRestoreClick(file)}
+                                >
+                                  Restore
+                                </Button>
+                                <Button
+                                  size="small"
+                                  appearance="subtle"
+                                  icon={<Merge20Regular />}
+                                  onClick={() => onMerge(file.filename)}
+                                >
+                                  Merge
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}

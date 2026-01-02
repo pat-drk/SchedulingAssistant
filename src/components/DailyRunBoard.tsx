@@ -263,13 +263,15 @@ function TodaysMovesList({
   segment,
   all, 
   allRoles, 
-  loadMonthlyDefaultsForMonth 
+  loadMonthlyDefaultsForMonth,
+  weekStartMode
 }: { 
   date: string; 
   segment: string;
   all: (sql: string, params?: any[]) => any[]; 
   allRoles: any[];
   loadMonthlyDefaultsForMonth: (month: string) => { defaults: any[]; overrides: any[]; weekOverrides: any[] };
+  weekStartMode: WeekStartMode;
 }) {
   const moves = React.useMemo(() => {
     // Get current assignments for this date and segment
@@ -281,14 +283,14 @@ function TodaysMovesList({
       [date, segment]
     );
     
-    // Get monthly defaults for comparison
-    const month = date.slice(0, 7); // "YYYY-MM"
+    // Get monthly defaults for comparison - use effective month for split weeks
+    const dateObj = new Date(date + 'T00:00:00');
+    const month = getEffectiveMonth(dateObj, weekStartMode);
     const { defaults, overrides, weekOverrides } = loadMonthlyDefaultsForMonth(month);
     
     // Calculate expected role for each person based on defaults + overrides
-    const dateObj = new Date(date + 'T00:00:00');
     const weekday = dateObj.getDay(); // 0=Sun, 1=Mon, etc.
-    const weekNum = Math.ceil(dateObj.getDate() / 7); // Week 1-5
+    const weekNum = getWeekOfMonth(dateObj, weekStartMode); // Use proper week calculation
     
     const getExpectedRole = (personId: number): number | null => {
       // Check day-of-week override first (e.g., "Every Monday")
@@ -324,7 +326,7 @@ function TodaysMovesList({
     }
     
     return movedAssignments;
-  }, [all, date, segment, loadMonthlyDefaultsForMonth]);
+  }, [all, date, segment, loadMonthlyDefaultsForMonth, weekStartMode]);
   
   const getRoleName = (roleId: number) => {
     const role = allRoles.find((r: any) => r.id === roleId);
@@ -567,11 +569,12 @@ export default function DailyRunBoard({
   // Track which person_id + role_id combinations differ from monthly defaults ("Moved" badge)
   const movedToMap = useMemo(() => {
     const dateStr = ymd(selectedDateObj);
-    const month = dateStr.slice(0, 7);
+    // Use effective month for split weeks (respects week_start_mode setting)
+    const month = getEffectiveMonth(selectedDateObj, weekStartMode);
     const { defaults, overrides, weekOverrides } = loadMonthlyDefaultsForMonth(month);
     
     const weekday = selectedDateObj.getDay();
-    const weekNum = Math.ceil(selectedDateObj.getDate() / 7);
+    const weekNum = getWeekOfMonth(selectedDateObj, weekStartMode); // Use proper week calculation
     
     const getExpectedRole = (personId: number): number | null => {
       const dayOverride = overrides.find(
@@ -604,7 +607,7 @@ export default function DailyRunBoard({
       }
     }
     return map;
-  }, [all, selectedDateObj, seg, ymd, loadMonthlyDefaultsForMonth]);
+  }, [all, selectedDateObj, seg, ymd, loadMonthlyDefaultsForMonth, weekStartMode]);
 
   // Get all unassigned but available people for this segment
   const unassignedAvailable = useMemo(() => {
@@ -2262,7 +2265,7 @@ export default function DailyRunBoard({
             <DialogBody>
               <DialogTitle>Moves for {seg}</DialogTitle>
               <DialogContent>
-                <TodaysMovesList date={ymd(selectedDateObj)} segment={seg} all={all} allRoles={allRoles} loadMonthlyDefaultsForMonth={loadMonthlyDefaultsForMonth} />
+                <TodaysMovesList date={ymd(selectedDateObj)} segment={seg} all={all} allRoles={allRoles} loadMonthlyDefaultsForMonth={loadMonthlyDefaultsForMonth} weekStartMode={weekStartMode} />
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setShowMovesModal(false)}>Close</Button>
