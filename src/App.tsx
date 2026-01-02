@@ -2331,8 +2331,8 @@ async function exportShifts() {
                                     g.name as group_name
                              FROM assignment a
                              JOIN person p ON p.id=a.person_id
-                             JOIN role r ON r.id=a.role_id
-                             JOIN grp g  ON g.id=r.group_id
+                             LEFT JOIN role r ON r.id=a.role_id
+                             LEFT JOIN grp g  ON g.id=r.group_id
                              WHERE a.date=?`, [dYMD]);
 
         // For Teams export, use per-person segment times to correctly apply adjustments
@@ -2436,13 +2436,15 @@ async function exportShifts() {
     const member = `${a.last_name}, ${a.first_name}`; // Last, First
     const workEmail = a.work_email;
     // Group logic: Breakfast forces Dining Room, otherwise from role
-    const group = a.segment === "Early" ? "Dining Room" : a.group_name;
+    // For department events without a group, use the event title (segment) as the group
+    const group = a.segment === "Early" ? "Dining Room" : (a.group_name || a.segment);
     const themeColor = groups.find((g) => g.name === group)?.theme || "";
     
     // Simplify role label to remove redundant group name prefix
     // e.g., if group is "Dining Room" and role is "Dining Room", label is blank
     // If role is "Dining Room Coordinator", label is "Coordinator"
     const simplifyRole = (role: string, groupName: string): string => {
+      if (!role) return ''; // Handle null role_name for department events
       if (role === groupName) return '';
       const prefix = groupName + ' ';
       if (role.startsWith(prefix)) {

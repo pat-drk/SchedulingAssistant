@@ -115,11 +115,33 @@ export default function ExportPreview({
     const start = parseYMD(exportStart);
     const end = parseYMD(exportEnd);
     if (end < start) return [] as any[];
+    const mkTime = (day: Date, t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m, 0, 0);
+    };
     const rows: any[] = [];
     let d = new Date(start.getTime());
     while (d <= end) {
       if (weekdayName(d) !== "Weekend") {
         const dYMD = ymd(d);
+
+        // Department events for this date, keyed by title/segment name
+        const deptEvents = all(
+          `SELECT de.title, de.start_time, de.end_time, g.name as group_name
+             FROM department_event de
+             LEFT JOIN grp g ON g.id = de.group_id
+             WHERE de.date=?`,
+          [dYMD]
+        );
+        const eventTimeMap = new Map<string, { start_time: string; end_time: string; group_name: string | null }>();
+        for (const evt of deptEvents) {
+          eventTimeMap.set(evt.title, {
+            start_time: evt.start_time,
+            end_time: evt.end_time,
+            group_name: evt.group_name ?? null,
+          });
+        }
+
         const assigns = all(
           `SELECT a.id, a.person_id, a.role_id, a.segment,
                   p.first_name, p.last_name, p.work_email,
@@ -145,12 +167,19 @@ export default function ExportPreview({
           // Calculate segment times specifically for this person's assignments
           const personAssigns = assignsByPerson.get(a.person_id) || [];
           const segMap = segmentTimesForPersonDate(d, personAssigns);
-          const seg = segMap[a.segment];
+          const eventInfo = eventTimeMap.get(a.segment);
+
+          const seg = eventInfo
+            ? { start: mkTime(d, eventInfo.start_time), end: mkTime(d, eventInfo.end_time) }
+            : segMap[a.segment];
+
           if (!seg) continue;
+
+          const label = eventInfo ? a.segment : a.role_name;
           let windows: Array<{ start: Date; end: Date }> = [
             { start: seg.start, end: seg.end },
           ];
-          let group = a.group_name;
+          let group = eventInfo?.group_name || a.group_name;
 
           const intervals = listTimeOffIntervals(a.person_id, d);
           for (const w of windows) {
@@ -163,7 +192,7 @@ export default function ExportPreview({
                 group,
                 start: fmtTime24(s.start),
                 end: fmtTime24(s.end),
-                label: a.role_name,
+                label,
                 color: groups.find((gg) => gg.name === group)?.theme || "",
               });
             }

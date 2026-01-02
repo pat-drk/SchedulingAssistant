@@ -563,6 +563,24 @@ export default function DailyRunBoard({
     return getEventsForDate(all, ymd(selectedDateObj));
   }, [all, ymd, selectedDateObj]);
 
+  // Get attendees for each department event
+  const eventAttendees = useMemo(() => {
+    if (!sqlDb || departmentEvents.length === 0) return new Map<string, any[]>();
+    const attendeeMap = new Map<string, any[]>();
+    for (const event of departmentEvents) {
+      const attendees = all(
+        `SELECT a.id, a.person_id, p.first_name, p.last_name 
+         FROM assignment a 
+         JOIN person p ON p.id = a.person_id 
+         WHERE a.date = ? AND a.segment = ?
+         ORDER BY p.last_name, p.first_name`,
+        [ymd(selectedDateObj), event.title]
+      );
+      attendeeMap.set(event.title, attendees);
+    }
+    return attendeeMap;
+  }, [all, ymd, selectedDateObj, departmentEvents, sqlDb]);
+
   // Adjusted segments (accounts for department events carving out time)
   const adjustedSegments = useMemo(() => {
     return getAdjustedSegments(segments, departmentEvents);
@@ -2057,6 +2075,7 @@ export default function DailyRunBoard({
                 adjSeg.original_end !== adjSeg.adjusted_end
             );
             const blockedSegs = adjustedSegments.filter((adjSeg) => adjSeg.blocked);
+            const attendees = eventAttendees.get(event.title) || [];
             
             return (
               <MessageBar
@@ -2086,6 +2105,24 @@ export default function DailyRunBoard({
                           Adjusted segments: {affectedSegs.map((s) => `${s.name} (${formatTime12h(s.adjusted_start)}–${formatTime12h(s.adjusted_end)})`).join(', ')}
                         </span>
                       )}
+                    </div>
+                  )}
+                  {/* Show attendees */}
+                  {attendees.length > 0 && (
+                    <div style={{ marginTop: tokens.spacingVerticalS }}>
+                      <Text size={200} weight="semibold">Attendees ({attendees.length}):</Text>
+                      <div style={{ 
+                        marginTop: tokens.spacingVerticalXS,
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: tokens.spacingHorizontalXS,
+                      }}>
+                        {attendees.map((a: any) => (
+                          <Badge key={a.id} appearance="outline" color="informative" size="small">
+                            {a.first_name} {a.last_name}
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </MessageBarBody>
