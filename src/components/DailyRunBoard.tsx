@@ -477,6 +477,22 @@ export default function DailyRunBoard({
   const [showTeamsDraft, setShowTeamsDraft] = useState(false);
   const [teamsDraftText, setTeamsDraftText] = useState('');
 
+  // Load week_start_mode setting from database for moved badge calculation
+  const weekStartMode: WeekStartMode = useMemo(() => {
+    try {
+      const modeRows = all(`SELECT value FROM meta WHERE key='week_start_mode'`);
+      if (modeRows.length > 0) {
+        const modeValue = modeRows[0].value;
+        if (modeValue === 'first_monday' || modeValue === 'first_day') {
+          return modeValue;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load week_start_mode:', e);
+    }
+    return 'first_monday'; // Default
+  }, [all]);
+
   const moveSelectedLabel = useMemo(() => {
     if (!moveContext || moveTargetId == null) return "";
     const target = moveContext.targets.find((t) => t.role.id === moveTargetId);
@@ -490,7 +506,10 @@ export default function DailyRunBoard({
 
   useEffect(() => {
     setLayoutLoaded(false);
-    const key = `layout:${seg}:${lockEmail || "default"}`;
+    // Only use user-specific key if we have a valid email
+    const key = lockEmail && lockEmail !== 'Unknown' 
+      ? `layout:${seg}:${lockEmail}` 
+      : `layout:${seg}:default`;
     let saved: any[] = [];
     try {
       const rows = all(`SELECT value FROM meta WHERE key=?`, [key]);
@@ -526,7 +545,10 @@ export default function DailyRunBoard({
   function handleLayoutChange(l: any[]) {
     setLayout(l);
     if (!layoutLoaded) return;
-    const key = `layout:${seg}:${lockEmail || "default"}`;
+    // Only save layout if we have a valid user email (not empty or "default")
+    // This prevents layout being saved to wrong key before email is entered
+    if (!lockEmail || lockEmail === 'Unknown') return;
+    const key = `layout:${seg}:${lockEmail}`;
     try {
       const stmt = sqlDb.prepare(`INSERT OR REPLACE INTO meta (key,value) VALUES (?,?)`);
       stmt.bind([key, JSON.stringify(l)]);
